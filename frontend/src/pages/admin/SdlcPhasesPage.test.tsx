@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { SdlcPhasesPage } from "./SdlcPhasesPage";
 import { renderWithProviders } from "../../test/utils";
@@ -40,12 +40,19 @@ interface MockState {
   phases: MockPhase[];
   reorderRequests: number[][];
   reorderShouldFail: boolean;
+  /** When set, the activate endpoint returns 409 TEMPLATES_WOULD_BE_AFFECTED. */
+  activationBlockedCount: number | null;
 }
 
 let state: MockState;
 
 function installRouter() {
-  state = { phases: [], reorderRequests: [], reorderShouldFail: false };
+  state = {
+    phases: [],
+    reorderRequests: [],
+    reorderShouldFail: false,
+    activationBlockedCount: null,
+  };
   fetchMock.mockImplementation((url: string, init?: RequestInit) => {
     const u = new URL(url, "http://localhost");
     const path = u.pathname;
@@ -66,6 +73,31 @@ function installRouter() {
 
     if (path === "/api/admin/phases" && method === "GET") {
       return Promise.resolve(jsonResponse(state.phases.map(listItem)));
+    }
+    if (
+      path.match(/^\/api\/admin\/phases\/\d+\/activate$/) &&
+      method === "POST"
+    ) {
+      // Phase 5b: surface the TEMPLATES_WOULD_BE_AFFECTED rejection so
+      // the page's info-modal handler exercises end-to-end.
+      if (state.activationBlockedCount != null) {
+        return Promise.resolve(
+          jsonResponse(
+            {
+              error: "TEMPLATES_WOULD_BE_AFFECTED",
+              message: "Activation blocked by templates",
+              fieldErrors: {
+                affectedTemplateCount: String(state.activationBlockedCount),
+              },
+            },
+            409,
+          ),
+        );
+      }
+      return Promise.resolve(jsonResponse(listItem({
+        ...state.phases[0],
+        active: true,
+      })));
     }
     if (path === "/api/admin/phases/reorder" && method === "PATCH") {
       const body = JSON.parse((init?.body as string) ?? "{}");
@@ -147,5 +179,29 @@ describe("<SdlcPhasesPage>", () => {
     await waitFor(() => {
       expect(screen.getByText("Analysis")).toBeInTheDocument();
     });
+  });
+
+  // -------------------------------------------------------------------
+  // Phase 5b — activation guard
+  // -------------------------------------------------------------------
+
+  it("Activate fires TEMPLATES_WOULD_BE_AFFECTED → InfoModal shows the count", async () => {
+    state.phases = [{ id: 99, name: "Hypercare", displayOrder: 5, active: false, system: false }];
+    state.activationBlockedCount = 3;
+    const user = userEvent.setup();
+    renderWithProviders(<SdlcPhasesPage />);
+
+    await screen.findByText("Hypercare");
+    await user.click(screen.getByRole("button", { name: /actions for hypercare/i }));
+    await user.click(await screen.findByRole("menuitem", { name: /^activate$/i }));
+
+    // Info modal mounts with the affected count baked in.
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toHaveTextContent(/Cannot activate phase/i);
+    expect(dialog).toHaveTextContent(/3 estimate templates/i);
+    expect(dialog).toHaveTextContent(/'Hypercare'/);
+    // Single dismissal button — no Cancel.
+    expect(within(dialog).getByRole("button", { name: /Got it/i })).toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: /Cancel/i })).toBeNull();
   });
 });

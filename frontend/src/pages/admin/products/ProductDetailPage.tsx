@@ -21,17 +21,14 @@ import {
 import {
   SortableContext,
   sortableKeyboardCoordinates,
-  useSortable,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
 import { EntityHeader } from "../../../components/EntityHeader";
 import { CountPill } from "../../../components/CountPill";
 import { EmptyState } from "../../../components/EmptyState";
 import { StatusBadge } from "../../../components/StatusBadge";
 import { KebabMenu, type KebabMenuItem } from "../../../components/KebabMenu";
 import { PrimaryButton } from "../../../components/buttons";
-import { DragHandle } from "../../../components/DragHandle";
 import { ConfirmModal } from "../../../components/ConfirmModal";
 import { useToast } from "../../../components/Toast";
 import {
@@ -53,6 +50,13 @@ import { DeleteProductModal } from "./DeleteProductModal";
 import { DeleteSubFeatureModal } from "./DeleteSubFeatureModal";
 import { NewSubFeatureDrawer } from "./NewSubFeatureDrawer";
 import { AddQuestionDrawer, type QuestionDrawerParent } from "./AddQuestionDrawer";
+import { TemplateEditorCard } from "./TemplateEditorCard";
+import { SortableQuestionRow } from "./QuestionRow";
+import {
+  useCreateProductTemplateMutation,
+  useProductTemplateQuery,
+  useSaveProductTemplateMutation,
+} from "../../../lib/queries/templates";
 
 type Drawer =
   | { kind: "closed" }
@@ -475,18 +479,7 @@ function AtomicLayout({
   return (
     <>
       <Section title="Estimate template">
-        <div
-          className="text-center rounded-md"
-          style={{
-            padding: "32px 24px",
-            background: "var(--color-warm-gray-light)",
-            border: "1px dashed var(--color-border-strong)",
-            color: "var(--color-warm-gray-med)",
-            fontSize: 13,
-          }}
-        >
-          Estimate template editor coming with Phase 5b.
-        </div>
+        <ProductTemplateEditor productId={productId} />
       </Section>
 
       <Section
@@ -583,121 +576,8 @@ function DraggableQuestionList({
   );
 }
 
-// TODO(post-5b-consolidation): if this row stays byte-identical to
-// SubFeatureDetailPage's SortableQuestionRow through the end of Phase 5b,
-// consolidate both pages onto a shared SortableQuestionsList component.
-// Re-check once the template editor lands and either page might want
-// per-page row affordances; if neither does, lift it.
-function SortableQuestionRow({
-  question,
-  onEdit,
-  onDelete,
-}: {
-  question: QuestionListItem;
-  onEdit: () => void;
-  onDelete: () => void;
-}) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: question.id,
-  });
-
-  const style: React.CSSProperties = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.6 : 1,
-  };
-
-  return (
-    <li
-      ref={setNodeRef}
-      style={{
-        ...style,
-        padding: "12px 14px",
-        background: "var(--color-white)",
-        border: "1px solid var(--color-warm-gray-light)",
-        borderRadius: 6,
-      }}
-      className="flex items-start gap-3"
-    >
-      <DragHandle {...attributes} {...listeners} />
-      <span
-        aria-label={`Display order ${question.displayOrder}`}
-        className="inline-flex items-center justify-center text-near-black tabular-nums flex-shrink-0"
-        style={{
-          width: 22,
-          height: 22,
-          borderRadius: "50%",
-          background: "var(--color-warm-gray-light)",
-          fontSize: 11,
-          fontWeight: 600,
-        }}
-      >
-        {question.displayOrder}
-      </span>
-      <div className="flex-1 min-w-0">
-        <p className="m-0 font-semibold text-near-black" style={{ fontSize: 14 }}>
-          {question.questionText}
-        </p>
-        {question.helpText && (
-          <p className="m-0 mt-1 text-warm-gray-med" style={{ fontSize: 12 }}>
-            {question.helpText}
-          </p>
-        )}
-      </div>
-      <RequiredPill required={question.required} />
-      <StatusBadge variant={question.active ? "active" : "inactive"}>
-        {question.active ? "Active" : "Inactive"}
-      </StatusBadge>
-      <KebabMenu
-        items={[
-          { label: "Edit", icon: <Pencil className="w-3.5 h-3.5" strokeWidth={1.5} />, onSelect: onEdit },
-          {
-            label: "Delete",
-            icon: <Trash2 className="w-3.5 h-3.5" strokeWidth={1.5} />,
-            destructive: true,
-            onSelect: onDelete,
-          },
-        ]}
-      />
-    </li>
-  );
-}
-
-function RequiredPill({ required }: { required: boolean }) {
-  if (required) {
-    return (
-      <span
-        className="inline-flex items-center"
-        style={{
-          padding: "2px 8px",
-          borderRadius: 4,
-          fontSize: 11,
-          fontWeight: 500,
-          background: "var(--color-white)",
-          color: "var(--color-cardinal-red)",
-          border: "1px solid var(--color-cardinal-red)",
-        }}
-      >
-        Required
-      </span>
-    );
-  }
-  return (
-    <span
-      className="inline-flex items-center text-warm-gray-med"
-      style={{
-        padding: "2px 8px",
-        borderRadius: 4,
-        fontSize: 11,
-        fontWeight: 500,
-        background: "var(--color-warm-gray-light)",
-        border: "1px solid var(--color-border-strong)",
-      }}
-    >
-      Optional
-    </span>
-  );
-}
+// SortableQuestionRow + RequiredPill lifted to QuestionRow.tsx at Phase
+// 5b close-out. Both pages now import the shared component.
 
 // =====================================================================
 // Section card — shared shell for both layouts
@@ -787,6 +667,30 @@ function DeleteQuestionConfirm({
       onConfirm={handleConfirm}
       confirmLabel="Delete question"
       destructive
+    />
+  );
+}
+
+/**
+ * Thin wrapper that pulls the active product template via React Query
+ * and hands it to the shared {@link TemplateEditorCard}. Stays inline in
+ * this file because it has no other call sites; if the SubFeature
+ * equivalent and this start to drift, lift them into separate files.
+ */
+function ProductTemplateEditor({ productId }: { productId: number }) {
+  const query = useProductTemplateQuery(productId);
+  const create = useCreateProductTemplateMutation();
+  const save = useSaveProductTemplateMutation();
+
+  return (
+    <TemplateEditorCard
+      template={query.data ?? null}
+      loading={query.isLoading}
+      parentNoun="atomic product"
+      onCreate={async () => {
+        await create.mutateAsync({ productId });
+      }}
+      onSave={(req) => save.mutateAsync({ productId, body: req })}
     />
   );
 }

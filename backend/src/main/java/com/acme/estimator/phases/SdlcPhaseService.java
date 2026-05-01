@@ -25,6 +25,18 @@ public class SdlcPhaseService {
     private final SdlcPhaseRepository phaseRepository;
     private final ChangeLogEntryRepository changeLogRepository;
     private final AuditService auditService;
+    /**
+     * All activation guards in the bean graph. Each can veto an
+     * inactive→active transition by throwing
+     * {@link com.acme.estimator.common.ApiException}. Spring injects
+     * implementations via constructor (Lombok {@code @RequiredArgsConstructor})
+     * — empty list when no guards are registered, which is fine.
+     *
+     * <p>Phase 5b's {@code TemplateActivationGuard} is the only impl
+     * today. The hook lives here (not directly inlining a template-repo
+     * call) so {@code phases/} stays oblivious to {@code catalog/}.
+     */
+    private final List<SdlcPhaseActivationGuard> activationGuards;
 
     public enum StatusFilter { ALL, ACTIVE, INACTIVE }
 
@@ -127,7 +139,17 @@ public class SdlcPhaseService {
     @Transactional
     public SdlcPhase activate(Long id, User actor) {
         SdlcPhase phase = get(id);
+        // Already-active is a no-op; don't re-fire the guards on a phase
+        // that's already in the desired state.
         if (phase.isActive()) return phase;
+
+        // Run guards before flipping. Each may throw ApiException to veto.
+        // Order is irrelevant for now (only one impl exists); first thrower
+        // wins if multiple guards ever object to the same activation.
+        for (SdlcPhaseActivationGuard guard : activationGuards) {
+            guard.check(phase);
+        }
+
         phase.setActive(true);
         phase.setUpdatedBy(actor.getId());
         phaseRepository.save(phase);

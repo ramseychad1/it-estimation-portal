@@ -9,6 +9,8 @@ public interface SdlcPhaseRepository extends JpaRepository<SdlcPhase, Long> {
 
     List<SdlcPhase> findAllByOrderByDisplayOrderAsc();
 
+    List<SdlcPhase> findAllByActiveTrueOrderByDisplayOrderAsc();
+
     Optional<SdlcPhase> findByNameIgnoreCase(String name);
 
     @Query("select coalesce(max(p.displayOrder), 0) from SdlcPhase p")

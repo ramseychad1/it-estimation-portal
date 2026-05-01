@@ -4,6 +4,7 @@ import com.acme.estimator.audit.ChangeAction;
 import com.acme.estimator.catalog.products.Product;
 import com.acme.estimator.catalog.questions.CriticalQuestion;
 import com.acme.estimator.catalog.subfeatures.SubFeature;
+import com.acme.estimator.catalog.templates.EstimateTemplate;
 import com.acme.estimator.phases.SdlcPhase;
 import com.acme.estimator.rates.BlendedRate;
 import com.acme.estimator.teams.Team;
@@ -20,14 +21,15 @@ public final class ChangeLogLabels {
 
     private ChangeLogLabels() {}
 
-    private static final Map<String, String> ENTITY_LABELS = Map.of(
-        Team.ENTITY_TYPE, "Team",
-        SdlcPhase.ENTITY_TYPE, "SDLC Phase",
-        BlendedRate.ENTITY_TYPE, "Blended Rate",
-        UserService.ENTITY_TYPE, "User",
-        Product.ENTITY_TYPE, "Product",
-        SubFeature.ENTITY_TYPE, "Sub-feature",
-        CriticalQuestion.ENTITY_TYPE, "Critical Question"
+    private static final Map<String, String> ENTITY_LABELS = Map.ofEntries(
+        Map.entry(Team.ENTITY_TYPE, "Team"),
+        Map.entry(SdlcPhase.ENTITY_TYPE, "SDLC Phase"),
+        Map.entry(BlendedRate.ENTITY_TYPE, "Blended Rate"),
+        Map.entry(UserService.ENTITY_TYPE, "User"),
+        Map.entry(Product.ENTITY_TYPE, "Product"),
+        Map.entry(SubFeature.ENTITY_TYPE, "Sub-feature"),
+        Map.entry(CriticalQuestion.ENTITY_TYPE, "Critical Question"),
+        Map.entry(EstimateTemplate.ENTITY_TYPE, "Estimate template")
     );
 
     private static final Map<ChangeAction, String> ACTION_LABELS = Map.of(

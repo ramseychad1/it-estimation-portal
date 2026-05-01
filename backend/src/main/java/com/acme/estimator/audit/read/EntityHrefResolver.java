@@ -5,6 +5,8 @@ import com.acme.estimator.catalog.questions.CriticalQuestion;
 import com.acme.estimator.catalog.questions.CriticalQuestionRepository;
 import com.acme.estimator.catalog.subfeatures.SubFeature;
 import com.acme.estimator.catalog.subfeatures.SubFeatureRepository;
+import com.acme.estimator.catalog.templates.EstimateTemplate;
+import com.acme.estimator.catalog.templates.EstimateTemplateRepository;
 import com.acme.estimator.phases.SdlcPhase;
 import com.acme.estimator.rates.BlendedRate;
 import com.acme.estimator.teams.Team;
@@ -35,20 +37,22 @@ public class EntityHrefResolver {
 
     private final SubFeatureRepository subFeatureRepository;
     private final CriticalQuestionRepository questionRepository;
+    private final EstimateTemplateRepository templateRepository;
 
     private Map<String, Function<Long, String>> registry;
 
     private Map<String, Function<Long, String>> registry() {
         if (registry == null) {
             // Built lazily so injected repositories are present.
-            registry = Map.of(
-                Team.ENTITY_TYPE,             id -> "/admin/teams",
-                SdlcPhase.ENTITY_TYPE,        id -> "/admin/phases",
-                BlendedRate.ENTITY_TYPE,      id -> "/admin/rates",
-                UserService.ENTITY_TYPE,      id -> "/admin/users",
-                Product.ENTITY_TYPE,          id -> "/catalog/products/" + id,
-                SubFeature.ENTITY_TYPE,       this::subFeatureHref,
-                CriticalQuestion.ENTITY_TYPE, this::questionHref
+            registry = Map.ofEntries(
+                Map.entry(Team.ENTITY_TYPE,             id -> "/admin/teams"),
+                Map.entry(SdlcPhase.ENTITY_TYPE,        id -> "/admin/phases"),
+                Map.entry(BlendedRate.ENTITY_TYPE,      id -> "/admin/rates"),
+                Map.entry(UserService.ENTITY_TYPE,      id -> "/admin/users"),
+                Map.entry(Product.ENTITY_TYPE,          id -> "/catalog/products/" + id),
+                Map.entry(SubFeature.ENTITY_TYPE,       this::subFeatureHref),
+                Map.entry(CriticalQuestion.ENTITY_TYPE, this::questionHref),
+                Map.entry(EstimateTemplate.ENTITY_TYPE, this::templateHref)
             );
         }
         return registry;
@@ -65,6 +69,25 @@ public class EntityHrefResolver {
         // SubFeature row appears in the change log feed.
         return subFeatureRepository.findById(subFeatureId)
             .map(s -> "/catalog/products/" + s.getProductId() + "/sub-features/" + s.getId())
+            .orElse(null);
+    }
+
+    private String templateHref(Long templateId) {
+        // Templates live inline on their parent's detail page. Three-hop
+        // for sub-feature templates: template → sub-feature → product.
+        return templateRepository.findById(templateId)
+            .map(t -> {
+                if (t.getProductId() != null) {
+                    return "/catalog/products/" + t.getProductId();
+                }
+                if (t.getSubFeatureId() != null) {
+                    Long pid = subFeatureRepository.findById(t.getSubFeatureId())
+                        .map(SubFeature::getProductId).orElse(null);
+                    if (pid == null) return null;
+                    return "/catalog/products/" + pid + "/sub-features/" + t.getSubFeatureId();
+                }
+                return null;
+            })
             .orElse(null);
     }
 

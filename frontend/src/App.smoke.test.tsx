@@ -123,6 +123,14 @@ beforeEach(() => {
     if (path === "/api/catalog/questions") {
       return Promise.resolve(emptyPage());
     }
+    // Phase 5b: template GET — Day-1 returns null body. Detail pages
+    // both fetch the template; smoke test only needs "no crash" coverage.
+    if (path.match(/^\/api\/catalog\/products\/\d+\/template$/)) {
+      return Promise.resolve(jsonResponse(null));
+    }
+    if (path.match(/^\/api\/catalog\/sub-features\/\d+\/template$/)) {
+      return Promise.resolve(jsonResponse(null));
+    }
 
     return Promise.resolve(new Response(null, { status: 404 }));
   });

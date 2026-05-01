@@ -421,6 +421,7 @@ public class ChangeLogReadService {
             case "Product"          -> ProductNameResolver.DELETED;
             case "SubFeature"       -> SubFeatureNameResolver.DELETED;
             case "CriticalQuestion" -> CriticalQuestionNameResolver.DELETED;
+            case "EstimateTemplate" -> EstimateTemplateNameResolver.DELETED;
             default                 -> "Deleted ";
         };
     }

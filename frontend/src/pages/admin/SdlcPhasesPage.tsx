@@ -32,6 +32,7 @@ import { FilterDropdown } from "../../components/FilterDropdown";
 import { KebabMenu, type KebabMenuItem } from "../../components/KebabMenu";
 import { StatusBadge } from "../../components/StatusBadge";
 import { ConfirmModal } from "../../components/ConfirmModal";
+import { InfoModal } from "../../components/InfoModal";
 import { ColumnsToggle, useColumnsVisibility } from "../../components/ColumnsToggle";
 import { DragHandle } from "../../components/DragHandle";
 import { PrimaryButton } from "../../components/buttons";
@@ -81,6 +82,10 @@ export function SdlcPhasesPage() {
   const [drawer, setDrawer] = useState<DrawerState>({ mode: "closed" });
   const [deleteTarget, setDeleteTarget] = useState<SdlcPhaseListItem | null>(null);
   const [hiddenCols, setHiddenCols] = useColumnsVisibility("phases", PHASES_REQUIRED_COLS);
+  /** Phase 5b: surfaced when activation is blocked because active templates would need updating. */
+  const [activationBlock, setActivationBlock] = useState<
+    { phaseName: string; affectedCount: number } | null
+  >(null);
 
   const phasesQuery = usePhasesQuery(status);
   const reorderMutation = useReorderPhasesMutation(status);
@@ -206,7 +211,17 @@ export function SdlcPhasesPage() {
             onSelect: () =>
               activateMutation.mutate(row.id, {
                 onSuccess: () => toast.success(`${row.name} activated.`),
-                onError: () => toast.error("Could not activate that phase."),
+                onError: (err) => {
+                  // Phase 5b: backend can refuse activation when active
+                  // templates exist. Surface the InfoModal with the count
+                  // rather than a generic error toast.
+                  const blocked = parseTemplatesAffected(err);
+                  if (blocked != null) {
+                    setActivationBlock({ phaseName: row.name, affectedCount: blocked });
+                  } else {
+                    toast.error("Could not activate that phase.");
+                  }
+                },
               }),
           },
     ];
@@ -415,8 +430,58 @@ export function SdlcPhasesPage() {
           }
         }}
       />
+
+      <InfoModal
+        open={activationBlock != null}
+        title="Cannot activate phase"
+        body={
+          activationBlock && (
+            <p className="m-0">
+              Activating <strong>'{activationBlock.phaseName}'</strong> would
+              affect{" "}
+              <strong>
+                {activationBlock.affectedCount} estimate template
+                {activationBlock.affectedCount === 1 ? "" : "s"}
+              </strong>
+              . Update those templates to include this phase before
+              activating.
+            </p>
+          )
+        }
+        secondaryLink={{
+          label: "View affected templates →",
+          // Phase 5b ships without a "templates that need review" filter on
+          // the products list, so the link points at /catalog/products as a
+          // starting point. Replace with a proper filter when one exists.
+          onClick: () => {
+            window.location.href = "/catalog/products?templateNeedsReview=true";
+          },
+        }}
+        onClose={() => setActivationBlock(null)}
+      />
     </>
   );
+}
+
+// ---- helpers ------------------------------------------------------------
+
+/**
+ * Detects the backend's TEMPLATES_WOULD_BE_AFFECTED 409 response and
+ * extracts {@code affectedTemplateCount} from {@code fieldErrors}. Returns
+ * the count when the error is the activation-guard rejection, {@code
+ * null} for any other error so the generic toast path can run.
+ */
+function parseTemplatesAffected(err: unknown): number | null {
+  if (!(err instanceof ApiError)) return null;
+  const body = err.body as
+    | { error?: string; fieldErrors?: Record<string, string> }
+    | null
+    | undefined;
+  if (!body || body.error !== "TEMPLATES_WOULD_BE_AFFECTED") return null;
+  const raw = body.fieldErrors?.affectedTemplateCount;
+  if (!raw) return null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : null;
 }
 
 // ---- table primitives ---------------------------------------------------
