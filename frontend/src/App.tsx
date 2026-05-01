@@ -1,50 +1,49 @@
-import { useQuery } from "@tanstack/react-query";
-import { api } from "./lib/api";
+import { Navigate, Route, Routes } from "react-router-dom";
+import { AppShell } from "./components/AppShell";
+import { AuthGuard } from "./components/AuthGuard";
+import { LoginPage } from "./pages/LoginPage";
+import {
+  ChangeLogPage,
+  CriticalQuestionsPage,
+  DashboardPage,
+  PhasesPage,
+  ProductsPage,
+  RatesPage,
+  RequestsPage,
+  TeamsPage,
+  TemplateHistoryPage,
+  UsersPage,
+} from "./pages/placeholders";
 
-interface HealthResponse {
-  status: string;
+function ProtectedShell({ children }: { children: React.ReactNode }) {
+  return (
+    <AuthGuard>
+      <AppShell>{children}</AppShell>
+    </AuthGuard>
+  );
 }
 
 export default function App() {
-  const { data, isLoading, error } = useQuery<HealthResponse>({
-    queryKey: ["health"],
-    queryFn: () => api<HealthResponse>("/health"),
-  });
-
   return (
-    <main className="min-h-screen flex items-center justify-center p-8">
-      <div className="max-w-md w-full">
-        <header className="mb-6">
-          <h1 className="text-page-title font-semibold text-near-black">
-            Estimator
-          </h1>
-          <p className="text-body text-warm-gray-med mt-2">
-            Phase 0 scaffolding — verifying the stack runs end to end.
-          </p>
-        </header>
+    <Routes>
+      <Route path="/login" element={<LoginPage />} />
 
-        <section
-          className="rounded-lg border border-border bg-white p-6"
-          style={{ boxShadow: "var(--shadow-card)" }}
-        >
-          <h2 className="text-section-title font-semibold text-near-black mb-3">
-            Backend health
-          </h2>
-          {isLoading && (
-            <p className="text-body text-warm-gray-med">Loading…</p>
-          )}
-          {error instanceof Error && (
-            <p className="text-body text-cardinal-red">
-              Could not reach /api/health — {error.message}
-            </p>
-          )}
-          {data && (
-            <pre className="text-body text-near-black bg-warm-gray-light rounded-md p-3 font-mono overflow-x-auto">
-              {JSON.stringify(data, null, 2)}
-            </pre>
-          )}
-        </section>
-      </div>
-    </main>
+      <Route path="/" element={<Navigate to="/dashboard" replace />} />
+
+      <Route path="/dashboard" element={<ProtectedShell><DashboardPage /></ProtectedShell>} />
+      <Route path="/requests" element={<ProtectedShell><RequestsPage /></ProtectedShell>} />
+
+      <Route path="/catalog/products" element={<ProtectedShell><ProductsPage /></ProtectedShell>} />
+      <Route path="/catalog/questions" element={<ProtectedShell><CriticalQuestionsPage /></ProtectedShell>} />
+      <Route path="/catalog/template-history" element={<ProtectedShell><TemplateHistoryPage /></ProtectedShell>} />
+
+      <Route path="/admin/teams" element={<ProtectedShell><TeamsPage /></ProtectedShell>} />
+      <Route path="/admin/phases" element={<ProtectedShell><PhasesPage /></ProtectedShell>} />
+      <Route path="/admin/rates" element={<ProtectedShell><RatesPage /></ProtectedShell>} />
+      <Route path="/admin/users" element={<ProtectedShell><UsersPage /></ProtectedShell>} />
+      <Route path="/admin/change-log" element={<ProtectedShell><ChangeLogPage /></ProtectedShell>} />
+
+      <Route path="*" element={<Navigate to="/dashboard" replace />} />
+    </Routes>
   );
 }
