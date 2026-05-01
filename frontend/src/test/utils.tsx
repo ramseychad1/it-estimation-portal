@@ -3,6 +3,7 @@ import type { ReactElement, ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { render, type RenderOptions } from "@testing-library/react";
 import { AuthProvider } from "../lib/auth";
+import { ToastProvider } from "../components/Toast";
 
 interface ProvidersOptions {
   initialEntries?: string[];
@@ -26,7 +27,9 @@ export function Providers({
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <MemoryRouter initialEntries={initialEntries}>{children}</MemoryRouter>
+        <ToastProvider>
+          <MemoryRouter initialEntries={initialEntries}>{children}</MemoryRouter>
+        </ToastProvider>
       </AuthProvider>
     </QueryClientProvider>
   );

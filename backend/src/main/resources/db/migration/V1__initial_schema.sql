@@ -8,7 +8,7 @@
 
 -- ---- users ---------------------------------------------------------------
 CREATE TABLE users (
-    id             UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    id             BIGSERIAL    PRIMARY KEY,
     email          VARCHAR(255) NOT NULL,
     password_hash  VARCHAR(100) NOT NULL,
     first_name     VARCHAR(100) NOT NULL,
@@ -29,7 +29,7 @@ CREATE TABLE roles (
 
 -- ---- user_roles (many-to-many) -------------------------------------------
 CREATE TABLE user_roles (
-    user_id  UUID     NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    user_id  BIGINT   NOT NULL REFERENCES users (id) ON DELETE CASCADE,
     role_id  SMALLINT NOT NULL REFERENCES roles (id),
     PRIMARY KEY (user_id, role_id)
 );

@@ -2,10 +2,9 @@ package com.acme.estimator.auth.dto;
 
 import com.acme.estimator.auth.AppUserDetails;
 import java.util.List;
-import java.util.UUID;
 
 public record CurrentUserResponse(
-    UUID id,
+    Long id,
     String email,
     String firstName,
     String lastName,

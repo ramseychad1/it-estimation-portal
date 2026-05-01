@@ -1,0 +1,549 @@
+import { useEffect, useMemo, useState } from "react";
+import {
+  CheckCircle2,
+  History,
+  Pencil,
+  Plus,
+  Trash2,
+  XCircle,
+} from "lucide-react";
+import {
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { ApiError } from "../../lib/api";
+import { PageHeader } from "../../components/PageHeader";
+import { ListToolbar } from "../../components/ListToolbar";
+import { SearchInput } from "../../components/SearchInput";
+import { FilterDropdown } from "../../components/FilterDropdown";
+import { KebabMenu, type KebabMenuItem } from "../../components/KebabMenu";
+import { StatusBadge } from "../../components/StatusBadge";
+import { ConfirmModal } from "../../components/ConfirmModal";
+import { DragHandle } from "../../components/DragHandle";
+import { PrimaryButton } from "../../components/buttons";
+import { UserCell } from "../../components/UserCell";
+import { useToast } from "../../components/Toast";
+import { relativeTime } from "../../lib/relativeTime";
+import {
+  getPhase,
+  type PhaseStatusFilter,
+  type SdlcPhaseDto,
+  type SdlcPhaseListItem,
+} from "../../lib/api/phases";
+import {
+  useActivatePhaseMutation,
+  useDeactivatePhaseMutation,
+  useDeletePhaseMutation,
+  usePhasesQuery,
+  useReorderPhasesMutation,
+} from "../../lib/queries/phases";
+import { SdlcPhaseFormDrawer } from "./SdlcPhaseFormDrawer";
+import { SdlcPhaseHistoryDrawer } from "./SdlcPhaseHistoryDrawer";
+
+type DrawerState =
+  | { mode: "closed" }
+  | { mode: "create" }
+  | { mode: "edit"; phase: SdlcPhaseDto }
+  | { mode: "history"; phase: SdlcPhaseDto };
+
+export function SdlcPhasesPage() {
+  useEffect(() => {
+    document.title = "SDLC phases — Estimator";
+  }, []);
+
+  const [search, setSearch] = useState("");
+  const [status, setStatus] = useState<PhaseStatusFilter>("ALL");
+  const [drawer, setDrawer] = useState<DrawerState>({ mode: "closed" });
+  const [deleteTarget, setDeleteTarget] = useState<SdlcPhaseListItem | null>(null);
+
+  const phasesQuery = usePhasesQuery(status);
+  const reorderMutation = useReorderPhasesMutation(status);
+  const activateMutation = useActivatePhaseMutation();
+  const deactivateMutation = useDeactivatePhaseMutation();
+  const deleteMutation = useDeletePhaseMutation();
+  const toast = useToast();
+
+  // Local search filter; status filter goes through the server.
+  const filteredItems = useMemo(() => {
+    const all = phasesQuery.data ?? [];
+    const q = search.trim().toLowerCase();
+    if (!q) return all;
+    return all.filter(
+      (p) =>
+        p.name.toLowerCase().includes(q) ||
+        (p.description ?? "").toLowerCase().includes(q),
+    );
+  }, [phasesQuery.data, search]);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const ids = filteredItems.map((p) => p.id);
+    const oldIndex = ids.indexOf(active.id as number);
+    const newIndex = ids.indexOf(over.id as number);
+    if (oldIndex < 0 || newIndex < 0) return;
+    const newOrder = arrayMove(ids, oldIndex, newIndex);
+    reorderMutation.mutate(newOrder, {
+      onError: () => toast.error("Could not save the new order. Reverted."),
+    });
+  }
+
+  function announcementsFor(items: SdlcPhaseListItem[]) {
+    const findName = (id: number | string) => items.find((p) => p.id === id)?.name ?? "Phase";
+    const findPos = (id: number | string) => {
+      const idx = items.findIndex((p) => p.id === id);
+      return idx >= 0 ? `${idx + 1} of ${items.length}` : "unknown position";
+    };
+    return {
+      onDragStart({ active }: { active: { id: number | string } }) {
+        return `Phase '${findName(active.id)}' grabbed, position ${findPos(active.id)}.`;
+      },
+      onDragOver({
+        active,
+        over,
+      }: {
+        active: { id: number | string };
+        over: { id: number | string } | null;
+      }) {
+        if (over) {
+          return `Phase '${findName(active.id)}' is over position ${findPos(over.id)}.`;
+        }
+        return `Phase '${findName(active.id)}' is no longer over a droppable area.`;
+      },
+      onDragEnd({
+        active,
+        over,
+      }: {
+        active: { id: number | string };
+        over: { id: number | string } | null;
+      }) {
+        if (over) {
+          return `Phase '${findName(active.id)}' was dropped at position ${findPos(over.id)}.`;
+        }
+        return `Phase '${findName(active.id)}' was dropped.`;
+      },
+      onDragCancel({ active }: { active: { id: number | string } }) {
+        return `Reordering phase '${findName(active.id)}' was cancelled.`;
+      },
+    };
+  }
+
+  async function openEdit(row: SdlcPhaseListItem) {
+    try {
+      const full = await getPhase(row.id);
+      setDrawer({ mode: "edit", phase: full });
+    } catch {
+      toast.error("Could not load that phase.");
+    }
+  }
+
+  async function openHistory(row: SdlcPhaseListItem) {
+    try {
+      const full = await getPhase(row.id);
+      setDrawer({ mode: "history", phase: full });
+    } catch {
+      toast.error("Could not load that phase.");
+    }
+  }
+
+  function buildKebab(row: SdlcPhaseListItem): KebabMenuItem[] {
+    const items: KebabMenuItem[] = [
+      {
+        label: "Edit",
+        icon: <Pencil className="w-3.5 h-3.5" strokeWidth={1.5} />,
+        onSelect: () => void openEdit(row),
+      },
+      {
+        label: "View history",
+        icon: <History className="w-3.5 h-3.5" strokeWidth={1.5} />,
+        onSelect: () => void openHistory(row),
+      },
+      { kind: "divider" },
+      row.active
+        ? {
+            label: "Deactivate",
+            icon: <XCircle className="w-3.5 h-3.5" strokeWidth={1.5} />,
+            onSelect: () =>
+              deactivateMutation.mutate(row.id, {
+                onSuccess: () => toast.success(`${row.name} deactivated.`),
+                onError: () => toast.error("Could not deactivate that phase."),
+              }),
+          }
+        : {
+            label: "Activate",
+            icon: <CheckCircle2 className="w-3.5 h-3.5" strokeWidth={1.5} />,
+            onSelect: () =>
+              activateMutation.mutate(row.id, {
+                onSuccess: () => toast.success(`${row.name} activated.`),
+                onError: () => toast.error("Could not activate that phase."),
+              }),
+          },
+    ];
+    if (!row.system) {
+      items.push({
+        label: "Delete",
+        icon: <Trash2 className="w-3.5 h-3.5" strokeWidth={1.5} />,
+        destructive: true,
+        onSelect: () => setDeleteTarget(row),
+      });
+    }
+    return items;
+  }
+
+  return (
+    <>
+      <PageHeader
+        breadcrumb={[{ label: "Admin" }, { label: "SDLC phases" }]}
+        title="SDLC phases"
+        subtitle="Define the phases used across estimate templates. Drag to reorder."
+        actions={
+          <PrimaryButton onClick={() => setDrawer({ mode: "create" })}>
+            <Plus className="w-3.5 h-3.5" strokeWidth={2} />
+            New phase
+          </PrimaryButton>
+        }
+      />
+
+      <hr
+        className="my-6"
+        style={{
+          height: 1,
+          background: "var(--color-warm-gray-light)",
+          border: 0,
+        }}
+      />
+
+      <ListToolbar>
+        <SearchInput
+          placeholder="Search phases…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        <FilterDropdown
+          mode="single"
+          label="Status"
+          value={status}
+          options={[
+            { value: "ALL", label: "All" },
+            { value: "ACTIVE", label: "Active" },
+            { value: "INACTIVE", label: "Inactive" },
+          ]}
+          onChange={(next) => setStatus(next)}
+        />
+        <ListToolbar.Spacer />
+        <span className="text-warm-gray-med" style={{ fontSize: 12 }}>
+          {filteredItems.length === 1 ? "1 phase" : `${filteredItems.length} phases`}
+        </span>
+      </ListToolbar>
+
+      <div
+        className="bg-white overflow-hidden"
+        style={{ border: "1px solid var(--color-border)", borderRadius: 6 }}
+      >
+        <table
+          aria-label="SDLC phases"
+          className="w-full"
+          style={{ borderCollapse: "collapse", fontVariantNumeric: "tabular-nums" }}
+        >
+          <thead>
+            <tr>
+              <Th width={32} />
+              <Th width={56} center noSort>Order</Th>
+              <Th>Name</Th>
+              <Th>Description</Th>
+              <Th width={100}>Source</Th>
+              <Th width={110}>Status</Th>
+              <Th width={140}>Last updated</Th>
+              <Th width={180}>Updated by</Th>
+              <Th width={48} />
+            </tr>
+          </thead>
+          <tbody>
+            {phasesQuery.isLoading && (
+              <tr>
+                <td colSpan={9} style={{ padding: 32, textAlign: "center", color: "var(--fg-2)" }}>
+                  Loading…
+                </td>
+              </tr>
+            )}
+            {!phasesQuery.isLoading && filteredItems.length === 0 && (
+              <tr>
+                <td colSpan={9} style={{ padding: 0 }}>
+                  <div className="text-center" style={{ padding: 80, color: "var(--fg-2)" }}>
+                    <div className="font-semibold text-near-black" style={{ fontSize: 18 }}>
+                      No phases match your filters
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSearch("");
+                        setStatus("ALL");
+                      }}
+                      className="text-near-black underline mt-2 bg-transparent border-0 cursor-pointer"
+                      style={{ fontSize: 13 }}
+                    >
+                      Reset filters
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            )}
+            {!phasesQuery.isLoading && filteredItems.length > 0 && (
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={handleDragEnd}
+                accessibility={{ announcements: announcementsFor(filteredItems) }}
+              >
+                <SortableContext
+                  items={filteredItems.map((p) => p.id)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  {filteredItems.map((phase) => (
+                    <SortableRow
+                      key={phase.id}
+                      phase={phase}
+                      onRowClick={() => void openEdit(phase)}
+                      kebabItems={buildKebab(phase)}
+                    />
+                  ))}
+                </SortableContext>
+              </DndContext>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <SdlcPhaseFormDrawer
+        open={drawer.mode === "create"}
+        phase={null}
+        onClose={() => setDrawer({ mode: "closed" })}
+      />
+      <SdlcPhaseFormDrawer
+        open={drawer.mode === "edit"}
+        phase={drawer.mode === "edit" ? drawer.phase : null}
+        onClose={() => setDrawer({ mode: "closed" })}
+        onShowHistory={(p) => setDrawer({ mode: "history", phase: p })}
+        onRequestDelete={(p) =>
+          setDeleteTarget({
+            id: p.id,
+            name: p.name,
+            description: p.description,
+            displayOrder: p.displayOrder,
+            active: p.active,
+            system: p.system,
+            updatedAt: p.updatedAt,
+            updatedBy: p.updatedBy,
+          })
+        }
+      />
+      <SdlcPhaseHistoryDrawer
+        open={drawer.mode === "history"}
+        phaseId={drawer.mode === "history" ? drawer.phase.id : null}
+        phaseName={drawer.mode === "history" ? drawer.phase.name : undefined}
+        onClose={() => setDrawer({ mode: "closed" })}
+      />
+
+      <ConfirmModal
+        open={!!deleteTarget}
+        title={`Delete '${deleteTarget?.name ?? ""}'?`}
+        body={
+          <>
+            <p className="m-0">
+              This permanently removes <strong>{deleteTarget?.name}</strong>. Estimates that
+              already reference this phase keep their historical lines.
+            </p>
+            <p className="m-0 mt-2 text-warm-gray-med" style={{ fontSize: 13 }}>
+              Deactivate instead if you want to hide it from new templates without losing the record.
+            </p>
+          </>
+        }
+        confirmLabel="Delete phase"
+        destructive
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={async () => {
+          if (!deleteTarget) return;
+          try {
+            await deleteMutation.mutateAsync(deleteTarget.id);
+            toast.success(`${deleteTarget.name} deleted.`);
+            setDeleteTarget(null);
+            if (drawer.mode === "edit" && drawer.phase.id === deleteTarget.id) {
+              setDrawer({ mode: "closed" });
+            }
+          } catch (err) {
+            const msg = err instanceof ApiError ? err.message : "Could not delete phase.";
+            toast.error(msg);
+          }
+        }}
+      />
+    </>
+  );
+}
+
+// ---- table primitives ---------------------------------------------------
+
+function Th({
+  children,
+  width,
+  center,
+  noSort,
+}: {
+  children?: React.ReactNode;
+  width?: number;
+  center?: boolean;
+  noSort?: boolean;
+}) {
+  return (
+    <th
+      scope="col"
+      style={{
+        width,
+        padding: "10px 14px",
+        textAlign: center ? "center" : "left",
+        borderBottom: "1px solid var(--color-warm-gray-light)",
+        fontSize: 11,
+        fontWeight: 500,
+        letterSpacing: "0.06em",
+        textTransform: "uppercase",
+        color: noSort ? "var(--fg-2)" : "var(--fg-2)",
+        whiteSpace: "nowrap",
+      }}
+    >
+      {children}
+    </th>
+  );
+}
+
+function SortableRow({
+  phase,
+  onRowClick,
+  kebabItems,
+}: {
+  phase: SdlcPhaseListItem;
+  onRowClick: () => void;
+  kebabItems: KebabMenuItem[];
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: phase.id,
+  });
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    background: isDragging ? "#fff" : undefined,
+    boxShadow: isDragging
+      ? "inset 4px 0 0 var(--color-light-blue), 0 8px 20px rgba(39,37,31,0.12)"
+      : undefined,
+    position: isDragging ? "relative" : undefined,
+    zIndex: isDragging ? 2 : undefined,
+    cursor: "pointer",
+  };
+
+  return (
+    <tr
+      ref={setNodeRef}
+      data-row-id={phase.id}
+      data-system={phase.system || undefined}
+      onClick={(e) => {
+        const target = e.target as HTMLElement;
+        if (target.closest("[data-row-skip]")) return;
+        onRowClick();
+      }}
+      onMouseEnter={(e) => {
+        if (!isDragging) (e.currentTarget as HTMLElement).style.background = "var(--color-warm-gray-light)";
+      }}
+      onMouseLeave={(e) => {
+        if (!isDragging) (e.currentTarget as HTMLElement).style.background = "";
+      }}
+      style={style}
+    >
+      <td style={cellStyle({ width: 32, padding: "0 0 0 12px" })} data-row-skip>
+        <DragHandle {...attributes} {...listeners} />
+      </td>
+      <td style={cellStyle({ width: 56, textAlign: "center" })}>
+        <span
+          aria-hidden="true"
+          className="inline-flex items-center justify-center text-near-black tabular"
+          style={{
+            width: 24,
+            height: 24,
+            borderRadius: "50%",
+            background: isDragging ? "var(--color-light-blue)" : "var(--color-warm-gray-light)",
+            fontSize: 12,
+            fontWeight: 600,
+          }}
+        >
+          {phase.displayOrder}
+        </span>
+      </td>
+      <td style={cellStyle({})}>
+        <span className="font-semibold text-near-black">{phase.name}</span>
+      </td>
+      <td style={cellStyle({})}>
+        <span
+          className="text-warm-gray-med"
+          style={{
+            display: "inline-block",
+            maxWidth: 280,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            verticalAlign: "middle",
+          }}
+        >
+          {phase.description ?? "—"}
+        </span>
+      </td>
+      <td style={cellStyle({ width: 100 })}>
+        {phase.system ? <StatusBadge variant="system">System</StatusBadge> : null}
+      </td>
+      <td style={cellStyle({ width: 110 })}>
+        {phase.active ? (
+          <StatusBadge variant="active">Active</StatusBadge>
+        ) : (
+          <StatusBadge variant="inactive">Inactive</StatusBadge>
+        )}
+      </td>
+      <td style={cellStyle({ width: 140 })}>
+        <span className="text-warm-gray-med" style={{ fontSize: 12 }}>
+          {relativeTime(phase.updatedAt)}
+        </span>
+      </td>
+      <td style={cellStyle({ width: 180 })}>
+        <UserCell userId={phase.updatedBy} />
+      </td>
+      <td style={cellStyle({ width: 48, textAlign: "right" })} data-row-skip>
+        <KebabMenu items={kebabItems} ariaLabel={`Actions for ${phase.name}`} />
+      </td>
+    </tr>
+  );
+}
+
+function cellStyle(extra: React.CSSProperties): React.CSSProperties {
+  return {
+    padding: "0 14px",
+    height: 52,
+    fontSize: 14,
+    color: "var(--fg-1)",
+    borderBottom: "1px solid var(--color-warm-gray-light)",
+    verticalAlign: "middle",
+    ...extra,
+  };
+}

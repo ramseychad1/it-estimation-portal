@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import App from "./App";
 import { AuthProvider } from "./lib/auth";
 import { primeCsrfToken } from "./lib/api";
+import { ToastProvider } from "./components/Toast";
 import "./styles/index.css";
 
 // Prime the XSRF-TOKEN cookie before the SPA needs to POST /api/auth/login.
@@ -24,9 +25,11 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <BrowserRouter>
-          <App />
-        </BrowserRouter>
+        <ToastProvider>
+          <BrowserRouter>
+            <App />
+          </BrowserRouter>
+        </ToastProvider>
       </AuthProvider>
     </QueryClientProvider>
   </React.StrictMode>,

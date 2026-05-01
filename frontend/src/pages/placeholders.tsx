@@ -70,26 +70,6 @@ export function TemplateHistoryPage() {
   );
 }
 
-export function TeamsPage() {
-  return (
-    <Placeholder
-      title="Teams"
-      subtitle="Manage the teams that contribute to estimates."
-      breadcrumb={[{ label: "Admin" }, { label: "Teams" }]}
-    />
-  );
-}
-
-export function PhasesPage() {
-  return (
-    <Placeholder
-      title="SDLC phases"
-      subtitle="Define the phases used across estimate templates."
-      breadcrumb={[{ label: "Admin" }, { label: "SDLC phases" }]}
-    />
-  );
-}
-
 export function RatesPage() {
   return (
     <Placeholder
