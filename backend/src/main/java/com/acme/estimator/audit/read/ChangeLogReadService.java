@@ -27,7 +27,6 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -306,7 +305,7 @@ public class ChangeLogReadService {
                 entityType, entityId, entityName
             );
 
-            String href = entityDeleted ? null : hrefResolver.resolve(entityType);
+            String href = entityDeleted ? null : hrefResolver.resolve(entityType, entityId);
 
             out.add(new ChangeLogGroupDto(
                 "group-" + primary.getId(),
@@ -415,11 +414,14 @@ public class ChangeLogReadService {
 
     private static String deletedPrefix(String entityType) {
         return switch (entityType) {
-            case "Team"        -> TeamNameResolver.DELETED;
-            case "SdlcPhase"   -> SdlcPhaseNameResolver.DELETED;
-            case "BlendedRate" -> "Blended rate (deleted)";
-            case "User"        -> UserNameResolver.DELETED;
-            default            -> "Deleted ";
+            case "Team"             -> TeamNameResolver.DELETED;
+            case "SdlcPhase"        -> SdlcPhaseNameResolver.DELETED;
+            case "BlendedRate"      -> "Blended rate (deleted)";
+            case "User"             -> UserNameResolver.DELETED;
+            case "Product"          -> ProductNameResolver.DELETED;
+            case "SubFeature"       -> SubFeatureNameResolver.DELETED;
+            case "CriticalQuestion" -> CriticalQuestionNameResolver.DELETED;
+            default                 -> "Deleted ";
         };
     }
 

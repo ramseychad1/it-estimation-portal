@@ -306,10 +306,15 @@ export function EditUserDrawer({
           />
         </div>
 
-        {/* TODO(phase5): once the user_teams join table exists, add a Teams
-            multi-select section here mirroring the Invite User modal's. The
-            modal currently renders the section as a placeholder; this drawer
-            should grow the same control plus the actual save path. */}
+        {/* TODO(post-5b-user-teams): once a user_teams join table exists,
+            add a Teams multi-select section here mirroring the Invite User
+            modal's. The modal currently renders the section as a placeholder;
+            this drawer should grow the same control plus the actual save
+            path. Phase 5a did NOT introduce user_teams (only the catalog
+            tables — products, sub_features, critical_questions, plus the
+            schema-only estimate_templates pair). Phase 5b ships the
+            Estimate Template editor, also without user_teams. The
+            user_teams join is its own later milestone. */}
 
         {fieldError.form && (
           <p className="text-small text-cardinal-red" role="alert">{fieldError.form}</p>

@@ -9,11 +9,15 @@ export interface BreadcrumbItem {
 interface PageHeaderProps {
   breadcrumb?: BreadcrumbItem[];
   title: string;
+  /** Optional inline element rendered to the right of the title (e.g. a status badge). */
+  titleSuffix?: ReactNode;
+  /** Optional rich subtitle. Falls back to {@code subtitle} string when not set. */
+  subtitleNode?: ReactNode;
   subtitle?: string;
   actions?: ReactNode;
 }
 
-export function PageHeader({ breadcrumb, title, subtitle, actions }: PageHeaderProps) {
+export function PageHeader({ breadcrumb, title, titleSuffix, subtitle, subtitleNode, actions }: PageHeaderProps) {
   return (
     <header className="flex flex-col gap-2">
       {breadcrumb && breadcrumb.length > 0 && (
@@ -39,12 +43,17 @@ export function PageHeader({ breadcrumb, title, subtitle, actions }: PageHeaderP
       )}
       <div className="flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-page-title font-semibold text-near-black tracking-tight m-0">
-            {title}
-          </h1>
-          {subtitle && (
+          <div className="flex items-center gap-3">
+            <h1 className="text-page-title font-semibold text-near-black tracking-tight m-0">
+              {title}
+            </h1>
+            {titleSuffix}
+          </div>
+          {subtitleNode ? (
+            <div className="text-body text-warm-gray-med mt-0.5">{subtitleNode}</div>
+          ) : subtitle ? (
             <p className="text-body text-warm-gray-med mt-0.5">{subtitle}</p>
-          )}
+          ) : null}
         </div>
         {actions && <div className="flex items-center gap-2">{actions}</div>}
       </div>

@@ -24,6 +24,11 @@ import lombok.Setter;
 @Table(name = "users")
 @Getter
 @Setter
+// Public no-args required by InvitationService.invite (which lives in
+// com.acme.estimator.users and constructs new User() directly when issuing
+// an invite). A future cleanup could move that creation into the auth
+// package (UserRepository helper or User.newInvitee factory) to restore
+// PROTECTED visibility — flagged as a Phase 5b+ refactor, not a 5a fix.
 @NoArgsConstructor(access = AccessLevel.PUBLIC)
 public class User {
 

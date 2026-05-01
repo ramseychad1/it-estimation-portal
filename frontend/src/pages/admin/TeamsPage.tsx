@@ -16,6 +16,7 @@ import { KebabMenu, type KebabMenuItem } from "../../components/KebabMenu";
 import { StatusBadge } from "../../components/StatusBadge";
 import { ConfirmModal } from "../../components/ConfirmModal";
 import { ColumnsToggle, useColumnsVisibility } from "../../components/ColumnsToggle";
+import { EmptyState } from "../../components/EmptyState";
 import { DataTable, type DataTableColumn } from "../../components/data-table/DataTable";
 import { PrimaryButton, SecondaryButton, TertiaryButton } from "../../components/buttons";
 import { UserCell } from "../../components/UserCell";
@@ -371,36 +372,34 @@ export function TeamsPage() {
         onRowClick={(r) => void openEdit(r)}
         emptyState={
           hasFilter ? (
-            <div className="text-center" style={{ padding: 80, color: "var(--fg-2)" }}>
-              <div className="font-semibold text-near-black" style={{ fontSize: 18 }}>
-                No teams match your filters
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setSearch("");
-                  setStatus("ALL");
-                  setPage(0);
-                }}
-                className="text-near-black underline mt-2 bg-transparent border-0 cursor-pointer"
-                style={{ fontSize: 13 }}
-              >
-                Reset filters
-              </button>
-            </div>
+            <EmptyState
+              title="No teams match your filters"
+              action={
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearch("");
+                    setStatus("ALL");
+                    setPage(0);
+                  }}
+                  className="text-near-black underline bg-transparent border-0 cursor-pointer"
+                  style={{ fontSize: 13 }}
+                >
+                  Reset filters
+                </button>
+              }
+            />
           ) : (
-            <div className="text-center" style={{ padding: 80 }}>
-              <div className="font-semibold text-near-black" style={{ fontSize: 18 }}>
-                No teams yet
-              </div>
-              <p className="text-warm-gray-med mt-2" style={{ fontSize: 14, maxWidth: 380, margin: "8px auto 20px" }}>
-                Add your first team to start building estimates.
-              </p>
-              <PrimaryButton onClick={() => setDrawer({ mode: "create" })}>
-                <Plus className="w-3.5 h-3.5" strokeWidth={2} />
-                New team
-              </PrimaryButton>
-            </div>
+            <EmptyState
+              title="No teams yet"
+              description="Add your first team to start building estimates."
+              action={
+                <PrimaryButton onClick={() => setDrawer({ mode: "create" })}>
+                  <Plus className="w-3.5 h-3.5" strokeWidth={2} />
+                  New team
+                </PrimaryButton>
+              }
+            />
           )
         }
       />

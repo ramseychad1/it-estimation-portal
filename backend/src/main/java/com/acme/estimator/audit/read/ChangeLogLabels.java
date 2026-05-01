@@ -1,7 +1,9 @@
 package com.acme.estimator.audit.read;
 
 import com.acme.estimator.audit.ChangeAction;
-import com.acme.estimator.auth.User;
+import com.acme.estimator.catalog.products.Product;
+import com.acme.estimator.catalog.questions.CriticalQuestion;
+import com.acme.estimator.catalog.subfeatures.SubFeature;
 import com.acme.estimator.phases.SdlcPhase;
 import com.acme.estimator.rates.BlendedRate;
 import com.acme.estimator.teams.Team;
@@ -22,7 +24,10 @@ public final class ChangeLogLabels {
         Team.ENTITY_TYPE, "Team",
         SdlcPhase.ENTITY_TYPE, "SDLC Phase",
         BlendedRate.ENTITY_TYPE, "Blended Rate",
-        UserService.ENTITY_TYPE, "User"
+        UserService.ENTITY_TYPE, "User",
+        Product.ENTITY_TYPE, "Product",
+        SubFeature.ENTITY_TYPE, "Sub-feature",
+        CriticalQuestion.ENTITY_TYPE, "Critical Question"
     );
 
     private static final Map<ChangeAction, String> ACTION_LABELS = Map.of(

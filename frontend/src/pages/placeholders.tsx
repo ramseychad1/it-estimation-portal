@@ -40,26 +40,6 @@ export function RequestsPage() {
   );
 }
 
-export function ProductsPage() {
-  return (
-    <Placeholder
-      title="Products"
-      subtitle="The catalog of products and sub-features available to estimate."
-      breadcrumb={[{ label: "Catalog" }, { label: "Products" }]}
-    />
-  );
-}
-
-export function CriticalQuestionsPage() {
-  return (
-    <Placeholder
-      title="Critical questions"
-      subtitle="Questions attached to products that change the shape of an estimate."
-      breadcrumb={[{ label: "Catalog" }, { label: "Critical questions" }]}
-    />
-  );
-}
-
 export function TemplateHistoryPage() {
   return (
     <Placeholder

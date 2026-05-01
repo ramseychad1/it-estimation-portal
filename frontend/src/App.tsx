@@ -3,9 +3,7 @@ import { AppShell } from "./components/AppShell";
 import { AuthGuard } from "./components/AuthGuard";
 import { LoginPage } from "./pages/LoginPage";
 import {
-  CriticalQuestionsPage,
   DashboardPage,
-  ProductsPage,
   RequestsPage,
   TemplateHistoryPage,
 } from "./pages/placeholders";
@@ -14,6 +12,10 @@ import { SdlcPhasesPage } from "./pages/admin/SdlcPhasesPage";
 import { BlendedRatesPage } from "./pages/admin/BlendedRatesPage";
 import { UsersPage } from "./pages/admin/UsersPage";
 import { ChangeLogPage } from "./pages/admin/ChangeLogPage";
+import { ProductsPage } from "./pages/admin/ProductsPage";
+import { ProductDetailPage } from "./pages/admin/products/ProductDetailPage";
+import { SubFeatureDetailPage } from "./pages/admin/products/SubFeatureDetailPage";
+import { QuestionsBrowserPage } from "./pages/admin/QuestionsBrowserPage";
 import { AcceptInvitePage } from "./pages/AcceptInvitePage";
 
 function ProtectedShell({ children }: { children: React.ReactNode }) {
@@ -36,7 +38,9 @@ export default function App() {
       <Route path="/requests" element={<ProtectedShell><RequestsPage /></ProtectedShell>} />
 
       <Route path="/catalog/products" element={<ProtectedShell><ProductsPage /></ProtectedShell>} />
-      <Route path="/catalog/questions" element={<ProtectedShell><CriticalQuestionsPage /></ProtectedShell>} />
+      <Route path="/catalog/products/:productId" element={<ProtectedShell><ProductDetailPage /></ProtectedShell>} />
+      <Route path="/catalog/products/:productId/sub-features/:subFeatureId" element={<ProtectedShell><SubFeatureDetailPage /></ProtectedShell>} />
+      <Route path="/catalog/questions" element={<ProtectedShell><QuestionsBrowserPage /></ProtectedShell>} />
       <Route path="/catalog/template-history" element={<ProtectedShell><TemplateHistoryPage /></ProtectedShell>} />
 
       <Route path="/admin/teams" element={<ProtectedShell><TeamsPage /></ProtectedShell>} />

@@ -81,6 +81,48 @@ beforeEach(() => {
         entityTypes: [], actions: [], actors: [],
       }));
     }
+    if (path === "/api/catalog/products") return Promise.resolve(emptyPage());
+    if (path.match(/^\/api\/catalog\/products\/\d+$/)) {
+      return Promise.resolve(jsonResponse({
+        id: 1,
+        name: "Sample",
+        description: null,
+        mode: "ATOMIC",
+        active: true,
+        subFeatureCount: 0,
+        questionCount: 0,
+        createdAt: "2026-01-01T00:00:00Z",
+        createdBy: 1,
+        updatedAt: "2026-01-01T00:00:00Z",
+        updatedBy: 1,
+      }));
+    }
+    if (path.match(/^\/api\/catalog\/products\/\d+\/sub-features$/)) {
+      return Promise.resolve(jsonResponse([]));
+    }
+    if (path.match(/^\/api\/catalog\/products\/\d+\/questions$/)) {
+      return Promise.resolve(jsonResponse([]));
+    }
+    if (path.match(/^\/api\/catalog\/sub-features\/\d+$/)) {
+      return Promise.resolve(jsonResponse({
+        id: 1,
+        productId: 1,
+        name: "Sample sub-feature",
+        description: null,
+        active: true,
+        questionCount: 0,
+        createdAt: "2026-01-01T00:00:00Z",
+        createdBy: 1,
+        updatedAt: "2026-01-01T00:00:00Z",
+        updatedBy: 1,
+      }));
+    }
+    if (path.match(/^\/api\/catalog\/sub-features\/\d+\/questions$/)) {
+      return Promise.resolve(jsonResponse([]));
+    }
+    if (path === "/api/catalog/questions") {
+      return Promise.resolve(emptyPage());
+    }
 
     return Promise.resolve(new Response(null, { status: 404 }));
   });
@@ -92,6 +134,8 @@ const ROUTES = [
   "/dashboard",
   "/requests",
   "/catalog/products",
+  "/catalog/products/1",
+  "/catalog/products/1/sub-features/1",
   "/catalog/questions",
   "/catalog/template-history",
   "/admin/teams",
