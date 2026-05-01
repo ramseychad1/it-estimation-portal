@@ -1,0 +1,116 @@
+/* =========================================================================
+   IT Estimation Portal — Design Tokens
+   Ported verbatim from the Claude Design handoff (colors_and_type.css).
+   Single source of truth for color, type, spacing, radius, shadow.
+   Never hard-code hex values in components — use these vars.
+   ========================================================================= */
+
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("https://fonts.gstatic.com/s/inter/v18/UcCO3FwrK3iLTeHuS_nVMrMxCp50ojIa1ZL7W0Q5nw.woff2") format("woff2");
+}
+
+:root {
+  /* ---- Color: brand ---------------------------------------------------- */
+  --color-cardinal-red: #E41F35;
+  --color-cardinal-red-hover: #C91A2D;
+
+  /* ---- Color: neutrals ------------------------------------------------- */
+  --color-white: #FFFFFF;
+  --color-near-black: #27251F;
+  --color-near-black-hover: #3A372E;
+  --color-warm-gray-med: #948A85;
+  --color-warm-gray-light: #EFEFEF;
+
+  /* ---- Color: accent --------------------------------------------------- */
+  --color-light-blue: #BBDDE6;
+  --color-light-blue-soft: rgba(187, 221, 230, 0.35);
+
+  /* ---- Color: semantic ------------------------------------------------- */
+  --color-success: #2F6B4A;
+  --color-warning: #B8860B;
+  --color-error: var(--color-cardinal-red);
+  --color-info: var(--color-light-blue);
+
+  /* ---- Color: structure ----------------------------------------------- */
+  --color-border: #E5E5E2;
+  --color-border-strong: #D8D6D2;
+  --color-surface: var(--color-white);
+  --color-surface-muted: var(--color-warm-gray-light);
+  --color-scrim: rgba(39, 37, 31, 0.40);
+
+  /* ---- Foreground roles ----------------------------------------------- */
+  --fg-1: var(--color-near-black);
+  --fg-2: var(--color-warm-gray-med);
+  --fg-3: #B7B0AB;
+  --fg-on-dark: var(--color-white);
+  --fg-danger: var(--color-cardinal-red);
+
+  /* ---- Type: families ------------------------------------------------- */
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI",
+               "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas,
+               monospace;
+
+  /* ---- Type: scale ---------------------------------------------------- */
+  --fs-page-title: 24px;
+  --fs-section-title: 18px;
+  --fs-body: 14px;
+  --fs-small: 12px;
+
+  --lh-page-title: 32px;
+  --lh-section-title: 26px;
+  --lh-body: 20px;
+  --lh-small: 16px;
+
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+
+  --tracking-eyebrow: 0.04em;
+
+  /* ---- Spacing (8px grid) -------------------------------------------- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  /* ---- Radius --------------------------------------------------------- */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-none: 0;
+
+  /* ---- Shadows (very soft) ------------------------------------------- */
+  --shadow-card:
+    0 1px 2px rgba(39, 37, 31, 0.04),
+    0 0 0 1px rgba(39, 37, 31, 0.06);
+  --shadow-popover:
+    0 4px 12px rgba(39, 37, 31, 0.08),
+    0 0 0 1px rgba(39, 37, 31, 0.06);
+  --shadow-modal:
+    0 16px 40px rgba(39, 37, 31, 0.12),
+    0 0 0 1px rgba(39, 37, 31, 0.06);
+
+  /* ---- Motion --------------------------------------------------------- */
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --dur-hover: 120ms;
+  --dur-toggle: 160ms;
+  --dur-modal: 200ms;
+  --dur-exit: 150ms;
+
+  /* ---- Layout --------------------------------------------------------- */
+  --topbar-h: 56px;
+  --sidebar-w: 240px;
+  --sidebar-w-collapsed: 56px;
+  --content-max: 1200px;
+  --content-gutter: 32px;
+}
