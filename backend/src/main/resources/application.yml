@@ -24,6 +24,13 @@ server:
   error:
     include-message: always
 
+# Application-specific properties.
+app:
+  # Used to construct the {base-url}/invite/{token} URL surfaced in
+  # InvitationResult responses. Override per environment via APP_BASE_URL
+  # env var. The dev value points at the Vite dev server.
+  base-url: http://localhost:5173
+
 logging:
   level:
     org.springframework.security: INFO

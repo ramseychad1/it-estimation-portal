@@ -2,6 +2,8 @@ package com.acme.estimator.auth;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -22,7 +24,7 @@ import lombok.Setter;
 @Table(name = "users")
 @Getter
 @Setter
-@NoArgsConstructor(access = AccessLevel.PROTECTED)
+@NoArgsConstructor(access = AccessLevel.PUBLIC)
 public class User {
 
     @Id
@@ -45,6 +47,25 @@ public class User {
     @Column(name = "active", nullable = false)
     private boolean active = true;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "invitation_status", nullable = false, length = 32)
+    private InvitationStatus invitationStatus = InvitationStatus.ACTIVE;
+
+    @Column(name = "invited_by")
+    private Long invitedBy;
+
+    @Column(name = "invited_at")
+    private OffsetDateTime invitedAt;
+
+    @Column(name = "invitation_expires_at")
+    private OffsetDateTime invitationExpiresAt;
+
+    @Column(name = "invitation_accepted_at")
+    private OffsetDateTime invitationAcceptedAt;
+
+    @Column(name = "last_active_at")
+    private OffsetDateTime lastActiveAt;
+
     @Column(name = "created_at", nullable = false, updatable = false, insertable = false)
     private OffsetDateTime createdAt;
 
@@ -61,5 +82,9 @@ public class User {
 
     public String fullName() {
         return firstName + " " + lastName;
+    }
+
+    public boolean hasRole(String roleName) {
+        return roles.stream().anyMatch(r -> r.getName().equalsIgnoreCase(roleName));
     }
 }

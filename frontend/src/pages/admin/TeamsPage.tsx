@@ -15,6 +15,7 @@ import { FilterDropdown } from "../../components/FilterDropdown";
 import { KebabMenu, type KebabMenuItem } from "../../components/KebabMenu";
 import { StatusBadge } from "../../components/StatusBadge";
 import { ConfirmModal } from "../../components/ConfirmModal";
+import { ColumnsToggle, useColumnsVisibility } from "../../components/ColumnsToggle";
 import { DataTable, type DataTableColumn } from "../../components/data-table/DataTable";
 import { PrimaryButton, SecondaryButton, TertiaryButton } from "../../components/buttons";
 import { UserCell } from "../../components/UserCell";
@@ -48,6 +49,16 @@ type DrawerState =
 
 const PAGE_SIZE = 25;
 
+const TEAMS_COLUMN_DEFS = [
+  { key: "name", label: "Name" },
+  { key: "description", label: "Description" },
+  { key: "productCount", label: "# Products" },
+  { key: "status", label: "Status" },
+  { key: "updatedAt", label: "Last updated" },
+  { key: "updatedBy", label: "Updated by" },
+];
+const TEAMS_REQUIRED_COLS = ["name"];
+
 export function TeamsPage() {
   useEffect(() => {
     document.title = "Teams — Estimator";
@@ -64,6 +75,7 @@ export function TeamsPage() {
   const [drawer, setDrawer] = useState<DrawerState>({ mode: "closed" });
   const [deleteTarget, setDeleteTarget] = useState<TeamListItem | null>(null);
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [hiddenCols, setHiddenCols] = useColumnsVisibility("teams", TEAMS_REQUIRED_COLS);
 
   const queryParams = useMemo(
     () => ({
@@ -152,7 +164,7 @@ export function TeamsPage() {
     ];
   }
 
-  const columns: DataTableColumn<TeamListItem>[] = [
+  const allColumns: DataTableColumn<TeamListItem>[] = [
     {
       key: "name",
       header: "Name",
@@ -324,6 +336,13 @@ export function TeamsPage() {
         <span className="text-warm-gray-med" style={{ fontSize: 12 }}>
           {totalElements === 1 ? "1 team" : `${totalElements} teams`}
         </span>
+        <ColumnsToggle
+          storageKey="teams"
+          columns={TEAMS_COLUMN_DEFS}
+          required={TEAMS_REQUIRED_COLS}
+          hidden={hiddenCols}
+          onChange={setHiddenCols}
+        />
         <a
           href={teamsExportUrl({
             search: search.trim() || undefined,
@@ -338,7 +357,7 @@ export function TeamsPage() {
       </ListToolbar>
 
       <DataTable<TeamListItem, number>
-        columns={columns}
+        columns={allColumns.filter((c) => !hiddenCols.has(c.key))}
         rows={items}
         rowKey={(r) => r.id}
         loading={teamsQuery.isLoading}

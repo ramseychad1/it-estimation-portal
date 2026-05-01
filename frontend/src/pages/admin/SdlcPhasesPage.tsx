@@ -32,6 +32,7 @@ import { FilterDropdown } from "../../components/FilterDropdown";
 import { KebabMenu, type KebabMenuItem } from "../../components/KebabMenu";
 import { StatusBadge } from "../../components/StatusBadge";
 import { ConfirmModal } from "../../components/ConfirmModal";
+import { ColumnsToggle, useColumnsVisibility } from "../../components/ColumnsToggle";
 import { DragHandle } from "../../components/DragHandle";
 import { PrimaryButton } from "../../components/buttons";
 import { UserCell } from "../../components/UserCell";
@@ -59,6 +60,17 @@ type DrawerState =
   | { mode: "edit"; phase: SdlcPhaseDto }
   | { mode: "history"; phase: SdlcPhaseDto };
 
+const PHASES_COLUMN_DEFS = [
+  { key: "order", label: "Order" },
+  { key: "name", label: "Name" },
+  { key: "description", label: "Description" },
+  { key: "source", label: "Source" },
+  { key: "status", label: "Status" },
+  { key: "updatedAt", label: "Last updated" },
+  { key: "updatedBy", label: "Updated by" },
+];
+const PHASES_REQUIRED_COLS = ["order", "name"];
+
 export function SdlcPhasesPage() {
   useEffect(() => {
     document.title = "SDLC phases — Estimator";
@@ -68,6 +80,7 @@ export function SdlcPhasesPage() {
   const [status, setStatus] = useState<PhaseStatusFilter>("ALL");
   const [drawer, setDrawer] = useState<DrawerState>({ mode: "closed" });
   const [deleteTarget, setDeleteTarget] = useState<SdlcPhaseListItem | null>(null);
+  const [hiddenCols, setHiddenCols] = useColumnsVisibility("phases", PHASES_REQUIRED_COLS);
 
   const phasesQuery = usePhasesQuery(status);
   const reorderMutation = useReorderPhasesMutation(status);
@@ -252,6 +265,13 @@ export function SdlcPhasesPage() {
         <span className="text-warm-gray-med" style={{ fontSize: 12 }}>
           {filteredItems.length === 1 ? "1 phase" : `${filteredItems.length} phases`}
         </span>
+        <ColumnsToggle
+          storageKey="phases"
+          columns={PHASES_COLUMN_DEFS}
+          required={PHASES_REQUIRED_COLS}
+          hidden={hiddenCols}
+          onChange={setHiddenCols}
+        />
       </ListToolbar>
 
       <div
@@ -268,25 +288,25 @@ export function SdlcPhasesPage() {
               <Th width={32} />
               <Th width={56} center noSort>Order</Th>
               <Th>Name</Th>
-              <Th>Description</Th>
-              <Th width={100}>Source</Th>
-              <Th width={110}>Status</Th>
-              <Th width={140}>Last updated</Th>
-              <Th width={180}>Updated by</Th>
+              {!hiddenCols.has("description") && <Th>Description</Th>}
+              {!hiddenCols.has("source") && <Th width={100}>Source</Th>}
+              {!hiddenCols.has("status") && <Th width={110}>Status</Th>}
+              {!hiddenCols.has("updatedAt") && <Th width={140}>Last updated</Th>}
+              {!hiddenCols.has("updatedBy") && <Th width={180}>Updated by</Th>}
               <Th width={48} />
             </tr>
           </thead>
           <tbody>
             {phasesQuery.isLoading && (
               <tr>
-                <td colSpan={9} style={{ padding: 32, textAlign: "center", color: "var(--fg-2)" }}>
+                <td colSpan={9 - hiddenCols.size} style={{ padding: 32, textAlign: "center", color: "var(--fg-2)" }}>
                   Loading…
                 </td>
               </tr>
             )}
             {!phasesQuery.isLoading && filteredItems.length === 0 && (
               <tr>
-                <td colSpan={9} style={{ padding: 0 }}>
+                <td colSpan={9 - hiddenCols.size} style={{ padding: 0 }}>
                   <div className="text-center" style={{ padding: 80, color: "var(--fg-2)" }}>
                     <div className="font-semibold text-near-black" style={{ fontSize: 18 }}>
                       No phases match your filters
@@ -323,6 +343,7 @@ export function SdlcPhasesPage() {
                       phase={phase}
                       onRowClick={() => void openEdit(phase)}
                       kebabItems={buildKebab(phase)}
+                      hidden={hiddenCols}
                     />
                   ))}
                 </SortableContext>
@@ -436,10 +457,12 @@ function SortableRow({
   phase,
   onRowClick,
   kebabItems,
+  hidden,
 }: {
   phase: SdlcPhaseListItem;
   onRowClick: () => void;
   kebabItems: KebabMenuItem[];
+  hidden: Set<string>;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: phase.id,
@@ -496,39 +519,49 @@ function SortableRow({
       <td style={cellStyle({})}>
         <span className="font-semibold text-near-black">{phase.name}</span>
       </td>
-      <td style={cellStyle({})}>
-        <span
-          className="text-warm-gray-med"
-          style={{
-            display: "inline-block",
-            maxWidth: 280,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-            verticalAlign: "middle",
-          }}
-        >
-          {phase.description ?? "—"}
-        </span>
-      </td>
-      <td style={cellStyle({ width: 100 })}>
-        {phase.system ? <StatusBadge variant="system">System</StatusBadge> : null}
-      </td>
-      <td style={cellStyle({ width: 110 })}>
-        {phase.active ? (
-          <StatusBadge variant="active">Active</StatusBadge>
-        ) : (
-          <StatusBadge variant="inactive">Inactive</StatusBadge>
-        )}
-      </td>
-      <td style={cellStyle({ width: 140 })}>
-        <span className="text-warm-gray-med" style={{ fontSize: 12 }}>
-          {relativeTime(phase.updatedAt)}
-        </span>
-      </td>
-      <td style={cellStyle({ width: 180 })}>
-        <UserCell userId={phase.updatedBy} />
-      </td>
+      {!hidden.has("description") && (
+        <td style={cellStyle({})}>
+          <span
+            className="text-warm-gray-med"
+            style={{
+              display: "inline-block",
+              maxWidth: 280,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              verticalAlign: "middle",
+            }}
+          >
+            {phase.description ?? "—"}
+          </span>
+        </td>
+      )}
+      {!hidden.has("source") && (
+        <td style={cellStyle({ width: 100 })}>
+          {phase.system ? <StatusBadge variant="system">System</StatusBadge> : null}
+        </td>
+      )}
+      {!hidden.has("status") && (
+        <td style={cellStyle({ width: 110 })}>
+          {phase.active ? (
+            <StatusBadge variant="active">Active</StatusBadge>
+          ) : (
+            <StatusBadge variant="inactive">Inactive</StatusBadge>
+          )}
+        </td>
+      )}
+      {!hidden.has("updatedAt") && (
+        <td style={cellStyle({ width: 140 })}>
+          <span className="text-warm-gray-med" style={{ fontSize: 12 }}>
+            {relativeTime(phase.updatedAt)}
+          </span>
+        </td>
+      )}
+      {!hidden.has("updatedBy") && (
+        <td style={cellStyle({ width: 180 })}>
+          <UserCell userId={phase.updatedBy} />
+        </td>
+      )}
       <td style={cellStyle({ width: 48, textAlign: "right" })} data-row-skip>
         <KebabMenu items={kebabItems} ariaLabel={`Actions for ${phase.name}`} />
       </td>

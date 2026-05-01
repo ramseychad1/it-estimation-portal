@@ -25,3 +25,8 @@ VALUES (
 );
 
 INSERT INTO user_roles (user_id, role_id) VALUES (2, 2), (2, 3);
+
+-- H2 IDENTITY columns don't bump their sequence when an INSERT provides the
+-- id explicitly, so subsequent JPA save() calls would collide on id=1. Push
+-- the sequence past the highest seeded id.
+ALTER TABLE users ALTER COLUMN id RESTART WITH 3;

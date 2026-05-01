@@ -70,32 +70,3 @@ export function TemplateHistoryPage() {
   );
 }
 
-export function RatesPage() {
-  return (
-    <Placeholder
-      title="Blended rates"
-      subtitle="Onshore and offshore blended hourly rates used for cost rollups."
-      breadcrumb={[{ label: "Admin" }, { label: "Blended rates" }]}
-    />
-  );
-}
-
-export function UsersPage() {
-  return (
-    <Placeholder
-      title="Users & roles"
-      subtitle="Add, deactivate, and manage roles for portal users."
-      breadcrumb={[{ label: "Admin" }, { label: "Users & roles" }]}
-    />
-  );
-}
-
-export function ChangeLogPage() {
-  return (
-    <Placeholder
-      title="Change log"
-      subtitle="A read-only audit trail of every change in the portal."
-      breadcrumb={[{ label: "Admin" }, { label: "Change log" }]}
-    />
-  );
-}

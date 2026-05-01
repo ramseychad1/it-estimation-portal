@@ -1,3 +1,6 @@
+// PROVIDER PARITY: this wrapper must stay in sync with `src/main.tsx`'s
+// runtime tree. If you add a context provider in main.tsx, mirror it here
+// — App.smoke.test.tsx catches drift, but only if both trees agree on shape.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactElement, ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";

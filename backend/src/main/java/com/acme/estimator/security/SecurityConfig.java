@@ -52,7 +52,14 @@ public class SecurityConfig {
             )
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/api/health", "/api/auth/login", "/api/auth/csrf").permitAll()
+                .requestMatchers(
+                    "/api/health",
+                    "/api/auth/login",
+                    "/api/auth/csrf",
+                    // Invite-accept flow has to be reachable without a session — the
+                    // invitee doesn't have one yet.
+                    "/api/auth/invitations/**"
+                ).permitAll()
                 .requestMatchers("/api/**").authenticated()
                 .anyRequest().permitAll()
             )

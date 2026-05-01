@@ -13,4 +13,8 @@ public interface SdlcPhaseRepository extends JpaRepository<SdlcPhase, Long> {
 
     @Query("select coalesce(max(p.displayOrder), 0) from SdlcPhase p")
     int findMaxDisplayOrder();
+
+    /** Used by the Change Log search predicate. */
+    @Query("select p.id from SdlcPhase p where lower(p.name) like lower(concat('%', ?1, '%'))")
+    List<Long> findIdsByNameContainingIgnoreCase(String search);
 }

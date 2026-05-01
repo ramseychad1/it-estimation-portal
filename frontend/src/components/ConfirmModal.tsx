@@ -16,10 +16,18 @@ interface ConfirmModalProps {
   /** Renders the confirm button as Cardinal Red (Destructive variant). */
   destructive?: boolean;
   /**
-   * High-stakes confirm: if set, render a checkbox the user must tick before
-   * the confirm button enables. Pass the label string for the checkbox.
+   * Lower-stakes confirm: render a checkbox the user must tick.
+   * Mutually exclusive with {@link requireTypedConfirmation}.
    */
   requireCheckboxLabel?: string;
+  /**
+   * High-stakes confirm: render a text input the user must fill in with the
+   * exact value (case-insensitive). Used by user delete and similar
+   * irreversible operations. Pass {@code value} (the expected string) and
+   * {@code label} (the prompt above the input).
+   * Mutually exclusive with {@link requireCheckboxLabel}.
+   */
+  requireTypedConfirmation?: { value: string; label: string };
   onCancel: () => void;
   onConfirm: () => void | Promise<void>;
   width?: number;
@@ -37,6 +45,7 @@ export function ConfirmModal({
   cancelLabel = "Cancel",
   destructive = false,
   requireCheckboxLabel,
+  requireTypedConfirmation,
   onCancel,
   onConfirm,
   width = 480,
@@ -44,11 +53,15 @@ export function ConfirmModal({
   const panelRef = useRef<HTMLDivElement>(null);
   const previouslyFocused = useRef<HTMLElement | null>(null);
   const [acknowledged, setAcknowledged] = useState(false);
+  const [typedValue, setTypedValue] = useState("");
   const [busy, setBusy] = useState(false);
 
-  // Reset checkbox each time the modal re-opens.
+  // Reset transient form state each time the modal re-opens.
   useEffect(() => {
-    if (open) setAcknowledged(false);
+    if (open) {
+      setAcknowledged(false);
+      setTypedValue("");
+    }
   }, [open]);
 
   useEffect(() => {
@@ -102,7 +115,13 @@ export function ConfirmModal({
 
   if (!open) return null;
 
-  const confirmDisabled = busy || (!!requireCheckboxLabel && !acknowledged);
+  const typedMatches =
+    !requireTypedConfirmation
+    || typedValue.trim().toLowerCase() === requireTypedConfirmation.value.trim().toLowerCase();
+  const confirmDisabled =
+    busy
+    || (!!requireCheckboxLabel && !acknowledged)
+    || (!!requireTypedConfirmation && !typedMatches);
 
   const ConfirmBtn = destructive ? DestructiveButton : PrimaryButton;
 
@@ -139,7 +158,25 @@ export function ConfirmModal({
             style={{ padding: "0 24px 20px", fontSize: 14, lineHeight: "20px" }}
           >
             {body}
-            {requireCheckboxLabel && (
+            {requireTypedConfirmation && (
+              <label className="flex flex-col gap-1.5 mt-4 cursor-text">
+                <span className="text-near-black" style={{ fontSize: 13 }}>
+                  {requireTypedConfirmation.label}
+                </span>
+                <input
+                  type="text"
+                  value={typedValue}
+                  onChange={(e) => setTypedValue(e.target.value)}
+                  placeholder={requireTypedConfirmation.value}
+                  autoFocus
+                  className="w-full h-9 px-3 rounded-md text-body text-near-black focus:outline-none focus:ring-2 focus:ring-light-blue"
+                  style={{
+                    border: `1px solid ${typedMatches && typedValue.length > 0 ? "var(--color-success)" : "var(--color-border-strong)"}`,
+                  }}
+                />
+              </label>
+            )}
+            {requireCheckboxLabel && !requireTypedConfirmation && (
               <label
                 className="flex items-center gap-2 mt-4 text-near-black cursor-pointer"
                 style={{ fontSize: 13 }}

@@ -1,3 +1,6 @@
+// PROVIDER PARITY: this file's runtime tree must stay in sync with the test
+// wrapper at `src/test/utils.tsx`. If you add a context provider here, mirror
+// it there — and the App-tree smoke test (App.smoke.test.tsx) catches misses.
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";

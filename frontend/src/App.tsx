@@ -3,17 +3,18 @@ import { AppShell } from "./components/AppShell";
 import { AuthGuard } from "./components/AuthGuard";
 import { LoginPage } from "./pages/LoginPage";
 import {
-  ChangeLogPage,
   CriticalQuestionsPage,
   DashboardPage,
   ProductsPage,
-  RatesPage,
   RequestsPage,
   TemplateHistoryPage,
-  UsersPage,
 } from "./pages/placeholders";
 import { TeamsPage } from "./pages/admin/TeamsPage";
 import { SdlcPhasesPage } from "./pages/admin/SdlcPhasesPage";
+import { BlendedRatesPage } from "./pages/admin/BlendedRatesPage";
+import { UsersPage } from "./pages/admin/UsersPage";
+import { ChangeLogPage } from "./pages/admin/ChangeLogPage";
+import { AcceptInvitePage } from "./pages/AcceptInvitePage";
 
 function ProtectedShell({ children }: { children: React.ReactNode }) {
   return (
@@ -27,6 +28,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/invite/:token" element={<AcceptInvitePage />} />
 
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
 
@@ -39,7 +41,7 @@ export default function App() {
 
       <Route path="/admin/teams" element={<ProtectedShell><TeamsPage /></ProtectedShell>} />
       <Route path="/admin/phases" element={<ProtectedShell><SdlcPhasesPage /></ProtectedShell>} />
-      <Route path="/admin/rates" element={<ProtectedShell><RatesPage /></ProtectedShell>} />
+      <Route path="/admin/rates" element={<ProtectedShell><BlendedRatesPage /></ProtectedShell>} />
       <Route path="/admin/users" element={<ProtectedShell><UsersPage /></ProtectedShell>} />
       <Route path="/admin/change-log" element={<ProtectedShell><ChangeLogPage /></ProtectedShell>} />
 

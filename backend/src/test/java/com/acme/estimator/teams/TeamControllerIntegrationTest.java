@@ -3,6 +3,7 @@ package com.acme.estimator.teams;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -10,6 +11,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.acme.estimator.audit.ChangeAction;
@@ -250,8 +252,14 @@ class TeamControllerIntegrationTest {
     void export_returnsCsvWithBomAndQuotedFields() throws Exception {
         createTeam("Has, comma", "needs quoting");
 
-        var result = mvc.perform(get("/api/admin/teams/export")
+        // StreamingResponseBody runs on Spring's async TaskExecutor; without
+        // explicit asyncDispatch the body races and may come back empty
+        // when the suite is busy.
+        var asyncResult = mvc.perform(get("/api/admin/teams/export")
                 .with(user(admin)))
+            .andExpect(request().asyncStarted())
+            .andReturn();
+        var result = mvc.perform(asyncDispatch(asyncResult))
             .andExpect(status().isOk())
             .andExpect(header().string("Content-Disposition",
                 org.hamcrest.Matchers.containsString("teams_export_")))
