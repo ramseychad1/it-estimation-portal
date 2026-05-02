@@ -105,11 +105,12 @@ export function DataTable<T, K extends string | number>({
   }
 
   return (
-    // No `overflow-hidden` on this outer wrapper — it would clip absolutely-
-    // positioned popovers from row children (KebabMenu, in particular: the
-    // last row's menu pops below the table boundary and used to be cut off).
-    // Horizontal overflow is handled by the inner `overflow-x-auto` so wide
-    // tables still scroll independently.
+    // No `overflow-hidden` here so popovers can escape the table boundary.
+    // The inner wrapper still uses `overflow-x-auto` for wide-table scroll,
+    // but be aware: when overflow-x is set, browsers auto-promote overflow-y
+    // to `auto` too — clipping vertical popovers. KebabMenu solves that by
+    // rendering its dropdown into a React portal (position: fixed, escapes
+    // every ancestor's clip), so the inner clip is fine for the table itself.
     <div
       className={`bg-white ${className}`}
       style={{ border: "1px solid var(--color-border)", borderRadius: 6 }}

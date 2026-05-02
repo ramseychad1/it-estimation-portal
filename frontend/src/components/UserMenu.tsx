@@ -1,10 +1,26 @@
 import { useNavigate } from "react-router-dom";
-import { LogOut, RefreshCw, UserCircle } from "lucide-react";
+import { LogOut, UserCircle } from "lucide-react";
 import { useAuth } from "../lib/auth";
+import { ROLE_CATALOG } from "../lib/api/users";
 import { UserAvatar } from "./UserAvatar";
 
 interface UserMenuProps {
   onClose: () => void;
+}
+
+/**
+ * Canonical role order for display (Admin → SO → Estimator → Requester).
+ * Matches {@link ROLE_CATALOG} so a single source of truth governs the
+ * order everywhere — Edit User drawer badges, Invite User checkbox list,
+ * here.
+ */
+function orderedRoles(roles: string[]): string[] {
+  const order = ROLE_CATALOG.map((r) => r.name);
+  return [...roles].sort(
+    (a, b) =>
+      (order.indexOf(a) === -1 ? Number.MAX_SAFE_INTEGER : order.indexOf(a)) -
+      (order.indexOf(b) === -1 ? Number.MAX_SAFE_INTEGER : order.indexOf(b)),
+  );
 }
 
 export function UserMenu({ onClose }: UserMenuProps) {
@@ -19,10 +35,14 @@ export function UserMenu({ onClose }: UserMenuProps) {
     navigate("/login", { replace: true });
   };
 
-  // Phase 1: the user can hold multiple roles in theory, but role switching
-  // arrives with the multi-role flows. Show whichever role they currently have
-  // (alphabetical; admin@local has only Admin).
-  const activeRole = user.roles[0] ?? "—";
+  // Phase 7.6: read-only roles display. Replaces the prior "Switch role"
+  // menu item, which promised a role-switching feature we never built and
+  // shouldn't — Phase 7.5 settled the model on "Admin implies everything,
+  // multi-role users see every surface their roles unlock simultaneously."
+  // No active-role context exists to switch.
+  const roles = orderedRoles(user.roles);
+  const rolesLabel = roles.length === 1 ? "Role" : "Roles";
+  const rolesText = roles.length === 0 ? "—" : roles.join(", ");
 
   return (
     <div
@@ -43,6 +63,13 @@ export function UserMenu({ onClose }: UserMenuProps) {
           <div className="text-small text-warm-gray-med truncate" style={{ fontSize: 12 }}>
             {user.email}
           </div>
+          <div
+            className="text-warm-gray-med truncate"
+            style={{ fontSize: 12, marginTop: 2 }}
+            title={`${rolesLabel}: ${rolesText}`}
+          >
+            {rolesLabel}: {rolesText}
+          </div>
         </div>
       </div>
 
@@ -54,29 +81,6 @@ export function UserMenu({ onClose }: UserMenuProps) {
       >
         <UserCircle className="w-3.5 h-3.5 text-warm-gray-med" strokeWidth={1.5} />
         My profile
-      </button>
-
-      <button
-        type="button"
-        role="menuitem"
-        className="w-full flex items-center gap-2.5 px-3.5 py-2 text-small text-near-black hover:bg-warm-gray-light text-left"
-        disabled
-        title="Role switching arrives once users hold multiple roles"
-      >
-        <RefreshCw className="w-3.5 h-3.5 text-warm-gray-med" strokeWidth={1.5} />
-        Switch role
-        <span
-          className="ml-auto text-warm-gray-med font-medium"
-          style={{
-            fontSize: 11,
-            padding: "1px 6px",
-            borderRadius: 3,
-            background: "var(--color-warm-gray-light)",
-            border: "1px solid var(--color-border-strong)",
-          }}
-        >
-          {activeRole}
-        </span>
       </button>
 
       <div className="h-px bg-warm-gray-light my-1" />
