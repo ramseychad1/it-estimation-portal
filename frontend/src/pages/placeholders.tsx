@@ -20,16 +20,6 @@ function Placeholder({ title, subtitle, breadcrumb }: PlaceholderProps) {
   );
 }
 
-export function DashboardPage() {
-  return (
-    <Placeholder
-      title="Dashboard"
-      subtitle="Your activity at a glance."
-      breadcrumb={[{ label: "Workspace" }, { label: "Dashboard" }]}
-    />
-  );
-}
-
 export function TemplateHistoryPage() {
   return (
     <Placeholder

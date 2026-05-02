@@ -36,4 +36,7 @@ public interface UserRepository
            or lower(u.email) like lower(concat('%', ?1, '%'))
     """)
     java.util.List<Long> findIdsByDisplayNameContainingIgnoreCase(String search);
+
+    /** Phase 7 dashboard: pendingInvitations + totalActiveUsers cards (Admin only). */
+    long countByInvitationStatus(InvitationStatus invitationStatus);
 }

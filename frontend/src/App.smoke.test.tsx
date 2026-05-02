@@ -123,6 +123,14 @@ beforeEach(() => {
     if (path === "/api/catalog/questions") {
       return Promise.resolve(emptyPage());
     }
+    // Phase 7 dashboard — both endpoints return permissive empties so
+    // the page can mount without surfacing an error state.
+    if (path === "/api/dashboard/summary") {
+      return Promise.resolve(jsonResponse({ cards: [] }));
+    }
+    if (path === "/api/dashboard/activity") {
+      return Promise.resolve(emptyPage());
+    }
     // Phase 5b: template GET — Day-1 returns null body. Detail pages
     // both fetch the template; smoke test only needs "no crash" coverage.
     if (path.match(/^\/api\/catalog\/products\/\d+\/template$/)) {

@@ -35,4 +35,10 @@ public interface ChangeLogEntryRepository
 
     @Query("select distinct e.changedBy from ChangeLogEntry e")
     List<Long> findDistinctActorIds();
+
+    /**
+     * Phase 7 dashboard: {@code myRecentActivity} stat card. Counts rows
+     * an actor authored after the given cutoff (typically NOW − 7 days).
+     */
+    long countByChangedByAndChangedAtAfter(Long changedBy, java.time.OffsetDateTime cutoff);
 }

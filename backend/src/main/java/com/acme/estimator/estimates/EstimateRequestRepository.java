@@ -26,4 +26,12 @@ public interface EstimateRequestRepository
     Page<EstimateRequest> findByStatusInOrderBySubmittedAtAsc(
         List<EstimateStatus> statuses, Pageable pageable
     );
+
+    // ---- Phase 7 dashboard counts -----------------------------------------
+
+    long countByRequesterIdAndStatus(Long requesterId, EstimateStatus status);
+
+    long countByStatus(EstimateStatus status);
+
+    long countByReviewerIdAndStatus(Long reviewerId, EstimateStatus status);
 }
