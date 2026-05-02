@@ -186,12 +186,17 @@ export function UsersPage() {
       });
     }
 
-    if (isInactive) {
-      // Two-step delete: only inactive users show "Delete user".
+    // Delete is available for any non-pending user. The typed-name confirm
+    // modal + last-admin protection do the deliberateness work; the modal
+    // body steers admins toward Deactivate when the goal is just removing
+    // sign-in access (audit history is preserved on deactivate; deletion
+    // is permanent).
+    if (!isPending) {
       items.push({
-        label: "Delete user",
+        label: "Delete user…",
         icon: <Trash2 className="w-3.5 h-3.5" strokeWidth={1.5} />,
         destructive: true,
+        disabled: isLastAdmin,
         onSelect: () => void getUser(row.id).then((u) => setDeleteTarget(u)),
       });
     }
@@ -473,6 +478,13 @@ export function UsersPage() {
             <p className="m-0">
               This permanently removes <strong>{deleteTarget?.firstName} {deleteTarget?.lastName}</strong> from the workspace. Their audit history is preserved but the user account cannot be restored.
             </p>
+            {deleteTarget?.invitationStatus === "ACTIVE" && (
+              <p className="m-0 mt-2" style={{ fontSize: 13 }}>
+                <span className="text-warm-gray-med">If you only want to revoke sign-in access, </span>
+                <strong className="text-near-black">Deactivate</strong>
+                <span className="text-warm-gray-med"> instead — it's reversible and keeps the user's full record intact.</span>
+              </p>
+            )}
             <p className="m-0 mt-2 text-warm-gray-med" style={{ fontSize: 13 }}>
               Type the user's full name to confirm.
             </p>

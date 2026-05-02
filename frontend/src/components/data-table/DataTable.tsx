@@ -105,8 +105,13 @@ export function DataTable<T, K extends string | number>({
   }
 
   return (
+    // No `overflow-hidden` on this outer wrapper — it would clip absolutely-
+    // positioned popovers from row children (KebabMenu, in particular: the
+    // last row's menu pops below the table boundary and used to be cut off).
+    // Horizontal overflow is handled by the inner `overflow-x-auto` so wide
+    // tables still scroll independently.
     <div
-      className={`bg-white overflow-hidden ${className}`}
+      className={`bg-white ${className}`}
       style={{ border: "1px solid var(--color-border)", borderRadius: 6 }}
     >
       <div className="overflow-x-auto">
