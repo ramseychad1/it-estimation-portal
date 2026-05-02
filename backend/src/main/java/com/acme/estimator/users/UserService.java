@@ -248,7 +248,13 @@ public class UserService {
 
     private Specification<User> buildSpec(ListUsersFilter f) {
         return (root, cq, cb) -> {
-            cq.distinct(true);
+            // Spring Data 3.x annotates {@code cq} as @Nullable on
+            // Specification#toPredicate — count-query paths in some
+            // implementations pass null. JpaRepositoryImpl in practice
+            // always supplies a non-null cq for both the data fetch and
+            // the count fetch, but the guard is the safe contract per
+            // the API type.
+            if (cq != null) cq.distinct(true);
             Predicate p = cb.conjunction();
 
             if (f != null && f.search() != null && !f.search().isBlank()) {

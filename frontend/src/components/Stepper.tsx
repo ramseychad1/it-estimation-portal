@@ -79,6 +79,10 @@ function Circle({
   state: "completed" | "current" | "future";
   index: number;
 }) {
+  // Border declared as longhand pieces (width/style/color) rather than
+  // the `border:` shorthand. The future-state branch overrides only
+  // `borderColor:`; mixing shorthand with longhand triggered a React
+  // warning about non-deterministic application order in CSSOM.
   const base: React.CSSProperties = {
     width: 28,
     height: 28,
@@ -88,7 +92,9 @@ function Circle({
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
-    border: "1px solid transparent",
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: "transparent",
   };
   if (state === "completed") {
     return (

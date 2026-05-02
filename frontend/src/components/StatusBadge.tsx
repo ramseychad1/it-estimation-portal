@@ -125,6 +125,12 @@ export function StatusBadge({ variant, children, icon, ariaLabel, className = ""
       role="status"
       aria-label={ariaLabel}
       className={`inline-flex items-center gap-1.5 ${className}`}
+      // Border declared as longhand pieces (width/style/color) rather than
+      // the `border:` shorthand. Mixing shorthand with the variant's
+      // longhand `borderColor:` triggered a React warning ("Updating a
+      // style property during rerender (borderColor) when a conflicting
+      // property is set (border)") because shorthand-vs-longhand
+      // application order is undefined in CSSOM.
       style={{
         ...VARIANT_STYLES[variant],
         height: 22,
@@ -133,9 +139,9 @@ export function StatusBadge({ variant, children, icon, ariaLabel, className = ""
         fontSize: 12,
         fontWeight: 500,
         lineHeight: 1,
-        border: "1px solid transparent",
+        borderWidth: 1,
+        borderStyle: "solid",
         whiteSpace: "nowrap",
-        ...VARIANT_STYLES[variant],
       }}
       data-variant={variant}
     >

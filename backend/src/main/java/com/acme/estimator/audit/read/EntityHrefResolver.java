@@ -68,10 +68,18 @@ public class EntityHrefResolver {
         return builder == null ? null : builder.apply(entityId);
     }
 
+    // The Function<Long, String> registry passes us raw {@code Long}s
+    // from {@link #resolve}; the static type is nullable even though
+    // {@code change_log.entity_id} is NOT NULL at the DB level. Each
+    // helper guards on null up front so Spring Data's @NonNull-annotated
+    // {@code findById} never sees a possibly-null value (and Eclipse's
+    // null analysis stays quiet).
+
     private String subFeatureHref(Long subFeatureId) {
         // Sub-features live under their parent Product's URL. We need a
         // small lookup to fetch productId; this only fires when a
         // SubFeature row appears in the change log feed.
+        if (subFeatureId == null) return null;
         return subFeatureRepository.findById(subFeatureId)
             .map(s -> "/catalog/products/" + s.getProductId() + "/sub-features/" + s.getId())
             .orElse(null);
@@ -80,16 +88,18 @@ public class EntityHrefResolver {
     private String templateHref(Long templateId) {
         // Templates live inline on their parent's detail page. Three-hop
         // for sub-feature templates: template → sub-feature → product.
+        if (templateId == null) return null;
         return templateRepository.findById(templateId)
             .map(t -> {
                 if (t.getProductId() != null) {
                     return "/catalog/products/" + t.getProductId();
                 }
-                if (t.getSubFeatureId() != null) {
-                    Long pid = subFeatureRepository.findById(t.getSubFeatureId())
+                Long subId = t.getSubFeatureId();
+                if (subId != null) {
+                    Long pid = subFeatureRepository.findById(subId)
                         .map(SubFeature::getProductId).orElse(null);
                     if (pid == null) return null;
-                    return "/catalog/products/" + pid + "/sub-features/" + t.getSubFeatureId();
+                    return "/catalog/products/" + pid + "/sub-features/" + subId;
                 }
                 return null;
             })
@@ -100,16 +110,18 @@ public class EntityHrefResolver {
         // Questions don't have detail pages — they live inside their
         // parent's detail page. Resolve to the parent's URL so the link
         // is meaningful even though the question itself isn't navigable.
+        if (questionId == null) return null;
         return questionRepository.findById(questionId)
             .map(q -> {
                 if (q.getProductId() != null) {
                     return "/catalog/products/" + q.getProductId();
                 }
-                if (q.getSubFeatureId() != null) {
-                    Long pid = subFeatureRepository.findById(q.getSubFeatureId())
+                Long subId = q.getSubFeatureId();
+                if (subId != null) {
+                    Long pid = subFeatureRepository.findById(subId)
                         .map(SubFeature::getProductId).orElse(null);
                     if (pid == null) return null;
-                    return "/catalog/products/" + pid + "/sub-features/" + q.getSubFeatureId();
+                    return "/catalog/products/" + pid + "/sub-features/" + subId;
                 }
                 return null;
             })
