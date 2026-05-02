@@ -20,7 +20,10 @@ spring:
     locations: classpath:db/migration
 
 server:
-  port: 8080
+  # Railway sets the PORT env var; Spring Boot natively reads SERVER_PORT.
+  # Bridge them here so the same image runs locally (8080 default) and on
+  # Railway (whatever PORT it injects) without an extra env-var alias.
+  port: ${PORT:8080}
   error:
     include-message: always
 

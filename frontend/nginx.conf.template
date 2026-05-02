@@ -1,0 +1,60 @@
+# Vite-built React SPA served by nginx.
+#
+# Two responsibilities:
+#   1. Proxy /api/* to the backend Railway service. Same-origin from the
+#      browser's POV, so no CORS round-trip and Spring's session cookie
+#      lands on the frontend domain (where the browser will send it back).
+#   2. SPA fallback: every non-asset path returns index.html so
+#      react-router-dom takes over.
+#
+# Environment variables (substituted by nginx:alpine's envsubst at
+# container start):
+#
+#   ${BACKEND_HOST}   The Spring Boot service's public Railway hostname,
+#                     e.g. "estimator-backend-production.up.railway.app".
+#                     MUST be set before the container starts or the
+#                     proxy_pass directive expands to https:// (broken).
+#   ${PORT}           Injected by Railway. Defaults to 80 locally.
+#
+# CRITICAL (per the user's CLAUDE.md monorepo lessons): proxy_set_header
+# Host MUST be the backend hostname, not $host. Railway routes by Host
+# header; sending the frontend's hostname makes Railway 404.
+
+server {
+    listen ${PORT};
+    server_name _;
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # Tighter cache headers for hashed assets (Vite outputs them with
+    # content hashes in the filename, so they're safe to cache forever).
+    location /assets/ {
+        access_log off;
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+
+    location /api/ {
+        proxy_pass https://${BACKEND_HOST};
+        proxy_set_header Host ${BACKEND_HOST};
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Real-IP $remote_addr;
+        # Pass cookies + custom headers (XSRF-TOKEN, Authorization, etc.)
+        # through unchanged so Spring Security session auth and CSRF
+        # round-trips work end-to-end.
+        proxy_pass_request_headers on;
+        # Don't let nginx eat 4xx/5xx response bodies — the SPA needs
+        # the JSON error payload from Spring Boot's ApiException handler.
+        proxy_intercept_errors off;
+    }
+
+    # SPA fallback. /index.html is always served fresh so a deploy that
+    # changes the asset hash chain isn't masked by a stale shell.
+    location = /index.html {
+        add_header Cache-Control "no-cache";
+    }
+    location / {
+        try_files $uri /index.html;
+    }
+}

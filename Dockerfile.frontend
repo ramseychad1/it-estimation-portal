@@ -1,0 +1,31 @@
+# Frontend Dockerfile (Vite build → nginx serve).
+#
+# IMPORTANT (Railway monorepo gotcha): the Docker build context is the
+# REPO ROOT, not the rootDirectory configured in Railway. Even when
+# Railway's service-level rootDirectory is "frontend", paths inside this
+# file resolve from the repo root. Hence COPY frontend/, not COPY .
+
+# ---- build stage --------------------------------------------------------
+FROM node:20-alpine AS build
+WORKDIR /build
+
+# Install deps first so npm ci caches when only source changes.
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+
+COPY frontend/ .
+RUN npm run build
+
+# ---- runtime stage ------------------------------------------------------
+FROM nginx:alpine
+# nginx:alpine auto-runs envsubst against /etc/nginx/templates/*.template
+# at container start, writing to /etc/nginx/conf.d/. We use that to
+# inject ${BACKEND_HOST} into the proxy_pass without rebuilding the image
+# every time the backend domain changes.
+COPY frontend/nginx.conf.template /etc/nginx/templates/default.conf.template
+COPY --from=build /build/dist /usr/share/nginx/html
+
+# Railway injects PORT at runtime. nginx defaults to 80; we template that
+# in via ${PORT:-80} in the nginx.conf.template so the same image runs
+# locally and on Railway.
+EXPOSE 80

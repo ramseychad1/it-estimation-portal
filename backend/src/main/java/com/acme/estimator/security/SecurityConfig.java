@@ -1,5 +1,6 @@
 package com.acme.estimator.security;
 
+import java.util.List;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpStatus;
@@ -14,6 +15,9 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 /**
  * Phase 1 baseline:
@@ -46,6 +50,7 @@ public class SecurityConfig {
         csrfHandler.setCsrfRequestAttributeName(null);
 
         http
+            .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .csrf(csrf -> csrf
                 .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
                 .csrfTokenRequestHandler(csrfHandler)
@@ -71,5 +76,42 @@ public class SecurityConfig {
             .httpBasic(basic -> basic.disable());
 
         return http.build();
+    }
+
+    /**
+     * CORS allow-list. Strictly speaking the production setup proxies
+     * /api/* through nginx (same-origin from the browser's POV), so a
+     * preflight never fires in normal use. We still configure CORS for:
+     *
+     * <ul>
+     *   <li>Local dev: the Vite dev server on :5173 hits the backend
+     *       on :8080 directly — different origin → preflight required.</li>
+     *   <li>Defense-in-depth: if the nginx proxy ever breaks or someone
+     *       points a tool at the backend domain directly, the allow-list
+     *       still confines what other origins can talk to it.</li>
+     * </ul>
+     *
+     * <p>Uses {@code setAllowedOriginPatterns} (not {@code setAllowedOrigins})
+     * so the {@code https://*.up.railway.app} wildcard works alongside
+     * {@code allowCredentials=true}. This is the per-the-CLAUDE.md
+     * monorepo lesson — the non-pattern variant rejects wildcards when
+     * credentials are enabled.
+     */
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration cfg = new CorsConfiguration();
+        cfg.setAllowedOriginPatterns(List.of(
+            "https://*.up.railway.app",
+            "http://localhost:5173"
+        ));
+        cfg.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
+        cfg.setAllowedHeaders(List.of("*"));
+        cfg.setExposedHeaders(List.of("X-XSRF-TOKEN"));
+        cfg.setAllowCredentials(true);
+        cfg.setMaxAge(3600L);
+
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/api/**", cfg);
+        return source;
     }
 }

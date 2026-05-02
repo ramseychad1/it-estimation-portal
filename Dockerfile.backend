@@ -1,0 +1,41 @@
+# Backend Dockerfile (Spring Boot 3.3 / Java 21 / Maven).
+#
+# IMPORTANT (Railway monorepo gotcha): the Docker build context is the
+# REPO ROOT, not the rootDirectory configured in Railway. Even when
+# Railway's service-level rootDirectory is "backend", paths inside this
+# file resolve from the repo root. Hence COPY backend/, not COPY .
+#
+# Multi-stage: build with Maven + Eclipse Temurin 21, run on the slim
+# JRE image. Final image is ~170 MB which is fine for a small internal
+# tool — switch to jlink-built distroless if image size ever matters.
+
+# ---- build stage --------------------------------------------------------
+FROM maven:3.9-eclipse-temurin-21 AS build
+WORKDIR /build
+
+# Copy pom.xml first so dependency resolution caches when only source
+# changes. Maven offline-go-fetch isn't perfect but cuts ~20s off
+# subsequent builds.
+COPY backend/pom.xml ./pom.xml
+RUN mvn -B dependency:go-offline
+
+COPY backend/ .
+# -DskipTests because the test suite needs an H2/Postgres that isn't
+# available at build time. CI runs `./mvnw test` separately.
+RUN mvn -B -DskipTests package
+
+# ---- runtime stage ------------------------------------------------------
+FROM eclipse-temurin:21-jre
+WORKDIR /app
+
+# Copy the fat jar produced by Spring Boot's repackage goal. The wildcard
+# avoids having to know the version-stamped jar name.
+COPY --from=build /build/target/*.jar app.jar
+
+# Railway injects PORT at runtime; application.yml's server.port reads
+# ${PORT:8080} so both Railway and local docker-run "just work."
+EXPOSE 8080
+
+# Use exec form so the JVM is PID 1 and receives SIGTERM cleanly when
+# Railway issues a stop signal during deploys.
+ENTRYPOINT ["java", "-jar", "app.jar"]
