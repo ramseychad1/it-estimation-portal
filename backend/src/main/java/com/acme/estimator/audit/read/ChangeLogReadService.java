@@ -422,6 +422,7 @@ public class ChangeLogReadService {
             case "SubFeature"       -> SubFeatureNameResolver.DELETED;
             case "CriticalQuestion" -> CriticalQuestionNameResolver.DELETED;
             case "EstimateTemplate" -> EstimateTemplateNameResolver.DELETED;
+            case "EstimateRequest"  -> EstimateRequestNameResolver.DELETED;
             default                 -> "Deleted ";
         };
     }

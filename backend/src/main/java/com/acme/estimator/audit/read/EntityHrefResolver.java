@@ -7,6 +7,7 @@ import com.acme.estimator.catalog.subfeatures.SubFeature;
 import com.acme.estimator.catalog.subfeatures.SubFeatureRepository;
 import com.acme.estimator.catalog.templates.EstimateTemplate;
 import com.acme.estimator.catalog.templates.EstimateTemplateRepository;
+import com.acme.estimator.estimates.EstimateRequest;
 import com.acme.estimator.phases.SdlcPhase;
 import com.acme.estimator.rates.BlendedRate;
 import com.acme.estimator.teams.Team;
@@ -52,7 +53,11 @@ public class EntityHrefResolver {
                 Map.entry(Product.ENTITY_TYPE,          id -> "/catalog/products/" + id),
                 Map.entry(SubFeature.ENTITY_TYPE,       this::subFeatureHref),
                 Map.entry(CriticalQuestion.ENTITY_TYPE, this::questionHref),
-                Map.entry(EstimateTemplate.ENTITY_TYPE, this::templateHref)
+                Map.entry(EstimateTemplate.ENTITY_TYPE, this::templateHref),
+                // Both Requester and (future) Reviewer surfaces will hang
+                // off /requests/:id; the per-role view is decided by the
+                // caller's auth, not by the URL.
+                Map.entry(EstimateRequest.ENTITY_TYPE, id -> "/requests/" + id)
             );
         }
         return registry;

@@ -30,16 +30,6 @@ export function DashboardPage() {
   );
 }
 
-export function RequestsPage() {
-  return (
-    <Placeholder
-      title="Estimate requests"
-      subtitle="Track requests in flight and waiting on you."
-      breadcrumb={[{ label: "Workspace" }, { label: "Estimate requests" }]}
-    />
-  );
-}
-
 export function TemplateHistoryPage() {
   return (
     <Placeholder

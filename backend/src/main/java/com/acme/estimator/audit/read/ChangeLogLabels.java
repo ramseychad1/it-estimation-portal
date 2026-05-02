@@ -5,6 +5,7 @@ import com.acme.estimator.catalog.products.Product;
 import com.acme.estimator.catalog.questions.CriticalQuestion;
 import com.acme.estimator.catalog.subfeatures.SubFeature;
 import com.acme.estimator.catalog.templates.EstimateTemplate;
+import com.acme.estimator.estimates.EstimateRequest;
 import com.acme.estimator.phases.SdlcPhase;
 import com.acme.estimator.rates.BlendedRate;
 import com.acme.estimator.teams.Team;
@@ -29,7 +30,8 @@ public final class ChangeLogLabels {
         Map.entry(Product.ENTITY_TYPE, "Product"),
         Map.entry(SubFeature.ENTITY_TYPE, "Sub-feature"),
         Map.entry(CriticalQuestion.ENTITY_TYPE, "Critical Question"),
-        Map.entry(EstimateTemplate.ENTITY_TYPE, "Estimate template")
+        Map.entry(EstimateTemplate.ENTITY_TYPE, "Estimate template"),
+        Map.entry(EstimateRequest.ENTITY_TYPE, "Estimate request")
     );
 
     private static final Map<ChangeAction, String> ACTION_LABELS = Map.of(

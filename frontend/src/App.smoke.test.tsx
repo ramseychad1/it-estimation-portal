@@ -141,6 +141,8 @@ afterEach(() => fetchMock.mockReset());
 const ROUTES = [
   "/dashboard",
   "/requests",
+  "/requests/new",
+  "/requests/1",
   "/catalog/products",
   "/catalog/products/1",
   "/catalog/products/1/sub-features/1",

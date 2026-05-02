@@ -19,7 +19,14 @@ export type StatusBadgeVariant =
   | "neutral"
   | "success"
   | "warning"
-  | "danger";
+  | "danger"
+  // Phase 6a: estimate-request workflow states. Draft and Submitted reuse
+  // `neutral` and `active` respectively; the three below need their own
+  // treatment because the prompt calls for italic / forest-green / outlined
+  // Cardinal Red, none of which the original variants give us.
+  | "in-review"
+  | "approved"
+  | "rejected";
 
 interface StatusBadgeProps {
   variant: StatusBadgeVariant;
@@ -67,7 +74,50 @@ const VARIANT_STYLES: Record<StatusBadgeVariant, React.CSSProperties> = {
     color: "var(--color-cardinal-red)",
     borderColor: "rgba(228, 31, 53, 0.35)",
   },
+  // Italic to distinguish from Draft/Submitted at a glance — the SO is
+  // working on it but no terminal action has happened yet.
+  "in-review": {
+    background: "var(--color-warm-gray-light)",
+    color: "var(--fg-2)",
+    borderColor: "var(--color-border-strong)",
+    fontStyle: "italic",
+  },
+  // Forest-green text on Light Blue tint — matches the "approved" reading
+  // in /docs/COLOR_USAGE.md (success colour as text only, never as fill).
+  approved: {
+    background: "var(--color-light-blue-soft)",
+    color: "var(--color-success)",
+    borderColor: "rgba(187,221,230,0.7)",
+  },
+  // Outlined (white fill, red border + text). Same shape as the Admin role
+  // badge — Cardinal Red is the only acceptable use here per the brand
+  // discipline rules: a terminal rejection is the kind of high-stakes
+  // signal Cardinal Red is reserved for.
+  rejected: {
+    background: "#FFFFFF",
+    color: "var(--color-cardinal-red)",
+    borderColor: "var(--color-cardinal-red)",
+  },
 };
+
+/**
+ * Maps an estimate-request status to its display badge variant + label.
+ * Centralised here so MyRequestsPage and EstimateDetailPage stay in sync
+ * if the labels are ever copy-edited.
+ */
+export function estimateStatusBadge(status: string): {
+  variant: StatusBadgeVariant;
+  label: string;
+} {
+  switch (status) {
+    case "DRAFT":     return { variant: "neutral",   label: "Draft" };
+    case "SUBMITTED": return { variant: "active",    label: "Submitted" };
+    case "IN_REVIEW": return { variant: "in-review", label: "In review" };
+    case "APPROVED":  return { variant: "approved",  label: "Approved" };
+    case "REJECTED":  return { variant: "rejected",  label: "Rejected" };
+    default:          return { variant: "neutral",   label: status };
+  }
+}
 
 export function StatusBadge({ variant, children, icon, ariaLabel, className = "" }: StatusBadgeProps) {
   return (

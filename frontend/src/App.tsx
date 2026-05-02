@@ -2,11 +2,10 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { AppShell } from "./components/AppShell";
 import { AuthGuard } from "./components/AuthGuard";
 import { LoginPage } from "./pages/LoginPage";
-import {
-  DashboardPage,
-  RequestsPage,
-  TemplateHistoryPage,
-} from "./pages/placeholders";
+import { DashboardPage, TemplateHistoryPage } from "./pages/placeholders";
+import { MyRequestsPage } from "./pages/MyRequestsPage";
+import { NewEstimateRequestPage } from "./pages/NewEstimateRequestPage";
+import { EstimateDetailPage } from "./pages/EstimateDetailPage";
 import { TeamsPage } from "./pages/admin/TeamsPage";
 import { SdlcPhasesPage } from "./pages/admin/SdlcPhasesPage";
 import { BlendedRatesPage } from "./pages/admin/BlendedRatesPage";
@@ -35,7 +34,9 @@ export default function App() {
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
 
       <Route path="/dashboard" element={<ProtectedShell><DashboardPage /></ProtectedShell>} />
-      <Route path="/requests" element={<ProtectedShell><RequestsPage /></ProtectedShell>} />
+      <Route path="/requests" element={<ProtectedShell><MyRequestsPage /></ProtectedShell>} />
+      <Route path="/requests/new" element={<ProtectedShell><NewEstimateRequestPage /></ProtectedShell>} />
+      <Route path="/requests/:id" element={<ProtectedShell><EstimateDetailPage /></ProtectedShell>} />
 
       <Route path="/catalog/products" element={<ProtectedShell><ProductsPage /></ProtectedShell>} />
       <Route path="/catalog/products/:productId" element={<ProtectedShell><ProductDetailPage /></ProtectedShell>} />
