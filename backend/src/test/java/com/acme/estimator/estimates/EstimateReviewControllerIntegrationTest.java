@@ -82,7 +82,8 @@ class EstimateReviewControllerIntegrationTest {
     private AppUserDetails so1;       // primary SO who claims requests
     private AppUserDetails so2;       // second SO for race-condition cases
     private AppUserDetails requester; // creates Drafts, has no SO role
-    private AppUserDetails admin;     // for the 403 path on /review
+    private AppUserDetails admin;     // Phase 7.5: now SO-equivalent via implication
+    private AppUserDetails requesterOnly; // the new "no access to /review" fixture
 
     private Long seededRateId;
 
@@ -93,6 +94,7 @@ class EstimateReviewControllerIntegrationTest {
         so2 = new AppUserDetails(ensureUserWithRoles("so2-review-test@local", "SO", "Two", "Solution Owner"));
         requester = new AppUserDetails(ensureUserWithRoles("requester-review-test@local", "Req", "User", "Requester"));
         admin = new AppUserDetails(userRepository.findByEmailIgnoreCase("admin@local").orElseThrow());
+        requesterOnly = new AppUserDetails(ensureUserWithRoles("requester-only-review-test@local", "Req", "Only", "Requester"));
 
         // A blended-rate row so approve() can snapshot one. The dev seed
         // doesn't set one in tests; create our own.
@@ -108,7 +110,8 @@ class EstimateReviewControllerIntegrationTest {
     void tearDown() {
         cleanAll();
         for (String email : List.of(
-            "so1-review-test@local", "so2-review-test@local", "requester-review-test@local"
+            "so1-review-test@local", "so2-review-test@local",
+            "requester-review-test@local", "requester-only-review-test@local"
         )) {
             userRepository.findByEmailIgnoreCase(email).ifPresent(userRepository::delete);
         }
@@ -138,11 +141,19 @@ class EstimateReviewControllerIntegrationTest {
     }
 
     @Test
-    void nonSO_returns403() throws Exception {
-        // admin@local has Admin + Requester (from the M5 dev DB); not SO.
-        // The /review endpoints require SOLUTION_OWNER specifically.
-        mvc.perform(get("/api/estimates/review").with(user(admin)))
+    void nonSO_nonAdmin_returns403() throws Exception {
+        // Phase 7.5: the /review endpoints now allow ADMIN OR SO. The 403
+        // path is a Requester-only user (no Admin, no SO). Admin without
+        // SO can hit the queue via the implication — see {@link
+        // adminOnly_canListReviewQueue}.
+        mvc.perform(get("/api/estimates/review").with(user(requesterOnly)))
             .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void adminOnly_canListReviewQueue() throws Exception {
+        mvc.perform(get("/api/estimates/review").with(user(admin)))
+            .andExpect(status().isOk());
     }
 
     // ---- queue scope -------------------------------------------------------

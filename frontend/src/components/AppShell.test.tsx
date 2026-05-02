@@ -47,22 +47,38 @@ function renderShellAt(path: string, pageTitle: string) {
 }
 
 describe("<AppShell>", () => {
-  it("hides the Admin section for users without the Admin role", async () => {
+  it("hides the Admin and Catalog sections for users without the matching roles", async () => {
+    // Phase 7.5: Catalog section is now SO-gated, Admin stays Admin-gated.
+    // An Estimator-only user sees neither (no SO, no Admin). Workspace is
+    // visible because Dashboard has no per-item gate.
     fetchMock.mockResolvedValue(meAs(["Estimator"]));
     renderShellAt("/dashboard", "Dashboard heading");
     await waitFor(() => {
       expect(screen.getByTestId("section-Workspace")).toBeInTheDocument();
     });
-    expect(screen.getByTestId("section-Catalog")).toBeInTheDocument();
+    expect(screen.queryByTestId("section-Catalog")).not.toBeInTheDocument();
     expect(screen.queryByTestId("section-Admin")).not.toBeInTheDocument();
   });
 
-  it("shows the Admin section for an admin user", async () => {
+  it("shows Catalog for Solution Owners (and Admins via implication)", async () => {
+    fetchMock.mockResolvedValue(meAs(["Solution Owner"]));
+    renderShellAt("/dashboard", "Dashboard heading");
+    await waitFor(() => {
+      expect(screen.getByTestId("section-Catalog")).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("section-Admin")).not.toBeInTheDocument();
+  });
+
+  it("shows the Admin section AND every other gated surface for an Admin user", async () => {
+    // Phase 7.5: Admin implies SOLUTION_OWNER + REQUESTER, so Catalog is
+    // also visible even though admin@local has Admin only.
     fetchMock.mockResolvedValue(meAs(["Admin"]));
     renderShellAt("/dashboard", "Dashboard heading");
     await waitFor(() => {
       expect(screen.getByTestId("section-Admin")).toBeInTheDocument();
     });
+    expect(screen.getByTestId("section-Catalog")).toBeInTheDocument();
+    expect(screen.getByTestId("section-Workspace")).toBeInTheDocument();
   });
 
   it("marks the active nav item with the Cardinal Red left bar", async () => {

@@ -27,17 +27,22 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Solution Owner review surface. All endpoints require the SOLUTION_OWNER
- * role; runtime ownership checks (only the current reviewer can approve /
- * reject / release / save state) live in the service.
+ * Solution Owner review surface.
  *
- * <p>Multi-role users are supported (an Admin who is also an SO can hit
- * these endpoints). The Admin send-back path is on a separate
- * controller with its own role gate.
+ * <p>Phase 7.5 broadens the role gate from {@code hasRole('SOLUTION_OWNER')}
+ * to {@code hasAnyRole('ADMIN','SOLUTION_OWNER')}: Admins inherit SO
+ * authority. Within the lifecycle, runtime checks (only the current
+ * reviewer can approve / reject / release / save state) live in the
+ * service — and Admins can override another SO's claim. See
+ * {@link EstimateRequestService#requireInReviewByActor} javadoc for the
+ * carve-out rationale.
+ *
+ * <p>The Admin send-back path is on a separate controller with its own
+ * Admin-only role gate.
  */
 @RestController
 @RequestMapping("/api/estimates/review")
-@PreAuthorize("hasRole('SOLUTION_OWNER')")
+@PreAuthorize("hasAnyRole('ADMIN','SOLUTION_OWNER')")
 @RequiredArgsConstructor
 public class EstimateReviewController {
 

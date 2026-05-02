@@ -7,6 +7,7 @@ import {
 } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, api } from "./api";
+import { hasPermission } from "./permissions";
 import type { CurrentUser } from "./types";
 
 interface AuthContextValue {
@@ -92,6 +93,17 @@ export function useAuth(): AuthContextValue {
   return ctx;
 }
 
+/**
+ * Phase 7.5: delegates to {@code lib/permissions.hasPermission} so that
+ * Admin satisfies every role check. The four existing call sites
+ * (Sidebar / DashboardPage quick links / etc.) get the implication for
+ * free without having to thread role lists through new APIs.
+ *
+ * <p>For the rare case where a check needs to know "is the user
+ * literally an Admin" (e.g. an admin-only "Send back" button), import
+ * {@code isAdmin} from {@code lib/permissions} directly.
+ */
 export function hasRole(user: CurrentUser | null, role: string): boolean {
-  return !!user && user.roles.includes(role);
+  if (!user) return false;
+  return hasPermission(role, user.roles);
 }

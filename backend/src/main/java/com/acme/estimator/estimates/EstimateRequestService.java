@@ -143,19 +143,20 @@ public class EstimateRequestService {
     }
 
     @Transactional(readOnly = true)
-    public EstimateRequestDetail getMyRequest(Long id, User requester) {
-        EstimateRequest request = requireOwnedRequest(id, requester);
-        return toDetail(request, requester);
+    public EstimateRequestDetail getMyRequest(Long id, User actor) {
+        EstimateRequest request = loadVisibleRequest(id, actor);
+        return toDetail(request, actor);
     }
 
     /**
      * Audit feed for the Activity card on the requester's detail page.
-     * Ownership-gated like {@link #getMyRequest} — non-owners get the
-     * 404 from {@link #requireOwnedRequest} so we don't leak existence.
+     * Phase 7.5: visible to the requester OR any Admin. Non-owners who
+     * aren't Admin get the 404 from {@link #loadVisibleRequest} so we
+     * don't leak existence to other Requesters.
      */
     @Transactional(readOnly = true)
-    public List<ChangeLogEntry> myRequestHistory(Long id, User requester) {
-        requireOwnedRequest(id, requester);
+    public List<ChangeLogEntry> myRequestHistory(Long id, User actor) {
+        loadVisibleRequest(id, actor);
         return changeLogRepository.findByEntityTypeAndEntityIdOrderByChangedAtDesc(
             EstimateRequest.ENTITY_TYPE, id
         );
@@ -595,8 +596,15 @@ public class EstimateRequestService {
         return toDetail(request, reviewer);
     }
 
+    /**
+     * Release an In-Review claim. Normally only the current reviewer
+     * can release. Phase 7.5 carve-out: an Admin can release a review
+     * claimed by any other SO — the same safety-valve rationale as
+     * {@link #sendBack}, but for the in-flight state. The actor on the
+     * audit row is whoever performed the release (admin or reviewer).
+     */
     @Transactional
-    public EstimateRequestDetail releaseReview(Long id, User reviewer) {
+    public EstimateRequestDetail releaseReview(Long id, User actor) {
         EstimateRequest request = requestRepository.findById(id)
             .orElseThrow(() -> ApiException.notFound("Estimate request " + id + " not found."));
         if (request.getStatus() != EstimateStatus.IN_REVIEW) {
@@ -606,7 +614,7 @@ public class EstimateRequestService {
                 "Only In Review requests can be released."
             );
         }
-        if (!reviewer.getId().equals(request.getReviewerId())) {
+        if (!actor.isAdmin() && !actor.getId().equals(request.getReviewerId())) {
             throw new ApiException(
                 org.springframework.http.HttpStatus.FORBIDDEN,
                 "NOT_THE_REVIEWER",
@@ -618,9 +626,9 @@ public class EstimateRequestService {
         requestRepository.save(request);
         auditService.recordAction(
             EstimateRequest.ENTITY_TYPE, request.getId(),
-            ChangeAction.REVIEW_RELEASED, reviewer, null
+            ChangeAction.REVIEW_RELEASED, actor, null
         );
-        return toDetail(request, reviewer);
+        return toDetail(request, actor);
     }
 
     @Transactional
@@ -795,6 +803,14 @@ public class EstimateRequestService {
      * Reviewer-side guard: request must exist, be In Review, and be
      * claimed by the calling actor. Used by saveReviewState / approve /
      * reject — every action that only the current reviewer can take.
+     *
+     * <p>Phase 7.5 carve-out: an Admin can perform any of these actions
+     * on a request claimed by any other SO. This is the "Admin override"
+     * companion to {@link #sendBack}: an Admin shouldn't have to claim
+     * the review just to push it through (or stop it). The audit row
+     * still attributes the action to the Admin actor — the actor is the
+     * actor; reviewer_id stays as it was so we don't lose the SO who
+     * was on the hook.
      */
     private EstimateRequest requireInReviewByActor(Long id, User actor) {
         EstimateRequest request = requestRepository.findById(id)
@@ -806,7 +822,7 @@ public class EstimateRequestService {
                 "Request must be In Review for this action."
             );
         }
-        if (!actor.getId().equals(request.getReviewerId())) {
+        if (!actor.isAdmin() && !actor.getId().equals(request.getReviewerId())) {
             throw new ApiException(
                 org.springframework.http.HttpStatus.FORBIDDEN,
                 "NOT_THE_REVIEWER",
@@ -818,9 +834,37 @@ public class EstimateRequestService {
 
     // ---- helpers --------------------------------------------------------
 
+    /**
+     * Strict-owner load. Used for MUTATIONS on Drafts (PATCH /
+     * saveDraftAnswers / submit / discard). Phase 7.5 deliberately does
+     * NOT broaden this to Admin: Drafts are private workspace, and even
+     * an Admin cannot edit-as-user. Admin can VIEW everything via
+     * {@link #loadVisibleRequest}; admin cannot mutate someone else's
+     * Draft.
+     *
+     * <p>The 404 (not 403) is the privacy posture inherited from Phase
+     * 6a — Requesters cannot discover other Requesters' request ids by
+     * probing the endpoint.
+     */
     private EstimateRequest requireOwnedRequest(Long id, User requester) {
         return requestRepository.findByIdAndRequesterId(id, requester.getId())
             .orElseThrow(() -> ApiException.notFound("Estimate request " + id + " not found."));
+    }
+
+    /**
+     * Visibility-load: GET-side counterpart to {@link #requireOwnedRequest}.
+     *
+     * <p>Phase 7.5: Admins inherit Requester authority and can VIEW any
+     * estimate request, regardless of ownership. Non-Admin non-owners
+     * get the privacy 404 — same shape as before, so the Requester
+     * surface keeps its "no leakage of other users' request ids" posture.
+     */
+    private EstimateRequest loadVisibleRequest(Long id, User actor) {
+        if (actor.isAdmin()) {
+            return requestRepository.findById(id)
+                .orElseThrow(() -> ApiException.notFound("Estimate request " + id + " not found."));
+        }
+        return requireOwnedRequest(id, actor);
     }
 
     private void requireDraft(EstimateRequest request) {

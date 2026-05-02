@@ -92,4 +92,19 @@ public class User {
     public boolean hasRole(String roleName) {
         return roles.stream().anyMatch(r -> r.getName().equalsIgnoreCase(roleName));
     }
+
+    /**
+     * Phase 7.5: convenience for the "Admin implies every other role"
+     * authorization model. Service-layer ownership checks read better as
+     * {@code !actor.isAdmin() && request.getRequesterId() != actor.getId()}
+     * than as a long {@code hasRole} chain.
+     *
+     * <p>Note: the implication is at the authorization layer, NOT a
+     * data-write augmentation. {@code user_roles} stays as the actual
+     * list of roles assigned; this method just answers "does the actor
+     * literally have Admin." See CLAUDE.md "Phase 7.5" notes.
+     */
+    public boolean isAdmin() {
+        return hasRole("Admin");
+    }
 }

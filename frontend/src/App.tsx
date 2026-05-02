@@ -1,6 +1,8 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { AppShell } from "./components/AppShell";
 import { AuthGuard } from "./components/AuthGuard";
+import { RoleGuard } from "./components/RoleGuard";
+import { ROLE_ADMIN, ROLE_REQUESTER, ROLE_SOLUTION_OWNER } from "./lib/types";
 import { LoginPage } from "./pages/LoginPage";
 import { TemplateHistoryPage } from "./pages/placeholders";
 import { DashboardPage } from "./pages/DashboardPage";
@@ -28,6 +30,29 @@ function ProtectedShell({ children }: { children: React.ReactNode }) {
   );
 }
 
+/**
+ * Phase 7.5 — three-line wrapper that pairs AuthGuard (logged in) with
+ * RoleGuard (logged in AND has the required role, with Admin
+ * implication). Use it instead of {@code ProtectedShell} for any route
+ * that should be role-gated. Routes everyone-with-an-account can hit
+ * (Dashboard) keep using {@code ProtectedShell}.
+ */
+function RoleProtectedShell({
+  requires,
+  children,
+}: {
+  requires: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <AuthGuard>
+      <AppShell>
+        <RoleGuard requires={requires}>{children}</RoleGuard>
+      </AppShell>
+    </AuthGuard>
+  );
+}
+
 export default function App() {
   return (
     <Routes>
@@ -36,25 +61,32 @@ export default function App() {
 
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
 
+      {/* Dashboard visible to every authenticated user (the page itself
+          adapts content by role). */}
       <Route path="/dashboard" element={<ProtectedShell><DashboardPage /></ProtectedShell>} />
-      <Route path="/requests" element={<ProtectedShell><MyRequestsPage /></ProtectedShell>} />
-      <Route path="/requests/new" element={<ProtectedShell><NewEstimateRequestPage /></ProtectedShell>} />
-      <Route path="/requests/:id" element={<ProtectedShell><EstimateDetailPage /></ProtectedShell>} />
 
-      <Route path="/review" element={<ProtectedShell><ReviewQueuePage /></ProtectedShell>} />
-      <Route path="/review/:id" element={<ProtectedShell><ReviewScreenPage /></ProtectedShell>} />
+      {/* Requester surface — Admins inherit. */}
+      <Route path="/requests" element={<RoleProtectedShell requires={ROLE_REQUESTER}><MyRequestsPage /></RoleProtectedShell>} />
+      <Route path="/requests/new" element={<RoleProtectedShell requires={ROLE_REQUESTER}><NewEstimateRequestPage /></RoleProtectedShell>} />
+      <Route path="/requests/:id" element={<RoleProtectedShell requires={ROLE_REQUESTER}><EstimateDetailPage /></RoleProtectedShell>} />
 
-      <Route path="/catalog/products" element={<ProtectedShell><ProductsPage /></ProtectedShell>} />
-      <Route path="/catalog/products/:productId" element={<ProtectedShell><ProductDetailPage /></ProtectedShell>} />
-      <Route path="/catalog/products/:productId/sub-features/:subFeatureId" element={<ProtectedShell><SubFeatureDetailPage /></ProtectedShell>} />
-      <Route path="/catalog/questions" element={<ProtectedShell><QuestionsBrowserPage /></ProtectedShell>} />
-      <Route path="/catalog/template-history" element={<ProtectedShell><TemplateHistoryPage /></ProtectedShell>} />
+      {/* Reviewer surface — Admins inherit. */}
+      <Route path="/review" element={<RoleProtectedShell requires={ROLE_SOLUTION_OWNER}><ReviewQueuePage /></RoleProtectedShell>} />
+      <Route path="/review/:id" element={<RoleProtectedShell requires={ROLE_SOLUTION_OWNER}><ReviewScreenPage /></RoleProtectedShell>} />
 
-      <Route path="/admin/teams" element={<ProtectedShell><TeamsPage /></ProtectedShell>} />
-      <Route path="/admin/phases" element={<ProtectedShell><SdlcPhasesPage /></ProtectedShell>} />
-      <Route path="/admin/rates" element={<ProtectedShell><BlendedRatesPage /></ProtectedShell>} />
-      <Route path="/admin/users" element={<ProtectedShell><UsersPage /></ProtectedShell>} />
-      <Route path="/admin/change-log" element={<ProtectedShell><ChangeLogPage /></ProtectedShell>} />
+      {/* Catalog surface — Admins inherit. */}
+      <Route path="/catalog/products" element={<RoleProtectedShell requires={ROLE_SOLUTION_OWNER}><ProductsPage /></RoleProtectedShell>} />
+      <Route path="/catalog/products/:productId" element={<RoleProtectedShell requires={ROLE_SOLUTION_OWNER}><ProductDetailPage /></RoleProtectedShell>} />
+      <Route path="/catalog/products/:productId/sub-features/:subFeatureId" element={<RoleProtectedShell requires={ROLE_SOLUTION_OWNER}><SubFeatureDetailPage /></RoleProtectedShell>} />
+      <Route path="/catalog/questions" element={<RoleProtectedShell requires={ROLE_SOLUTION_OWNER}><QuestionsBrowserPage /></RoleProtectedShell>} />
+      <Route path="/catalog/template-history" element={<RoleProtectedShell requires={ROLE_SOLUTION_OWNER}><TemplateHistoryPage /></RoleProtectedShell>} />
+
+      {/* Admin surface — explicit Admin requirement (no implication needed; Admin IS the bar). */}
+      <Route path="/admin/teams" element={<RoleProtectedShell requires={ROLE_ADMIN}><TeamsPage /></RoleProtectedShell>} />
+      <Route path="/admin/phases" element={<RoleProtectedShell requires={ROLE_ADMIN}><SdlcPhasesPage /></RoleProtectedShell>} />
+      <Route path="/admin/rates" element={<RoleProtectedShell requires={ROLE_ADMIN}><BlendedRatesPage /></RoleProtectedShell>} />
+      <Route path="/admin/users" element={<RoleProtectedShell requires={ROLE_ADMIN}><UsersPage /></RoleProtectedShell>} />
+      <Route path="/admin/change-log" element={<RoleProtectedShell requires={ROLE_ADMIN}><ChangeLogPage /></RoleProtectedShell>} />
 
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>

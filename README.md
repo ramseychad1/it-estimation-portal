@@ -2,7 +2,7 @@
 
 Internal tool used by HealthCare Development Group, Inc. to produce work estimates for pre-defined products, features, and enhancements. Solution Owners maintain a versioned catalog of Products, Sub-features, Critical Questions, and Estimate Templates; Admins configure Teams, SDLC Phases, blended rates, and users; Requesters submit estimate requests against the catalog and Solution Owners review, override, and approve them. Every mutation lands in a full audit trail.
 
-**Status:** Phases 0 through 7 shipped. Authentication, full admin surface (Teams, SDLC Phases, Blended Rates, Users & Roles, Invitations, Change Log), the Solution Owner catalog (Products, Sub-features, Critical Questions, Estimate Templates with grid + paste + version-on-save), the Requester workflow (multi-step new request, My Requests list, detail page), the Reviewer workflow (review queue, review screen with complexity + per-cell overrides + autosave + approve/reject, admin send-back), and the role-aware Dashboard (stat cards, activity feed with All/Just-mine toggle, quick links) are all live. Only `/catalog/template-history` remains a placeholder, intentionally.
+**Status:** Phases 0 through 7.5 shipped. Authentication, full admin surface (Teams, SDLC Phases, Blended Rates, Users & Roles, Invitations, Change Log), the Solution Owner catalog (Products, Sub-features, Critical Questions, Estimate Templates with grid + paste + version-on-save), the Requester workflow (multi-step new request, My Requests list, detail page), the Reviewer workflow (review queue, review screen with complexity + per-cell overrides + autosave + approve/reject, admin send-back), the role-aware Dashboard (stat cards, activity feed with All/Just-mine toggle, quick links), and the Phase 7.5 admin-implies-everything authorization model (Admin can view any estimate request, claim/release/approve/reject any review, browse the catalog — but cannot edit-as-user on someone else's Draft) are all live. Only `/catalog/template-history` remains a placeholder, intentionally.
 
 ---
 
@@ -79,6 +79,14 @@ No GraphQL, no JWT, no Redux, no Next.js, no UI component libraries beyond Tailw
 - **Refresh contract** — manual `Refresh` button invalidates the `['dashboard']` query prefix; React Query's `refetchOnWindowFocus` handles "user came back to the tab" automatically. No polling, no SSE.
 - **17 new backend integration tests** + **9 new frontend tests** covering role-driven card visibility, permission-filtered feed, and quick-link role gating
 
+**Admin privilege model (Phase 7.5)**
+- **Admin role implies every other role** for authorization purposes — at the `@PreAuthorize` and service-layer ownership-check layer, NOT a data-write augmentation. `user_roles` data stays as-is; the implication answers "does this actor have permission to do X." Admin can view any estimate request, claim/release/approve/reject any review, browse the catalog. Same URL for everyone — no `/admin/estimates/:id` parallel route.
+- **Carve-out: Admin cannot EDIT-AS-USER on someone else's private workspace.** Admin can VIEW any Draft, but PATCH / submit / discard / saveDraftAnswers stay strictly owner-only (404 otherwise — keeps the privacy posture from Phase 6a). Admin can submit their OWN drafts.
+- **Carve-out: Admin override on in-flight reviews.** Admin can release / approve / reject a review claimed by another SO without having to claim it first. Audit row attributes the action to the Admin actor; reviewer_id stays as the original SO so we don't lose the SO who was on the hook.
+- **Last-admin protection unchanged.** Operates on actual Admin role count, not effective permissions. The only Admin still cannot demote themselves.
+- **Frontend**: new `lib/permissions.ts` (`hasPermission` + `isAdmin`) is the canonical access check. `lib/auth.tsx`'s `hasRole()` delegates so existing call sites get the implication for free. New `RoleGuard` component wraps protected-by-role routes — signed-in but lacking permission renders an in-place no-access panel (preserves the URL). `RoleCheckboxList` now auto-checks and locks the other role boxes when Admin is selected, with an "Admin role includes all permissions." tooltip and "(included with Admin)" italic annotation.
+- **8 new backend `AdminPrivilegeTest` cases** + **12 new frontend tests** (7 permissions + 5 RoleCheckboxList) + AppShell tests updated for the new Catalog gate
+
 ---
 
 ## Prerequisites
@@ -129,10 +137,10 @@ These are dev-only credentials. Production must use injected secrets and rotated
 ## Running tests
 
 ```bash
-# Backend — currently 241 tests
+# Backend — currently 251 tests
 cd backend && ./mvnw test
 
-# Frontend — currently 165 tests
+# Frontend — currently 178 tests
 cd frontend && npm test -- --run
 
 # Frontend type-check only
@@ -185,7 +193,7 @@ backend/                      Spring Boot project (Maven)
   src/main/resources/
     application.yml
     db/migration/             V1–V11 SQL migrations
-  src/test/...                JUnit + Spring Boot Test (241 tests)
+  src/test/...                JUnit + Spring Boot Test (251 tests)
   .settings/                  IDE-local Eclipse JDT prefs (gitignored) — silences
                               JDT null-analysis noise; keeps real-bug catchers on;
                               forces -parameters generation in IDE incremental compile
@@ -199,7 +207,7 @@ frontend/                     React + Vite + TS + Tailwind
                               CopyToClipboardButton, UserCell, UserAvatar, BrandMark,
                               SearchInput, FormField, Stepper, ComplexitySelector,
                               JustificationField, DashboardCards (StatCard +
-                              QuickLinkTile), inputs, buttons, ...)
+                              QuickLinkTile), RoleGuard, inputs, buttons, ...)
     components/data-table/    DataTable
     components/hours/         Phase 5b + 6b grid (HoursCell, HoursRow, HoursGrid,
                               ReadOnlyCell, columns) — discriminated-union mode prop
@@ -218,7 +226,7 @@ frontend/                     React + Vite + TS + Tailwind
     lib/estimateMath.ts       Phase 6b cost helpers (displayedRow, totalCostForLines, ...)
     lib/useUnsavedChangesGuard.ts  beforeunload prompt while form is dirty
     styles/tokens.css         Design tokens (verbatim from handoff bundle)
-  src/test/...                Vitest + RTL (165 tests)
+  src/test/...                Vitest + RTL (178 tests)
 
 docker/
   docker-compose.yml          Postgres only — backend & frontend run on host

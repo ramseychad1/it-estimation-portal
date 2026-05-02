@@ -99,7 +99,8 @@ class EstimateRequestControllerIntegrationTest {
     @Autowired private PasswordEncoder passwordEncoder;
     @PersistenceContext private EntityManager em;
 
-    private AppUserDetails admin;             // no Requester role → 403 path
+    private AppUserDetails admin;             // Admin only — Phase 7.5 lets Admin in via implication
+    private AppUserDetails estimatorOnly;     // Estimator role only — the new no-access fixture
     private AppUserDetails requester;
     private AppUserDetails otherRequester;
 
@@ -116,6 +117,9 @@ class EstimateRequestControllerIntegrationTest {
         otherRequester = new AppUserDetails(
             ensureRequesterUser("other-requester-controller-test@local", "Other", "Requester")
         );
+        estimatorOnly = new AppUserDetails(
+            ensureUserWithRole("estimator-only-controller-test@local", "Est", "Only", (short) 3)
+        );
     }
 
     @AfterEach
@@ -124,6 +128,8 @@ class EstimateRequestControllerIntegrationTest {
         userRepository.findByEmailIgnoreCase("requester-controller-test@local")
             .ifPresent(userRepository::delete);
         userRepository.findByEmailIgnoreCase("other-requester-controller-test@local")
+            .ifPresent(userRepository::delete);
+        userRepository.findByEmailIgnoreCase("estimator-only-controller-test@local")
             .ifPresent(userRepository::delete);
     }
 
@@ -148,11 +154,21 @@ class EstimateRequestControllerIntegrationTest {
     }
 
     @Test
-    void nonRequester_returns403() throws Exception {
-        // admin@local has Admin role only — NOT Requester. The endpoint
-        // rejects with 403 even though the request is fully authenticated.
-        mvc.perform(get("/api/estimates/my").with(user(admin)))
+    void nonRequester_nonAdmin_returns403() throws Exception {
+        // Phase 7.5: Admin now inherits Requester authority via
+        // hasAnyRole('ADMIN','REQUESTER'). The 403 path is now an
+        // Estimator-only user — a role with no Admin / Requester / SO.
+        mvc.perform(get("/api/estimates/my").with(user(estimatorOnly)))
             .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void adminOnly_canListMyRequests() throws Exception {
+        // Phase 7.5 implication: admin@local has Admin only, but Admin
+        // now satisfies the Requester role gate. List should return 200
+        // with their (empty) request set.
+        mvc.perform(get("/api/estimates/my").with(user(admin)))
+            .andExpect(status().isOk());
     }
 
     // ---- create Draft (atomic / container / inactive) ----------------------
@@ -596,6 +612,21 @@ class EstimateRequestControllerIntegrationTest {
             u.setLastName(last);
             u.setActive(true);
             u.setRoles(new HashSet<>(List.of(requesterRole)));
+            return userRepository.save(u);
+        });
+    }
+
+    private User ensureUserWithRole(String email, String first, String last, short roleId) {
+        return userRepository.findByEmailIgnoreCase(email).orElseGet(() -> {
+            Role role = em.find(Role.class, roleId);
+            if (role == null) throw new IllegalStateException("Role id " + roleId + " missing");
+            User u = new User();
+            u.setEmail(email);
+            u.setPasswordHash(passwordEncoder.encode("ChangeMe123!"));
+            u.setFirstName(first);
+            u.setLastName(last);
+            u.setActive(true);
+            u.setRoles(new HashSet<>(List.of(role)));
             return userRepository.save(u);
         });
     }

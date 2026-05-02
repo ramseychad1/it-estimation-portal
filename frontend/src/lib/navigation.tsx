@@ -13,7 +13,7 @@ import {
   Users,
 } from "lucide-react";
 import type { ComponentType, SVGProps } from "react";
-import { ROLE_ADMIN, ROLE_SOLUTION_OWNER } from "./types";
+import { ROLE_ADMIN, ROLE_REQUESTER, ROLE_SOLUTION_OWNER } from "./types";
 
 export interface NavItem {
   label: string;
@@ -40,7 +40,10 @@ export const NAV_SECTIONS: NavSection[] = [
     label: "Workspace",
     items: [
       { label: "Dashboard", to: "/dashboard", icon: ChartLine },
-      { label: "Estimate requests", to: "/requests", icon: ClipboardList },
+      // Phase 7.5: per-item Requester gate. Sidebar's filter pipeline
+      // calls hasRole() (which delegates to permissions.hasPermission)
+      // so Admins inherit and still see this item.
+      { label: "Estimate requests", to: "/requests", icon: ClipboardList, requiresRole: ROLE_REQUESTER },
       // Phase 6b — SO-only review queue, gated per-item rather than by
       // section since Workspace also carries Requester-only surfaces.
       { label: "Review queue", to: "/review", icon: Inbox, requiresRole: ROLE_SOLUTION_OWNER },
@@ -48,6 +51,8 @@ export const NAV_SECTIONS: NavSection[] = [
   },
   {
     label: "Catalog",
+    // Phase 7.5: section-level SO gate. Admin inherits via implication.
+    requiresRole: ROLE_SOLUTION_OWNER,
     items: [
       { label: "Products", to: "/catalog/products", icon: Package },
       { label: "Critical questions", to: "/catalog/questions", icon: HelpCircle },

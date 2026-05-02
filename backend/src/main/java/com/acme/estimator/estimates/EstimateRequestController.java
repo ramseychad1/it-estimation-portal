@@ -32,17 +32,22 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Requester-only surface for estimate requests.
+ * Requester surface for estimate requests.
  *
- * <p>Every endpoint requires the {@code REQUESTER} role. Multi-role
- * users are supported (an Admin who is also a Requester can call these
- * endpoints; an Admin without the Requester role gets 403). The
- * Reviewer surface (Phase 6b) lives at a separate route prefix with its
- * own role check.
+ * <p>Phase 7.5 broadens the role gate from {@code hasRole('REQUESTER')}
+ * to {@code hasAnyRole('ADMIN','REQUESTER')}: Admins inherit Requester
+ * authority and can hit these endpoints. Within the service, individual
+ * GETs are scoped to "owner OR admin" via {@code loadVisibleRequest};
+ * mutations on Drafts (PATCH / submit / discard / saveDraftAnswers) stay
+ * strictly owner-only — Admin can VIEW everything but cannot
+ * EDIT-AS-USER.
+ *
+ * <p>The Reviewer surface (Phase 6b) lives at a separate route prefix
+ * with its own role check.
  */
 @RestController
 @RequestMapping("/api/estimates/my")
-@PreAuthorize("hasRole('REQUESTER')")
+@PreAuthorize("hasAnyRole('ADMIN','REQUESTER')")
 @RequiredArgsConstructor
 public class EstimateRequestController {
 
