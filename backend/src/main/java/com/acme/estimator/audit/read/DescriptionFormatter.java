@@ -34,8 +34,18 @@ public final class DescriptionFormatter {
         if (isSelfAction(action, entityType, actorId, entityId)) {
             return formatSelfAction(actorName, action);
         }
-        String verb = ChangeLogLabels.verbFor(action);
         String typeLabel = ChangeLogLabels.forEntityType(entityType);
+        // SENT_BACK is split — the verb wraps around the entity name
+        // ("Sarah sent Estimate request 'X' back for re-review"). The
+        // default {actor} {verb} {type} {name} template would render it
+        // as "Sarah sent back for re-review Estimate request 'X'", which
+        // is grammatically wrong. Special-cased here rather than baking
+        // the wrap-around into ChangeLogLabels because it's the only
+        // verb that needs the split today.
+        if (action == ChangeAction.SENT_BACK) {
+            return actorName + " sent " + typeLabel + " '" + entityName + "' back for re-review";
+        }
+        String verb = ChangeLogLabels.verbFor(action);
         return actorName + " " + verb + " " + typeLabel + " '" + entityName + "'";
     }
 

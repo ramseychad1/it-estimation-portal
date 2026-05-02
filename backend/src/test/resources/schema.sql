@@ -227,12 +227,16 @@ CREATE TABLE estimate_requests (
     justification   TEXT,
     submitted_at    TIMESTAMP WITH TIME ZONE,
     reviewed_at     TIMESTAMP WITH TIME ZONE,
+    -- Phase 6b: snapshot of the blended rate effective at approval time.
+    approved_blended_rate_id BIGINT,
     created_at      TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at      TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT estimate_requests_pk PRIMARY KEY (id),
     CONSTRAINT estimate_requests_product_fk FOREIGN KEY (product_id) REFERENCES products (id),
     CONSTRAINT estimate_requests_sub_feature_fk FOREIGN KEY (sub_feature_id) REFERENCES sub_features (id),
     CONSTRAINT estimate_requests_template_fk FOREIGN KEY (template_id) REFERENCES estimate_templates (id),
+    CONSTRAINT estimate_requests_blended_rate_fk
+        FOREIGN KEY (approved_blended_rate_id) REFERENCES blended_rates (id),
     CONSTRAINT estimate_requests_status_chk
         CHECK (status IN ('DRAFT', 'SUBMITTED', 'IN_REVIEW', 'APPROVED', 'REJECTED')),
     CONSTRAINT estimate_requests_complexity_chk

@@ -1,5 +1,6 @@
 package com.acme.estimator.estimates;
 
+import java.util.List;
 import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -18,6 +19,11 @@ public interface EstimateRequestRepository
     /** Strict ownership: 404 if not owned by this requester, no leak. */
     Optional<EstimateRequest> findByIdAndRequesterId(Long id, Long requesterId);
 
-    /** Phase 6b's review queue. */
+    /** Phase 6b's review queue — single-status flavour (legacy of the 6a stub). */
     Page<EstimateRequest> findByStatusOrderBySubmittedAtAsc(EstimateStatus status, Pageable pageable);
+
+    /** Phase 6b's review queue — covers both SUBMITTED and IN_REVIEW so SOs see their claimed work. */
+    Page<EstimateRequest> findByStatusInOrderBySubmittedAtAsc(
+        List<EstimateStatus> statuses, Pageable pageable
+    );
 }

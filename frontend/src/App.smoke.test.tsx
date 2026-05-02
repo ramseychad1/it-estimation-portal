@@ -143,6 +143,8 @@ const ROUTES = [
   "/requests",
   "/requests/new",
   "/requests/1",
+  "/review",
+  "/review/1",
   "/catalog/products",
   "/catalog/products/1",
   "/catalog/products/1/sub-features/1",

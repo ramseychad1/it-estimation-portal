@@ -61,8 +61,27 @@ class BlendedRateControllerIntegrationTest {
     }
 
     @Test
-    void nonAdmin_returns403() throws Exception {
-        mvc.perform(get("/api/admin/rates").with(user(estimator))).andExpect(status().isForbidden());
+    void nonAdminPost_returns403() throws Exception {
+        // Mutations stay admin-only post-Phase-6b. estimator@local has
+        // Solution Owner + Estimator roles; neither grants POST access.
+        mvc.perform(post("/api/admin/rates").with(user(estimator)).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(Map.of(
+                    "onshoreRate", "100",
+                    "offshoreRate", "40",
+                    "effectiveDate", LocalDate.now().plusDays(1).toString(),
+                    "confirmationAcknowledged", true
+                ))))
+            .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void solutionOwnerGet_isAllowed() throws Exception {
+        // Phase 6b: GET /api/admin/rates opened to SOs so the review
+        // screen's cost preview can pull current rates without inventing
+        // a new endpoint. POST/PATCH/DELETE stay admin-only above.
+        mvc.perform(get("/api/admin/rates").with(user(estimator)))
+            .andExpect(status().isOk());
     }
 
     // ---- read ----------------------------------------------------------

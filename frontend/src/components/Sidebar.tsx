@@ -10,9 +10,16 @@ interface SidebarProps {
 
 export function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const { user } = useAuth();
-  const sections = NAV_SECTIONS.filter(
-    (s) => !s.requiresRole || hasRole(user, s.requiresRole),
-  );
+  // Filter sections by the section-level role gate, then filter items
+  // within each visible section by the per-item gate (Phase 6b: SO-only
+  // /review item lives inside the role-mixed Workspace section).
+  const sections = NAV_SECTIONS
+    .filter((s) => !s.requiresRole || hasRole(user, s.requiresRole))
+    .map((s) => ({
+      ...s,
+      items: s.items.filter((it) => !it.requiresRole || hasRole(user, it.requiresRole)),
+    }))
+    .filter((s) => s.items.length > 0);
 
   return (
     <aside

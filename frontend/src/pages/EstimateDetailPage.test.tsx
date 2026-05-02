@@ -20,6 +20,12 @@ interface MockDetail {
   submittedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  // Phase 6b extensions — drive the Approved + Rejected views.
+  complexity?: "LOW" | "MED" | "HIGH" | null;
+  justification?: string | null;
+  reviewerName?: string | null;
+  reviewedAt?: string | null;
+  approvedBlendedRateId?: number | null;
   phaseLines: Array<{
     sdlcPhaseId: number;
     sdlcPhaseName: string;
@@ -70,13 +76,16 @@ function detailResponse(d: MockDetail) {
     subFeatureName: d.subFeatureName,
     templateId: d.templateId,
     templateVersionNumber: d.templateVersionNumber,
-    complexity: null,
+    complexity: d.complexity ?? null,
     status: d.status,
     requesterId: d.requesterId,
-    reviewerId: null,
-    justification: null,
+    reviewerId: d.reviewerName ? 50 : null,
+    reviewerName: d.reviewerName ?? null,
+    reviewerStatus: d.reviewerName ? "other-so" : "unclaimed",
+    justification: d.justification ?? null,
     submittedAt: d.submittedAt,
-    reviewedAt: null,
+    reviewedAt: d.reviewedAt ?? null,
+    approvedBlendedRateId: d.approvedBlendedRateId ?? null,
     createdAt: d.createdAt,
     updatedAt: d.updatedAt,
     phaseLines: d.phaseLines,
@@ -101,6 +110,19 @@ function installRouter() {
       }));
     }
     if (path === "/api/health") return Promise.resolve(jsonResponse({ status: "ok" }));
+
+    if (path === "/api/admin/rates") {
+      // Current blended rates — the Approved view's cost section pulls
+      // these. Test fixture: $125/$45 onshore/offshore effective Apr 1.
+      return Promise.resolve(jsonResponse({
+        current: {
+          id: 1, onshoreRate: "125.00", offshoreRate: "45.00",
+          effectiveDate: "2026-04-01", note: null, createdAt: null, createdBy: null,
+          current: true, scheduled: false,
+        },
+        history: { items: [], page: 0, size: 1, totalElements: 1, totalPages: 1 },
+      }));
+    }
 
     const detailMatch = path.match(/^\/api\/estimates\/my\/(\d+)$/);
     if (detailMatch) {
@@ -247,5 +269,150 @@ describe("<EstimateDetailPage>", () => {
     // doesn't-exist with belongs-to-someone-else on purpose.
     expect(screen.queryByText(/access denied/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/forbidden/i)).not.toBeInTheDocument();
+  });
+
+  // ---- Phase 6b additions: Approved + Rejected populated views -----------
+
+  it("Approved state renders complexity pill, approved banner, justification block, and total cost", async () => {
+    detail = {
+      id: 10,
+      title: "Approved Request",
+      description: "Validated context",
+      productName: "Member Portal",
+      subFeatureName: null,
+      templateId: 5,
+      templateVersionNumber: 3,
+      status: "APPROVED",
+      complexity: "MED",
+      justification: "Validated answers; Medium complexity is correct here.",
+      reviewerName: "SO Smith",
+      reviewedAt: "2026-04-20T00:00:00Z",
+      approvedBlendedRateId: 1,
+      requesterId: 1,
+      submittedAt: "2026-04-15T00:00:00Z",
+      createdAt: "2026-04-10T00:00:00Z",
+      updatedAt: "2026-04-20T00:00:00Z",
+      phaseLines: [
+        {
+          sdlcPhaseId: 1, sdlcPhaseName: "Discovery", displayOrder: 1,
+          onshoreLow: 5, onshoreMed: 10, onshoreHigh: 15,
+          offshoreLow: 2, offshoreMed: 4, offshoreHigh: 6,
+          onshoreOverride: null, offshoreOverride: null,
+        },
+        {
+          sdlcPhaseId: 2, sdlcPhaseName: "Build", displayOrder: 2,
+          onshoreLow: 40, onshoreMed: 80, onshoreHigh: 120,
+          offshoreLow: 20, offshoreMed: 40, offshoreHigh: 60,
+          onshoreOverride: null, offshoreOverride: null,
+        },
+      ],
+      answers: [],
+    };
+
+    renderAt("10");
+
+    expect(await screen.findByRole("heading", { name: "Approved Request", level: 1 })).toBeInTheDocument();
+    // Approved banner with reviewer name.
+    expect(await screen.findByText(/Approved by/i)).toBeInTheDocument();
+    expect(screen.getByText("SO Smith")).toBeInTheDocument();
+    // Complexity pill prominently displayed.
+    expect(screen.getByText("Medium")).toBeInTheDocument();
+    // Justification under "Reviewer's justification" label.
+    expect(screen.getByText(/Reviewer's justification/i)).toBeInTheDocument();
+    expect(screen.getByText(/Validated answers; Medium complexity is correct here\./i)).toBeInTheDocument();
+    // Total hours: MED column → onshoreMed (10+80=90) + offshoreMed (4+40=44) = 134.
+    await waitFor(() => {
+      expect(screen.getByText(/134 hours/i)).toBeInTheDocument();
+    });
+    // Total cost: 90 onshore × $125 + 44 offshore × $45 = $11,250 + $1,980 = $13,230.
+    expect(screen.getByText(/\$13,230/i)).toBeInTheDocument();
+    // Rate-effective-date disclaimer.
+    expect(screen.getByText(/blended rates effective 2026-04-01/i)).toBeInTheDocument();
+  });
+
+  it("Rejected state renders rejection reason in a quoted block under Rejection reason label", async () => {
+    detail = {
+      id: 11,
+      title: "Rejected Request",
+      description: null,
+      productName: "Member Portal",
+      subFeatureName: null,
+      templateId: 5,
+      templateVersionNumber: 2,
+      status: "REJECTED",
+      complexity: null,
+      justification: "Question 2 needs more detail before this can be approved.",
+      reviewerName: "SO Brown",
+      reviewedAt: "2026-04-22T00:00:00Z",
+      approvedBlendedRateId: null,
+      requesterId: 1,
+      submittedAt: "2026-04-15T00:00:00Z",
+      createdAt: "2026-04-10T00:00:00Z",
+      updatedAt: "2026-04-22T00:00:00Z",
+      phaseLines: [
+        {
+          sdlcPhaseId: 1, sdlcPhaseName: "Discovery", displayOrder: 1,
+          onshoreLow: 5, onshoreMed: 10, onshoreHigh: 15,
+          offshoreLow: 2, offshoreMed: 4, offshoreHigh: 6,
+          onshoreOverride: null, offshoreOverride: null,
+        },
+      ],
+      answers: [],
+    };
+
+    renderAt("11");
+
+    expect(await screen.findByRole("heading", { name: "Rejected Request", level: 1 })).toBeInTheDocument();
+    // Amber-tint rejection banner.
+    expect(await screen.findByText(/Rejected by/i)).toBeInTheDocument();
+    expect(screen.getByText("SO Brown")).toBeInTheDocument();
+    // Quoted-style justification under "Rejection reason" label.
+    expect(screen.getByText(/Rejection reason/i)).toBeInTheDocument();
+    expect(screen.getByText(/Question 2 needs more detail/i)).toBeInTheDocument();
+    // Cost section is approval-only — should NOT appear on Rejected.
+    expect(screen.queryByText(/Estimated total/i)).not.toBeInTheDocument();
+  });
+
+  it("Override values display with the 'Override' tag and contribute to row total", async () => {
+    detail = {
+      id: 12,
+      title: "Override Display",
+      description: null,
+      productName: "Member Portal",
+      subFeatureName: null,
+      templateId: 5,
+      templateVersionNumber: 2,
+      status: "APPROVED",
+      complexity: "MED",
+      justification: "Build will need extra onshore.",
+      reviewerName: "SO Lee",
+      reviewedAt: "2026-04-25T00:00:00Z",
+      approvedBlendedRateId: 1,
+      requesterId: 1,
+      submittedAt: "2026-04-15T00:00:00Z",
+      createdAt: "2026-04-10T00:00:00Z",
+      updatedAt: "2026-04-25T00:00:00Z",
+      phaseLines: [
+        {
+          sdlcPhaseId: 1, sdlcPhaseName: "Build", displayOrder: 1,
+          onshoreLow: 40, onshoreMed: 80, onshoreHigh: 120,
+          offshoreLow: 20, offshoreMed: 40, offshoreHigh: 60,
+          // Onshore Med override: 80 → 100 (delta +20).
+          onshoreOverride: 100, offshoreOverride: null,
+        },
+      ],
+      answers: [],
+    };
+
+    renderAt("12");
+
+    expect(await screen.findByRole("heading", { name: "Override Display", level: 1 })).toBeInTheDocument();
+    // The "Override" pill renders next to the overridden value (case-insensitive
+    // match because the pill renders uppercase).
+    await waitFor(() => {
+      expect(screen.getByText(/^Override$/i)).toBeInTheDocument();
+    });
+    // Total hours: 100 onshore (override) + 40 offshore = 140.
+    expect(screen.getByText(/140 hours/i)).toBeInTheDocument();
   });
 });

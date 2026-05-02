@@ -64,6 +64,21 @@ public class AuditService {
         return true;
     }
 
+    /**
+     * Generic state-transition recorder for actions that don't have a
+     * dedicated convenience method (Phase 6b: SUBMITTED, REVIEW_STARTED,
+     * REVIEW_RELEASED, APPROVED, REJECTED, SENT_BACK). The {@code notes}
+     * slot carries any human-readable extras (e.g. "Approved with
+     * complexity=MED, blended rates v3"). No old/new value diff — these
+     * are state-machine transitions, not field edits.
+     */
+    @Transactional(propagation = Propagation.REQUIRED)
+    public void recordAction(
+        String entityType, Long entityId, ChangeAction action, User actor, String notes
+    ) {
+        save(entityType, entityId, action, null, null, null, actor, notes);
+    }
+
     @Transactional(propagation = Propagation.REQUIRED)
     public void recordReordered(
         String entityType, Long entityId, Integer oldOrder, Integer newOrder, User actor

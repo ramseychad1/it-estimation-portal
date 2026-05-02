@@ -5,6 +5,7 @@ import {
   GitBranch,
   HelpCircle,
   History,
+  Inbox,
   Layers,
   Package,
   Receipt,
@@ -12,12 +13,19 @@ import {
   Users,
 } from "lucide-react";
 import type { ComponentType, SVGProps } from "react";
-import { ROLE_ADMIN } from "./types";
+import { ROLE_ADMIN, ROLE_SOLUTION_OWNER } from "./types";
 
 export interface NavItem {
   label: string;
   to: string;
   icon: ComponentType<SVGProps<SVGSVGElement>>;
+  /**
+   * Optional role gate for individual nav items. When the section as a
+   * whole isn't role-gated (Workspace mixes Requester-only and SO-only
+   * surfaces), per-item gates keep each link visible to the right
+   * audience without splitting the section.
+   */
+  requiresRole?: string;
 }
 
 export interface NavSection {
@@ -33,6 +41,9 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       { label: "Dashboard", to: "/dashboard", icon: ChartLine },
       { label: "Estimate requests", to: "/requests", icon: ClipboardList },
+      // Phase 6b — SO-only review queue, gated per-item rather than by
+      // section since Workspace also carries Requester-only surfaces.
+      { label: "Review queue", to: "/review", icon: Inbox, requiresRole: ROLE_SOLUTION_OWNER },
     ],
   },
   {

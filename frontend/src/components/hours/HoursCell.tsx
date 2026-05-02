@@ -6,6 +6,7 @@ import {
   useState,
   type ClipboardEvent as ReactClipboardEvent,
   type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
 } from "react";
 
 export interface HoursCellHandle {
@@ -28,6 +29,15 @@ interface HoursCellProps {
   /** Multi-cell paste callback — see HoursGrid.handlePasteAt. */
   onPasteMulti?: (rows: (number | null)[][]) => void;
   disabled?: boolean;
+  /**
+   * Optional element rendered absolutely on top of the cell. Used in
+   * reviewer mode to surface an override marker + revert button on cells
+   * whose value differs from the snapshot. The cell itself doesn't know
+   * the snapshot — the parent renders the overlay.
+   */
+  overlay?: ReactNode;
+  /** Tooltip on the input (e.g. "Original: 12" when overridden). */
+  title?: string;
 }
 
 /**
@@ -45,7 +55,7 @@ interface HoursCellProps {
  * single-cell paste falls through to standard input behaviour.
  */
 export const HoursCell = forwardRef<HoursCellHandle, HoursCellProps>(function HoursCell(
-  { value, onCommit, isInactivePhase, error, ariaLabel, onMove, onPasteMulti, disabled },
+  { value, onCommit, isInactivePhase, error, ariaLabel, onMove, onPasteMulti, disabled, overlay, title },
   ref,
 ) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -128,7 +138,7 @@ export const HoursCell = forwardRef<HoursCellHandle, HoursCellProps>(function Ho
   const showError = !!error || numericInvalid;
 
   return (
-    <div className="flex flex-col" style={{ width: 84 }}>
+    <div className="flex flex-col" style={{ width: 84, position: "relative" }}>
       <input
         ref={inputRef}
         type="text"
@@ -137,6 +147,7 @@ export const HoursCell = forwardRef<HoursCellHandle, HoursCellProps>(function Ho
         aria-invalid={showError || undefined}
         value={text}
         disabled={disabled}
+        title={title}
         onChange={(e) => {
           // Numeric-only input: silently strip anything that's not 0-9 or "." or "-".
           // We allow the leading "-" to be typed but final commit clamps to >= 0
@@ -183,6 +194,7 @@ export const HoursCell = forwardRef<HoursCellHandle, HoursCellProps>(function Ho
           {error}
         </span>
       )}
+      {overlay}
     </div>
   );
 });

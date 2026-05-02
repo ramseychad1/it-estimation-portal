@@ -1,6 +1,8 @@
 import { forwardRef, useImperativeHandle, useRef } from "react";
+import { Undo2 } from "lucide-react";
 import { COLUMNS, rowSum, type RowKey, type RowValues } from "./columns";
 import { HoursCell, type HoursCellHandle } from "./HoursCell";
+import { ReadOnlyCell } from "./ReadOnlyCell";
 
 export interface PhaseMeta {
   id: number;
@@ -27,6 +29,38 @@ interface HoursRowProps {
   /** Multi-cell paste anchored at the given column. */
   onPasteAt?: (colIndex: number, rows: (number | null)[][]) => void;
   disabled?: boolean;
+  /**
+   * Reviewer-mode metadata. When omitted, every cell is editable
+   * (template-editor behaviour). When present, only the cells whose
+   * column key is in {@link ReviewerCellMeta#editableKeys} are editable;
+   * the rest render dimmed and read-only.
+   */
+  reviewer?: ReviewerCellMeta;
+}
+
+export interface ReviewerCellMeta {
+  /**
+   * The two RowKeys whose cells are editable (one Onshore + one Offshore
+   * column at the chosen complexity). Empty Set means all cells are
+   * read-only — typical when the reviewer hasn't picked a complexity yet.
+   */
+  editableKeys: ReadonlySet<RowKey>;
+  /**
+   * Snapshot values per RowKey — used to render the "Original: X"
+   * tooltip on overridden cells. Always equals {@code values} when no
+   * override is in play; differs when {@code values[key]} reflects an
+   * override.
+   */
+  snapshot: RowValues;
+  /**
+   * Sparse map of overridden RowKeys → true. A cell is overridden when
+   * the reviewer has typed a value that differs from the snapshot, OR
+   * (equivalently) the backend's {@code onshore_override} /
+   * {@code offshore_override} column for this row is non-null.
+   */
+  overriddenKeys: ReadonlySet<RowKey>;
+  /** Called when the user clicks the per-cell revert icon. */
+  onRevert: (key: RowKey) => void;
 }
 
 /**
@@ -37,7 +71,7 @@ interface HoursRowProps {
  * #onMoveVertical}.
  */
 export const HoursRow = forwardRef<HoursRowHandle, HoursRowProps>(function HoursRow(
-  { phase, values, onChange, errors, onMoveVertical, onPasteAt, disabled },
+  { phase, values, onChange, errors, onMoveVertical, onPasteAt, disabled, reviewer },
   ref,
 ) {
   const cellRefs = useRef<(HoursCellHandle | null)[]>([]);
@@ -48,6 +82,11 @@ export const HoursRow = forwardRef<HoursRowHandle, HoursRowProps>(function Hours
       target?.focus();
     },
   }), []);
+
+  function isEditable(colKey: RowKey): boolean {
+    if (!reviewer) return true;
+    return reviewer.editableKeys.has(colKey);
+  }
 
   function handleMove(colIndex: number, dir: "up" | "down" | "left" | "right") {
     if (dir === "up" || dir === "down") {
@@ -117,20 +156,47 @@ export const HoursRow = forwardRef<HoursRowHandle, HoursRowProps>(function Hours
         )}
       </div>
 
-      {COLUMNS.map((col, i) => (
-        <HoursCell
-          key={col.key}
-          ref={(h) => { cellRefs.current[i] = h; }}
-          value={values[col.key]}
-          onCommit={(next) => onChange(col.key, next)}
-          isInactivePhase={!phase.active}
-          error={errors?.[col.key] ?? null}
-          ariaLabel={`${phase.name} ${col.label}`}
-          onMove={(dir) => handleMove(i, dir)}
-          onPasteMulti={(rows) => onPasteAt?.(i, rows)}
-          disabled={disabled}
-        />
-      ))}
+      {COLUMNS.map((col, i) => {
+        const editable = isEditable(col.key);
+        if (!editable) {
+          // Reviewer-mode read-only cell: dimmed value, no input. Refs
+          // intentionally not registered for read-only cells — keyboard
+          // nav skips them naturally because they aren't focusable.
+          return (
+            <ReadOnlyCell
+              key={col.key}
+              value={values[col.key]}
+              ariaLabel={`${phase.name} ${col.label}`}
+              appearance="dimmed"
+            />
+          );
+        }
+        // Editable cell. In reviewer mode, attach an override marker
+        // overlay + tooltip when the cell value diverges from snapshot.
+        const overridden = reviewer?.overriddenKeys.has(col.key) ?? false;
+        const overlay = overridden && reviewer ? (
+          <OverrideMarker onRevert={() => reviewer.onRevert(col.key)} />
+        ) : null;
+        const title = overridden && reviewer
+          ? `Original: ${formatNum(reviewer.snapshot[col.key])}`
+          : undefined;
+        return (
+          <HoursCell
+            key={col.key}
+            ref={(h) => { cellRefs.current[i] = h; }}
+            value={values[col.key]}
+            onCommit={(next) => onChange(col.key, next)}
+            isInactivePhase={!phase.active}
+            error={errors?.[col.key] ?? null}
+            ariaLabel={`${phase.name} ${col.label}`}
+            onMove={(dir) => handleMove(i, dir)}
+            onPasteMulti={(rows) => onPasteAt?.(i, rows)}
+            disabled={disabled}
+            overlay={overlay}
+            title={title}
+          />
+        );
+      })}
 
       <span
         className="text-warm-gray-med tabular-nums"
@@ -142,3 +208,37 @@ export const HoursRow = forwardRef<HoursRowHandle, HoursRowProps>(function Hours
     </div>
   );
 });
+
+/**
+ * Tiny revert-to-snapshot affordance, anchored bottom-right of the cell.
+ * Visible only when an override is in play. Click clears the override.
+ */
+function OverrideMarker({ onRevert }: { onRevert: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onRevert}
+      aria-label="Revert override"
+      title="Revert to original"
+      className="inline-flex items-center justify-center cursor-pointer border-0"
+      style={{
+        position: "absolute",
+        bottom: -2,
+        right: -2,
+        width: 14,
+        height: 14,
+        borderRadius: "50%",
+        background: "var(--color-light-blue)",
+        color: "var(--color-near-black)",
+        boxShadow: "0 0 0 1px var(--color-white)",
+      }}
+    >
+      <Undo2 style={{ width: 8, height: 8 }} strokeWidth={2.5} />
+    </button>
+  );
+}
+
+function formatNum(n: number): string {
+  if (!Number.isFinite(n)) return "";
+  return Number.isInteger(n) ? String(n) : String(n);
+}

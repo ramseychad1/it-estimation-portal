@@ -1,8 +1,29 @@
 import { useMemo, useRef } from "react";
-import { COLUMNS, EMPTY_ROW, type RowKey, type RowValues } from "./columns";
+import { COLUMNS, EMPTY_ROW, editableKeysForComplexity, type RowKey, type RowValues } from "./columns";
 import { HoursRow, type HoursRowHandle, type PhaseMeta } from "./HoursRow";
 
-export interface HoursGridProps {
+/**
+ * HoursGrid has two render modes — a discriminated union on {@code mode}.
+ *
+ * <p><b>{@code mode: "template-editor"} (default)</b> — Phase 5b's
+ * original behaviour. Every cell is editable; paste handler fans across
+ * the grid. The {@code values} map is the authoritative state.
+ *
+ * <p><b>{@code mode: "reviewer"}</b> — Phase 6b's review screen. The
+ * grid receives an immutable {@code snapshot} (the per-phase L/M/H rows
+ * copied at submission) PLUS a sparse {@code overrides} map (the
+ * reviewer's per-cell tweaks). Only the cells in the chosen complexity
+ * column become editable; the other four columns render dimmed and
+ * read-only. An override marker + tooltip surfaces on overridden cells.
+ *
+ * <p>Internally, reviewer mode normalises {@code snapshot + overrides}
+ * down to the same shape template-editor mode uses, so {@link HoursRow}
+ * and {@link #applyPasteAt} stay identical for both modes.
+ */
+export type HoursGridProps = TemplateEditorProps | ReviewerProps;
+
+export interface TemplateEditorProps {
+  mode?: "template-editor";
   /** Phase metadata in render order (typically by display_order). */
   phases: PhaseMeta[];
   /** Cell values keyed by phase id. Missing phaseIds default to all-zeros. */
@@ -19,41 +40,99 @@ export interface HoursGridProps {
   disabled?: boolean;
 }
 
+export interface ReviewerProps {
+  mode: "reviewer";
+  phases: PhaseMeta[];
+  /**
+   * Immutable snapshot copied at submission time. Reviewer mode never
+   * writes to this — overrides go in the parallel {@link #overrides} map.
+   */
+  snapshot: Map<number, RowValues>;
+  /**
+   * Sparse per-cell overrides. Only the chosen-complexity cells can have
+   * overrides (LineOverrideInput on the wire only carries
+   * onshore/offshore override values, which apply to whichever column
+   * the chosen complexity points at).
+   */
+  overrides: Map<number, Partial<RowValues>>;
+  /**
+   * The chosen complexity selects which column-pair becomes editable.
+   * Null means the reviewer hasn't picked yet — every cell renders
+   * read-only.
+   */
+  chosenComplexity: "LOW" | "MED" | "HIGH" | null;
+  /**
+   * Called when the reviewer commits a new override value or clicks the
+   * per-cell revert icon (revert sends {@code null}).
+   */
+  onOverrideChange: (phaseId: number, key: RowKey, next: number | null) => void;
+  /** Phase 6b doesn't use paste in reviewer mode; props omitted. */
+  disabled?: boolean;
+}
+
 /**
  * Grid header + body + grand-total footer. Owns the row-ref registry so
  * vertical navigation (Enter, ArrowUp/Down at edge, ArrowLeft/Right
  * wrapping past the row boundary) can focus the right cell on the
  * neighbouring row.
  *
- * The grid is stateless: the parent owns {@code values} and reacts to
- * {@code onChange} / {@code onPaste}. Keeping state external means the
+ * The grid is stateless: the parent owns the source of truth (values in
+ * template-editor mode; snapshot+overrides in reviewer mode) and reacts
+ * to the corresponding callbacks. Keeping state external means the
  * detail page's "dirty" tracking and "Discard changes" reset both work
- * by simply re-rendering with a fresh values map.
+ * by simply re-rendering with a fresh values / overrides map.
  */
-export function HoursGrid({
-  phases,
-  values,
-  errors,
-  onChange,
-  onPaste,
-  disabled,
-}: HoursGridProps) {
+export function HoursGrid(props: HoursGridProps) {
+  const isReviewer = props.mode === "reviewer";
+
+  // In reviewer mode, derive the displayed values per phase by overlaying
+  // overrides onto snapshot. Template-editor mode uses the values map
+  // directly. The merged map drives both rendering AND grand-total
+  // computation, so totals reflect overrides automatically.
+  const displayedValues = useMemo<Map<number, RowValues>>(() => {
+    if (!isReviewer) return (props as TemplateEditorProps).values;
+    const r = props as ReviewerProps;
+    const merged = new Map<number, RowValues>();
+    for (const phase of r.phases) {
+      const snap = r.snapshot.get(phase.id) ?? EMPTY_ROW;
+      const ov = r.overrides.get(phase.id) ?? {};
+      const row: RowValues = { ...snap };
+      for (const col of COLUMNS) {
+        const v = ov[col.key];
+        if (v != null) row[col.key] = v;
+      }
+      merged.set(phase.id, row);
+    }
+    return merged;
+  }, [isReviewer, props]);
+
+  const phases = props.phases;
+  const errors = isReviewer ? undefined : (props as TemplateEditorProps).errors;
+  const disabled = props.disabled;
+
   const rowRefs = useRef<(HoursRowHandle | null)[]>([]);
 
   const grandTotals = useMemo(() => {
     const totals: RowValues = { ...EMPTY_ROW };
     for (const phase of phases) {
-      const v = values.get(phase.id) ?? EMPTY_ROW;
+      const v = displayedValues.get(phase.id) ?? EMPTY_ROW;
       for (const col of COLUMNS) totals[col.key] += v[col.key] ?? 0;
     }
     return totals;
-  }, [phases, values]);
+  }, [phases, displayedValues]);
 
   function handleVerticalMove(rowIndex: number, dir: "up" | "down", colIndex: number) {
     const target = dir === "up" ? rowIndex - 1 : rowIndex + 1;
     if (target < 0 || target >= phases.length) return;
     rowRefs.current[target]?.focusColumn(colIndex);
   }
+
+  // Computed once per render: which column keys are editable in reviewer
+  // mode. Empty Set when complexity is null or we're in template-editor
+  // mode (the per-row code path checks isReviewer before consulting).
+  const reviewerEditableKeys = isReviewer
+    ? editableKeysForComplexity((props as ReviewerProps).chosenComplexity)
+    : null;
 
   return (
     <div role="table" aria-label="Estimate template hours">
@@ -71,16 +150,56 @@ export function HoursGrid({
         }}
       >
         <span>SDLC Phase</span>
-        {COLUMNS.map((col) => (
-          <span key={col.key} style={{ textAlign: "right" }}>{col.label}</span>
-        ))}
+        {COLUMNS.map((col) => {
+          const highlighted = reviewerEditableKeys?.has(col.key) ?? false;
+          return (
+            <span
+              key={col.key}
+              style={{
+                textAlign: "right",
+                color: highlighted ? "var(--color-near-black)" : undefined,
+                background: highlighted ? "var(--color-light-blue-soft)" : undefined,
+                padding: highlighted ? "2px 4px" : undefined,
+                borderRadius: highlighted ? 3 : undefined,
+              }}
+            >
+              {col.label}
+            </span>
+          );
+        })}
         <span style={{ textAlign: "right" }}>Row total</span>
       </div>
 
       {/* Body */}
       {phases.map((phase, idx) => {
-        const phaseValues = values.get(phase.id) ?? EMPTY_ROW;
+        const phaseValues = displayedValues.get(phase.id) ?? EMPTY_ROW;
         const phaseErrors = errors?.get(phase.id);
+
+        // Reviewer-mode per-row metadata — snapshot for tooltip, set of
+        // overridden keys for the marker overlay, revert callback.
+        let reviewer = undefined;
+        if (isReviewer && reviewerEditableKeys) {
+          const r = props as ReviewerProps;
+          const snap = r.snapshot.get(phase.id) ?? EMPTY_ROW;
+          const ov = r.overrides.get(phase.id) ?? {};
+          const overriddenKeys = new Set<RowKey>();
+          for (const col of COLUMNS) {
+            // A cell is "overridden" only when (a) it's editable in the
+            // chosen complexity AND (b) the override value differs from
+            // the snapshot. Hides the marker on cells where the reviewer
+            // typed the snapshot value back in (effectively a no-op).
+            if (!reviewerEditableKeys.has(col.key)) continue;
+            const v = ov[col.key];
+            if (v != null && v !== snap[col.key]) overriddenKeys.add(col.key);
+          }
+          reviewer = {
+            editableKeys: reviewerEditableKeys,
+            snapshot: snap,
+            overriddenKeys,
+            onRevert: (key: RowKey) => r.onOverrideChange(phase.id, key, null),
+          };
+        }
+
         return (
           <HoursRow
             key={phase.id}
@@ -89,11 +208,26 @@ export function HoursGrid({
             values={phaseValues}
             errors={phaseErrors}
             disabled={disabled}
-            onChange={(key, next) => onChange(phase.id, key, next)}
+            onChange={(key, next) => {
+              if (isReviewer) {
+                const r = props as ReviewerProps;
+                const snap = r.snapshot.get(phase.id) ?? EMPTY_ROW;
+                // Typing the snapshot value back in clears the override
+                // — the override marker disappears and the autosave PUT
+                // sends null for that key.
+                r.onOverrideChange(
+                  phase.id, key,
+                  next === snap[key] ? null : next,
+                );
+              } else {
+                (props as TemplateEditorProps).onChange(phase.id, key, next);
+              }
+            }}
             onMoveVertical={(dir, colIndex) => handleVerticalMove(idx, dir, colIndex)}
-            onPasteAt={(colIndex, rows) =>
-              onPaste?.({ phaseId: phase.id, colIndex }, rows)
+            onPasteAt={isReviewer ? undefined : (colIndex, rows) =>
+              (props as TemplateEditorProps).onPaste?.({ phaseId: phase.id, colIndex }, rows)
             }
+            reviewer={reviewer}
           />
         );
       })}
@@ -116,16 +250,24 @@ export function HoursGrid({
         <span className="uppercase" style={{ fontSize: 11, letterSpacing: "0.06em" }}>
           Grand total
         </span>
-        {COLUMNS.map((col) => (
-          <span
-            key={col.key}
-            className="tabular-nums"
-            style={{ textAlign: "right" }}
-            aria-label={`${col.label} total`}
-          >
-            {grandTotals[col.key]}
-          </span>
-        ))}
+        {COLUMNS.map((col) => {
+          const highlighted = reviewerEditableKeys?.has(col.key) ?? false;
+          return (
+            <span
+              key={col.key}
+              className="tabular-nums"
+              style={{
+                textAlign: "right",
+                background: highlighted ? "var(--color-light-blue-soft)" : undefined,
+                padding: highlighted ? "2px 4px" : undefined,
+                borderRadius: highlighted ? 3 : undefined,
+              }}
+              aria-label={`${col.label} total`}
+            >
+              {grandTotals[col.key]}
+            </span>
+          );
+        })}
         <span
           className="tabular-nums"
           style={{ textAlign: "right" }}

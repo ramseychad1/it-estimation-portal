@@ -6,6 +6,8 @@ import { DashboardPage, TemplateHistoryPage } from "./pages/placeholders";
 import { MyRequestsPage } from "./pages/MyRequestsPage";
 import { NewEstimateRequestPage } from "./pages/NewEstimateRequestPage";
 import { EstimateDetailPage } from "./pages/EstimateDetailPage";
+import { ReviewQueuePage } from "./pages/ReviewQueuePage";
+import { ReviewScreenPage } from "./pages/ReviewScreenPage";
 import { TeamsPage } from "./pages/admin/TeamsPage";
 import { SdlcPhasesPage } from "./pages/admin/SdlcPhasesPage";
 import { BlendedRatesPage } from "./pages/admin/BlendedRatesPage";
@@ -37,6 +39,9 @@ export default function App() {
       <Route path="/requests" element={<ProtectedShell><MyRequestsPage /></ProtectedShell>} />
       <Route path="/requests/new" element={<ProtectedShell><NewEstimateRequestPage /></ProtectedShell>} />
       <Route path="/requests/:id" element={<ProtectedShell><EstimateDetailPage /></ProtectedShell>} />
+
+      <Route path="/review" element={<ProtectedShell><ReviewQueuePage /></ProtectedShell>} />
+      <Route path="/review/:id" element={<ProtectedShell><ReviewScreenPage /></ProtectedShell>} />
 
       <Route path="/catalog/products" element={<ProtectedShell><ProductsPage /></ProtectedShell>} />
       <Route path="/catalog/products/:productId" element={<ProtectedShell><ProductDetailPage /></ProtectedShell>} />

@@ -36,6 +36,10 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @RestController
 @RequestMapping("/api/admin/rates")
+// Class-level gate: ADMIN for mutations. GET methods open the gate to
+// SOLUTION_OWNER too via per-method @PreAuthorize so the Phase 6b
+// review screen can show the cost preview without inventing a new
+// rates endpoint.
 @PreAuthorize("hasRole('ADMIN')")
 @RequiredArgsConstructor
 public class BlendedRateController {
@@ -44,6 +48,7 @@ public class BlendedRateController {
     private final UserRepository userRepository;
 
     @GetMapping
+    @PreAuthorize("hasAnyRole('ADMIN','SOLUTION_OWNER')")
     public RatesPageResponse listCurrentAndHistory(
         @RequestParam(defaultValue = "0") int page,
         @RequestParam(defaultValue = "25") int size
@@ -86,6 +91,7 @@ public class BlendedRateController {
     }
 
     @GetMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN','SOLUTION_OWNER')")
     public BlendedRateDto get(@PathVariable Long id) {
         BlendedRate rate = rateService.getById(id);
         LocalDate today = LocalDate.now();

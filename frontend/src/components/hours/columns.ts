@@ -37,3 +37,25 @@ export const EMPTY_ROW: RowValues = {
 export function rowSum(values: RowValues): number {
   return COLUMNS.reduce((sum, c) => sum + (values[c.key] ?? 0), 0);
 }
+
+/**
+ * Maps a chosen complexity (LOW/MED/HIGH) to the two {@link RowKey}s that
+ * become editable in {@code HoursGrid} reviewer mode — one Onshore column
+ * and one Offshore column at the matching complexity. Returns empty when
+ * the reviewer hasn't picked a complexity yet (all cells stay read-only).
+ *
+ * Why two keys, not one: the snapshot row carries L/M/H for both Onshore
+ * and Offshore. The chosen complexity selects which column of each group
+ * the review tally uses, so both Onshore-{L|M|H} and Offshore-{L|M|H} for
+ * the same complexity letter become the editable pair. Per-cell override
+ * columns on the backend ({@code onshore_override}, {@code offshore_override})
+ * map directly to whichever keys are editable.
+ */
+export function editableKeysForComplexity(
+  complexity: "LOW" | "MED" | "HIGH" | null,
+): ReadonlySet<RowKey> {
+  if (complexity === "LOW") return new Set<RowKey>(["onshoreLow", "offshoreLow"]);
+  if (complexity === "MED") return new Set<RowKey>(["onshoreMed", "offshoreMed"]);
+  if (complexity === "HIGH") return new Set<RowKey>(["onshoreHigh", "offshoreHigh"]);
+  return new Set<RowKey>();
+}

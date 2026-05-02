@@ -46,6 +46,8 @@ export interface EstimateRequestAnswerView {
   answerText: string;
 }
 
+export type ReviewerStatus = "you" | "other-so" | "unclaimed";
+
 export interface EstimateRequestDetail {
   id: number;
   title: string;
@@ -60,9 +62,15 @@ export interface EstimateRequestDetail {
   status: EstimateStatus;
   requesterId: number;
   reviewerId: number | null;
+  /** Display name of the reviewer; null when unclaimed. */
+  reviewerName: string | null;
+  /** Per-actor relationship to the current reviewer — see backend DTO. */
+  reviewerStatus: ReviewerStatus;
   justification: string | null;
   submittedAt: string | null;
   reviewedAt: string | null;
+  /** Snapshot of the blended-rate id at approval time (Phase 6b). */
+  approvedBlendedRateId: number | null;
   createdAt: string | null;
   updatedAt: string | null;
   phaseLines: EstimateRequestPhaseLineView[];

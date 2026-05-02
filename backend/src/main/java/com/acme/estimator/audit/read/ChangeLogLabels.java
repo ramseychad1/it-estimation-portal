@@ -34,33 +34,51 @@ public final class ChangeLogLabels {
         Map.entry(EstimateRequest.ENTITY_TYPE, "Estimate request")
     );
 
-    private static final Map<ChangeAction, String> ACTION_LABELS = Map.of(
-        ChangeAction.CREATED, "Created",
-        ChangeAction.UPDATED, "Updated",
-        ChangeAction.ACTIVATED, "Activated",
-        ChangeAction.DEACTIVATED, "Deactivated",
-        ChangeAction.DELETED, "Deleted",
-        ChangeAction.REORDERED, "Reordered",
-        ChangeAction.PASSWORD_RESET, "Password Reset",
-        ChangeAction.INVITATION_REVOKED, "Invitation Revoked",
-        ChangeAction.INVITATION_ACCEPTED, "Invitation Accepted"
+    private static final Map<ChangeAction, String> ACTION_LABELS = Map.ofEntries(
+        Map.entry(ChangeAction.CREATED, "Created"),
+        Map.entry(ChangeAction.UPDATED, "Updated"),
+        Map.entry(ChangeAction.ACTIVATED, "Activated"),
+        Map.entry(ChangeAction.DEACTIVATED, "Deactivated"),
+        Map.entry(ChangeAction.DELETED, "Deleted"),
+        Map.entry(ChangeAction.REORDERED, "Reordered"),
+        Map.entry(ChangeAction.PASSWORD_RESET, "Password Reset"),
+        Map.entry(ChangeAction.INVITATION_REVOKED, "Invitation Revoked"),
+        Map.entry(ChangeAction.INVITATION_ACCEPTED, "Invitation Accepted"),
+        // Phase 6b — estimate-request workflow
+        Map.entry(ChangeAction.SUBMITTED, "Submitted"),
+        Map.entry(ChangeAction.REVIEW_STARTED, "Review Started"),
+        Map.entry(ChangeAction.REVIEW_RELEASED, "Review Released"),
+        Map.entry(ChangeAction.APPROVED, "Approved"),
+        Map.entry(ChangeAction.REJECTED, "Rejected"),
+        Map.entry(ChangeAction.SENT_BACK, "Sent Back")
     );
 
     /**
      * Verbs in past tense, used inside descriptions like
      * "Sarah updated Team 'App Dev'". Includes a directional preposition
-     * where one is needed ("reset password for", "revoked invitation for").
+     * where one is needed ("reset password for", "revoked invitation for",
+     * "started review of").
      */
-    private static final Map<ChangeAction, String> ACTION_VERBS = Map.of(
-        ChangeAction.CREATED, "created",
-        ChangeAction.UPDATED, "updated",
-        ChangeAction.ACTIVATED, "activated",
-        ChangeAction.DEACTIVATED, "deactivated",
-        ChangeAction.DELETED, "deleted",
-        ChangeAction.REORDERED, "reordered",
-        ChangeAction.PASSWORD_RESET, "reset password for",
-        ChangeAction.INVITATION_REVOKED, "revoked invitation for",
-        ChangeAction.INVITATION_ACCEPTED, "accepted invitation as"
+    private static final Map<ChangeAction, String> ACTION_VERBS = Map.ofEntries(
+        Map.entry(ChangeAction.CREATED, "created"),
+        Map.entry(ChangeAction.UPDATED, "updated"),
+        Map.entry(ChangeAction.ACTIVATED, "activated"),
+        Map.entry(ChangeAction.DEACTIVATED, "deactivated"),
+        Map.entry(ChangeAction.DELETED, "deleted"),
+        Map.entry(ChangeAction.REORDERED, "reordered"),
+        Map.entry(ChangeAction.PASSWORD_RESET, "reset password for"),
+        Map.entry(ChangeAction.INVITATION_REVOKED, "revoked invitation for"),
+        Map.entry(ChangeAction.INVITATION_ACCEPTED, "accepted invitation as"),
+        // Phase 6b — directional verbs that read naturally inside the
+        // change-log feed alongside the entity name. "started review of"
+        // and "sent…back for re-review" are the awkward ones; everything
+        // else is a one-word past tense.
+        Map.entry(ChangeAction.SUBMITTED, "submitted"),
+        Map.entry(ChangeAction.REVIEW_STARTED, "started review of"),
+        Map.entry(ChangeAction.REVIEW_RELEASED, "released"),
+        Map.entry(ChangeAction.APPROVED, "approved"),
+        Map.entry(ChangeAction.REJECTED, "rejected"),
+        Map.entry(ChangeAction.SENT_BACK, "sent back for re-review")
     );
 
     public static String forEntityType(String entityType) {

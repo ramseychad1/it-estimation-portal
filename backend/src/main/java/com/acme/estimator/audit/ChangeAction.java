@@ -19,5 +19,27 @@ public enum ChangeAction {
     INVITATION_REVOKED,
     /** The invitee accepted their invitation, set a password, and the user
      *  transitioned from PENDING_INVITE to ACTIVE. */
-    INVITATION_ACCEPTED
+    INVITATION_ACCEPTED,
+
+    // ---- Estimate-request workflow (Phase 6b) ---------------------------
+    // Phase 6a transitionally wrote SUBMITTED as CREATED+notes; V11's
+    // backfill promotes those rows to SUBMITTED. New transitions land as
+    // their own enum values from the start.
+
+    /** Requester transitioned a Draft → Submitted. */
+    SUBMITTED,
+    /** SO claimed a Submitted request → In Review. */
+    REVIEW_STARTED,
+    /** SO released In Review back to Submitted (no terminal action). */
+    REVIEW_RELEASED,
+    /** SO approved an In Review request. Notes carry the chosen
+     *  complexity + blended-rate version snapshotted at approval. */
+    APPROVED,
+    /** SO rejected an In Review request. Notes carry the first ~100
+     *  chars of the rejection reason. */
+    REJECTED,
+    /** Admin sent an Approved or Rejected request back to Submitted —
+     *  the safety valve for "we approved this in error." Notes carry
+     *  the admin's reason. */
+    SENT_BACK
 }

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { FileText, Pencil, Trash2 } from "lucide-react";
+import { AlertTriangle, FileText, Info, Pencil, Trash2 } from "lucide-react";
 import { ConfirmModal } from "../components/ConfirmModal";
 import { EntityHeader } from "../components/EntityHeader";
 import { KebabMenu, type KebabMenuItem } from "../components/KebabMenu";
@@ -21,8 +21,16 @@ import {
   useMyRequestHistoryQuery,
   useMyRequestQuery,
 } from "../lib/queries/estimates";
+import { useRatesPageQuery } from "../lib/queries/rates";
 import { useUserDisplay } from "../lib/userDisplay";
 import { relativeTime } from "../lib/relativeTime";
+import {
+  displayedRow,
+  offshoreHoursForLines,
+  onshoreHoursForLines,
+  totalCostForLines,
+  totalHoursForLines,
+} from "../lib/estimateMath";
 
 export function EstimateDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -32,6 +40,7 @@ export function EstimateDetailPage() {
 
   const detailQuery = useMyRequestQuery(numericId);
   const historyQuery = useMyRequestHistoryQuery(numericId);
+  const ratesQuery = useRatesPageQuery({ size: 1 });
   const discardMutation = useDiscardDraftMutation();
   const [discardOpen, setDiscardOpen] = useState(false);
 
@@ -119,7 +128,12 @@ export function EstimateDetailPage() {
         <QuestionsCard detail={detail} onEditAnswers={() =>
           navigate(`/requests/new?step=2&id=${detail.id}`)
         } />
-        {detail.status !== "DRAFT" && <EstimateCard detail={detail} />}
+        {detail.status !== "DRAFT" && (
+          <EstimateCard
+            detail={detail}
+            currentRate={ratesQuery.data?.current ?? null}
+          />
+        )}
         <ActivityCard
           history={historyQuery.data ?? []}
           loading={historyQuery.isLoading}
@@ -275,7 +289,13 @@ function AnswerRow({ answer }: { answer: EstimateRequestAnswerView }) {
   );
 }
 
-function EstimateCard({ detail }: { detail: EstimateRequestDetail }) {
+function EstimateCard({
+  detail,
+  currentRate,
+}: {
+  detail: EstimateRequestDetail;
+  currentRate: { onshoreRate: string; offshoreRate: string; effectiveDate: string } | null;
+}) {
   const isAwaitingReview =
     detail.status === "SUBMITTED" || detail.status === "IN_REVIEW";
   return (
@@ -295,51 +315,186 @@ function EstimateCard({ detail }: { detail: EstimateRequestDetail }) {
           complexity and approve.
         </div>
       )}
-      {detail.status === "REJECTED" && detail.justification && (
-        <RejectionBlock justification={detail.justification} />
+
+      {detail.status === "APPROVED" && (
+        <ApprovedBanner reviewerName={detail.reviewerName} reviewedAt={detail.reviewedAt} />
       )}
-      {detail.status === "APPROVED" && <ApprovedBlock detail={detail} />}
+      {detail.status === "REJECTED" && (
+        <RejectedBanner reviewerName={detail.reviewerName} reviewedAt={detail.reviewedAt} />
+      )}
+
+      {detail.status === "APPROVED" && detail.complexity && (
+        <div className="mb-4">
+          <SectionLabel>Complexity</SectionLabel>
+          <div className="mt-1">
+            <StatusBadge variant="approved">{complexityLabel(detail.complexity)}</StatusBadge>
+          </div>
+        </div>
+      )}
+
+      {detail.justification && (
+        <div className="mb-4">
+          <SectionLabel>
+            {detail.status === "REJECTED" ? "Rejection reason" : "Reviewer's justification"}
+          </SectionLabel>
+          <blockquote
+            className="m-0 mt-1"
+            style={{
+              borderLeft: "4px solid var(--color-light-blue)",
+              paddingLeft: 12,
+              fontStyle: "italic",
+              fontSize: 14,
+              color: "var(--fg-1)",
+            }}
+          >
+            {detail.justification}
+          </blockquote>
+        </div>
+      )}
+
       <PhaseLineTable
         lines={detail.phaseLines}
         complexity={detail.complexity}
       />
+
+      {detail.status === "APPROVED" && detail.complexity && (
+        <CostSummary
+          lines={detail.phaseLines}
+          complexity={detail.complexity}
+          currentRate={currentRate}
+        />
+      )}
     </Card>
   );
 }
 
-function RejectionBlock({ justification }: { justification: string }) {
+function ApprovedBanner({
+  reviewerName,
+  reviewedAt,
+}: {
+  reviewerName: string | null;
+  reviewedAt: string | null;
+}) {
   return (
-    <blockquote
-      className="m-0 mb-4"
+    <div
+      className="rounded-md mb-4"
       style={{
-        borderLeft: "4px solid var(--color-light-blue)",
-        paddingLeft: 12,
-        fontStyle: "italic",
-        fontSize: 14,
+        background: "var(--color-light-blue-soft)",
+        border: "1px solid rgba(187,221,230,0.7)",
+        padding: "10px 12px",
+        fontSize: 13,
         color: "var(--fg-1)",
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
       }}
     >
-      {justification}
-    </blockquote>
+      <Info className="w-3.5 h-3.5" strokeWidth={1.5} />
+      <span>
+        Approved by <strong>{reviewerName ?? "the reviewer"}</strong>
+        {reviewedAt && <> on {new Date(reviewedAt).toLocaleDateString()}</>}.
+      </span>
+    </div>
   );
 }
 
-function ApprovedBlock({ detail }: { detail: EstimateRequestDetail }) {
-  // NOTE: This branch is populated by Phase 6b's Reviewer surface — when
-  // an SO picks complexity, writes justification, and approves. Phase 6a
-  // tests don't exercise this code path because no UI populates the
-  // upstream data; the test coverage lives in Phase 6b's page tests.
-  // Rendering the block "graceful when data is present" is the contract.
+function RejectedBanner({
+  reviewerName,
+  reviewedAt,
+}: {
+  reviewerName: string | null;
+  reviewedAt: string | null;
+}) {
   return (
-    <div className="flex flex-col mb-4" style={{ gap: 10 }}>
-      {detail.complexity && (
-        <div>
-          <StatusBadge variant="approved">
-            Complexity: {complexityLabel(detail.complexity)}
-          </StatusBadge>
+    <div
+      className="rounded-md mb-4"
+      style={{
+        // Light amber tint — reserved for "warning / heads up" without
+        // crossing into Cardinal Red territory. Rejection is not an
+        // error; it's a signal to the requester that the SO needs
+        // changes.
+        background: "rgba(247, 228, 173, 0.4)",
+        border: "1px solid rgba(212, 167, 44, 0.3)",
+        padding: "10px 12px",
+        fontSize: 13,
+        color: "var(--fg-1)",
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+      }}
+    >
+      <AlertTriangle className="w-3.5 h-3.5" strokeWidth={1.5} />
+      <span>
+        Rejected by <strong>{reviewerName ?? "the reviewer"}</strong>
+        {reviewedAt && <> on {new Date(reviewedAt).toLocaleDateString()}</>}.
+      </span>
+    </div>
+  );
+}
+
+function CostSummary({
+  lines,
+  complexity,
+  currentRate,
+}: {
+  lines: EstimateRequestPhaseLineView[];
+  complexity: EstimateRequestDetail["complexity"];
+  currentRate: { onshoreRate: string; offshoreRate: string; effectiveDate: string } | null;
+}) {
+  const onsHrs = onshoreHoursForLines(lines, complexity);
+  const offsHrs = offshoreHoursForLines(lines, complexity);
+  const totalHrs = totalHoursForLines(lines, complexity);
+  const totalCst = totalCostForLines(lines, complexity, currentRate);
+  return (
+    <div
+      className="mt-4 rounded-md"
+      style={{
+        background: "#FBFBFA",
+        border: "1px solid var(--color-warm-gray-light)",
+        padding: "14px 16px",
+      }}
+    >
+      <div className="flex flex-col" style={{ gap: 6, fontSize: 13 }}>
+        {currentRate && (
+          <>
+            <div className="flex items-baseline justify-between">
+              <span className="text-warm-gray-med">Onshore total</span>
+              <span className="text-near-black tabular-nums">
+                {fmtHrs(onsHrs)} hrs × ${currentRate.onshoreRate} = ${fmtMoney(onsHrs * Number(currentRate.onshoreRate))}
+              </span>
+            </div>
+            <div className="flex items-baseline justify-between">
+              <span className="text-warm-gray-med">Offshore total</span>
+              <span className="text-near-black tabular-nums">
+                {fmtHrs(offsHrs)} hrs × ${currentRate.offshoreRate} = ${fmtMoney(offsHrs * Number(currentRate.offshoreRate))}
+              </span>
+            </div>
+          </>
+        )}
+        <div
+          className="flex items-baseline justify-between"
+          style={{ borderTop: "1px solid var(--color-warm-gray-light)", paddingTop: 6, marginTop: 4 }}
+        >
+          <span className="text-near-black font-semibold">Estimated total</span>
+          <span className="text-near-black font-semibold tabular-nums" style={{ fontSize: 16 }}>
+            {fmtHrs(totalHrs)} hours
+            {currentRate && (
+              <span className="text-warm-gray-med" style={{ marginLeft: 12, fontSize: 13, fontWeight: 400 }}>
+                ${fmtMoney(totalCst)}
+              </span>
+            )}
+          </span>
         </div>
-      )}
-      {detail.justification && <RejectionBlock justification={detail.justification} />}
+        {currentRate && (
+          <p
+            className="m-0 text-warm-gray-med"
+            style={{ fontSize: 11, marginTop: 6 }}
+          >
+            This estimate uses blended rates effective {currentRate.effectiveDate}.
+            Future rate changes do not affect this estimate.
+          </p>
+        )}
+      </div>
     </div>
   );
 }
@@ -352,8 +507,11 @@ function PhaseLineTable({
   complexity: EstimateRequestDetail["complexity"];
 }) {
   if (lines.length === 0) return null;
-  const onCol = complexity === "LOW" ? "onshoreLow" : complexity === "HIGH" ? "onshoreHigh" : "onshoreMed";
-  const offCol = complexity === "LOW" ? "offshoreLow" : complexity === "HIGH" ? "offshoreHigh" : "offshoreMed";
+  // Per-row totals + grand total are computed only when complexity is
+  // set (which means we have a chosen column). Without a complexity
+  // pick (Submitted / In Review pre-pick), the totals row is omitted.
+  const totalHrs = totalHoursForLines(lines, complexity);
+  const showTotals = complexity != null;
   return (
     <div className="overflow-x-auto">
       <table className="w-full" style={{ borderCollapse: "collapse", fontSize: 12 }}>
@@ -366,29 +524,151 @@ function PhaseLineTable({
             <Th align="right" highlight={complexity === "LOW"}>OFF Low</Th>
             <Th align="right" highlight={complexity === "MED"}>OFF Med</Th>
             <Th align="right" highlight={complexity === "HIGH"}>OFF High</Th>
+            {showTotals && <Th align="right">Row total</Th>}
           </tr>
         </thead>
         <tbody>
-          {lines.map((line) => (
-            <tr
-              key={line.sdlcPhaseId}
-              style={{ borderBottom: "1px solid var(--color-warm-gray-light)" }}
-            >
-              <Td>{line.sdlcPhaseName}</Td>
-              <Td align="right" highlight={complexity === "LOW"}>{fmt(line.onshoreLow)}</Td>
-              <Td align="right" highlight={complexity === "MED"}>{fmt(line.onshoreMed)}</Td>
-              <Td align="right" highlight={complexity === "HIGH"}>{fmt(line.onshoreHigh)}</Td>
-              <Td align="right" highlight={complexity === "LOW"}>{fmt(line.offshoreLow)}</Td>
-              <Td align="right" highlight={complexity === "MED"}>{fmt(line.offshoreMed)}</Td>
-              <Td align="right" highlight={complexity === "HIGH"}>{fmt(line.offshoreHigh)}</Td>
+          {lines.map((line) => {
+            const display = displayedRow(line, complexity);
+            const rowTotal = display.onshore + display.offshore;
+            return (
+              <tr
+                key={line.sdlcPhaseId}
+                style={{ borderBottom: "1px solid var(--color-warm-gray-light)" }}
+              >
+                <Td>{line.sdlcPhaseName}</Td>
+                {/* Onshore columns: when this is the chosen column AND
+                    overridden, render the override value with the pill;
+                    otherwise render the snapshot value. */}
+                <ChosenOrSnapshotCell
+                  active={complexity === "LOW"}
+                  isChosenOnshore={complexity === "LOW"}
+                  isChosenOffshore={false}
+                  display={display}
+                  snapshotValue={line.onshoreLow}
+                />
+                <ChosenOrSnapshotCell
+                  active={complexity === "MED"}
+                  isChosenOnshore={complexity === "MED"}
+                  isChosenOffshore={false}
+                  display={display}
+                  snapshotValue={line.onshoreMed}
+                />
+                <ChosenOrSnapshotCell
+                  active={complexity === "HIGH"}
+                  isChosenOnshore={complexity === "HIGH"}
+                  isChosenOffshore={false}
+                  display={display}
+                  snapshotValue={line.onshoreHigh}
+                />
+                <ChosenOrSnapshotCell
+                  active={complexity === "LOW"}
+                  isChosenOnshore={false}
+                  isChosenOffshore={complexity === "LOW"}
+                  display={display}
+                  snapshotValue={line.offshoreLow}
+                />
+                <ChosenOrSnapshotCell
+                  active={complexity === "MED"}
+                  isChosenOnshore={false}
+                  isChosenOffshore={complexity === "MED"}
+                  display={display}
+                  snapshotValue={line.offshoreMed}
+                />
+                <ChosenOrSnapshotCell
+                  active={complexity === "HIGH"}
+                  isChosenOnshore={false}
+                  isChosenOffshore={complexity === "HIGH"}
+                  display={display}
+                  snapshotValue={line.offshoreHigh}
+                />
+                {showTotals && (
+                  <Td align="right">
+                    <span className="font-semibold text-near-black tabular-nums">
+                      {fmtHrs(rowTotal)}
+                    </span>
+                  </Td>
+                )}
+              </tr>
+            );
+          })}
+          {showTotals && (
+            <tr style={{ background: "var(--color-warm-gray-light)" }}>
+              <Td>
+                <span className="uppercase font-medium text-warm-gray-med" style={{ fontSize: 11, letterSpacing: "0.06em" }}>
+                  Grand total
+                </span>
+              </Td>
+              <td colSpan={6} />
+              <Td align="right">
+                <span className="font-semibold text-near-black tabular-nums" style={{ fontSize: 13 }}>
+                  {fmtHrs(totalHrs)}
+                </span>
+              </Td>
             </tr>
-          ))}
+          )}
         </tbody>
       </table>
-      {/* Reference unused col vars so the linter sees them — they're the
-          contract for future Phase 6b code that totals the chosen column. */}
-      <span hidden data-on={onCol} data-off={offCol} />
     </div>
+  );
+}
+
+/**
+ * One cell inside {@link PhaseLineTable}. When this cell sits in the
+ * chosen complexity's Onshore (or Offshore) column AND that side has an
+ * override, renders the override value with a small "Override" pill and
+ * the snapshot value as a tooltip. Otherwise renders the raw snapshot
+ * value.
+ */
+function ChosenOrSnapshotCell({
+  active,
+  isChosenOnshore,
+  isChosenOffshore,
+  display,
+  snapshotValue,
+}: {
+  active: boolean;
+  isChosenOnshore: boolean;
+  isChosenOffshore: boolean;
+  display: ReturnType<typeof displayedRow>;
+  snapshotValue: number;
+}) {
+  const isOverridden =
+    (isChosenOnshore && display.onshoreOverridden) ||
+    (isChosenOffshore && display.offshoreOverridden);
+  const value = isChosenOnshore
+    ? (isOverridden ? display.onshore : snapshotValue)
+    : isChosenOffshore
+      ? (isOverridden ? display.offshore : snapshotValue)
+      : snapshotValue;
+  return (
+    <Td align="right" highlight={active}>
+      <span
+        className="inline-flex items-center justify-end tabular-nums"
+        style={{ gap: 4 }}
+        title={isOverridden ? `Original: ${fmt(snapshotValue)}` : undefined}
+      >
+        {fmt(value)}
+        {isOverridden && (
+          <span
+            className="inline-flex items-center text-near-black"
+            style={{
+              padding: "0 4px",
+              borderRadius: 3,
+              fontSize: 9,
+              fontWeight: 600,
+              background: "var(--color-light-blue-soft)",
+              border: "1px solid rgba(187,221,230,0.7)",
+              textTransform: "uppercase",
+              letterSpacing: "0.04em",
+              lineHeight: 1.2,
+            }}
+          >
+            Override
+          </span>
+        )}
+      </span>
+    </Td>
   );
 }
 
@@ -587,6 +867,25 @@ function fmt(n: number | null): string {
   if (n == null) return "—";
   // tabular-nums + a sane decimal display: drop trailing .00 for whole numbers.
   return Number.isInteger(n) ? String(n) : n.toFixed(2);
+}
+
+function fmtHrs(n: number): string {
+  return Number.isInteger(n) ? String(n) : n.toFixed(1);
+}
+
+function fmtMoney(n: number): string {
+  return n.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+}
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      className="text-warm-gray-med uppercase font-medium"
+      style={{ fontSize: 11, letterSpacing: "0.04em" }}
+    >
+      {children}
+    </div>
+  );
 }
 
 function complexityLabel(c: "LOW" | "MED" | "HIGH"): string {

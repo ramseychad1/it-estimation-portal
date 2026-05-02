@@ -85,6 +85,16 @@ public class EstimateRequest {
     @Column(name = "reviewed_at")
     private OffsetDateTime reviewedAt;
 
+    /**
+     * Snapshot of the blended-rate row that was effective at the moment
+     * the SO approved. Cost is computed client-side, but the snapshot
+     * keeps the cost banner accurate ("uses blended rates effective {date}")
+     * even after future rate updates. NULL until the IN_REVIEW → APPROVED
+     * transition; cleared again on Admin send-back.
+     */
+    @Column(name = "approved_blended_rate_id")
+    private Long approvedBlendedRateId;
+
     @Column(name = "created_at", nullable = false, updatable = false, insertable = false)
     private OffsetDateTime createdAt;
 
