@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { FileText, Plus } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { ConfirmModal } from "../components/ConfirmModal";
 import { ColumnsToggle, useColumnsVisibility } from "../components/ColumnsToggle";
 import { DataTable, type DataTableColumn } from "../components/data-table/DataTable";
@@ -42,10 +42,15 @@ export function MyRequestsPage() {
   }, []);
 
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const toast = useToast();
 
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>(() => {
+    const param = searchParams.get("status")?.toUpperCase();
+    const valid: StatusFilter[] = ["ALL", "DRAFT", "SUBMITTED", "IN_REVIEW", "APPROVED", "REJECTED"];
+    return (valid.includes(param as StatusFilter) ? param : "ALL") as StatusFilter;
+  });
   const [page, setPage] = useState(0);
   const [hiddenCols, setHiddenCols] = useColumnsVisibility(
     "my-requests-columns",

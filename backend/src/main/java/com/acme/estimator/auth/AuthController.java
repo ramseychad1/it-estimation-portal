@@ -6,6 +6,8 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 import jakarta.validation.Valid;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -32,6 +34,7 @@ import static org.springframework.http.HttpStatus.UNAUTHORIZED;
 public class AuthController {
 
     private final AuthenticationManager authenticationManager;
+    private final UserRepository userRepository;
 
     private final SecurityContextHolderStrategy contextHolder = SecurityContextHolder.getContextHolderStrategy();
     private final SecurityContextRepository contextRepository = new HttpSessionSecurityContextRepository();
@@ -56,6 +59,10 @@ public class AuthController {
         contextRepository.saveContext(context, request, response);
 
         AppUserDetails principal = (AppUserDetails) authed.getPrincipal();
+        userRepository.findById(principal.getUserId()).ifPresent(u -> {
+            u.setLastActiveAt(OffsetDateTime.now(ZoneOffset.UTC));
+            userRepository.save(u);
+        });
         return ResponseEntity.ok(CurrentUserResponse.from(principal));
     }
 

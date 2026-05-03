@@ -137,6 +137,14 @@ export function DashboardPage() {
 
 // ---- stat cards section -----------------------------------------------------
 
+const CARD_HREFS: Record<string, string> = {
+  myDrafts: "/requests?status=DRAFT",
+  awaitingReview: "/review?status=SUBMITTED",
+  myActiveReviews: "/review?status=IN_REVIEW",
+  pendingInvitations: "/admin/users",
+  totalActiveUsers: "/admin/users",
+};
+
 function StatCardsGrid({
   cards,
   isLoading,
@@ -170,6 +178,7 @@ function StatCardsGrid({
           label={c.label}
           count={c.count}
           description={c.description}
+          href={CARD_HREFS[c.key]}
         />
       ))}
     </div>

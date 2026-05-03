@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Inbox } from "lucide-react";
 import { ColumnsToggle, useColumnsVisibility } from "../components/ColumnsToggle";
 import { DataTable, type DataTableColumn } from "../components/data-table/DataTable";
@@ -46,11 +46,16 @@ export function ReviewQueuePage() {
   }, []);
 
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const toast = useToast();
   const { user } = useAuth();
 
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL_OPEN");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>(() => {
+    const param = searchParams.get("status")?.toUpperCase();
+    const valid: StatusFilter[] = ["ALL_OPEN", "SUBMITTED", "IN_REVIEW", "APPROVED", "REJECTED"];
+    return (valid.includes(param as StatusFilter) ? param : "ALL_OPEN") as StatusFilter;
+  });
   const [productFilter, setProductFilter] = useState<"" | string>("");
   const [teamFilter, setTeamFilter] = useState<"" | string>("");
   const [mineOnly, setMineOnly] = useState(false);

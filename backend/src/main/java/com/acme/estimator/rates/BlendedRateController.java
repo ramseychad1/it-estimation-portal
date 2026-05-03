@@ -48,7 +48,7 @@ public class BlendedRateController {
     private final UserRepository userRepository;
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('ADMIN','SOLUTION_OWNER')")
+    @PreAuthorize("hasAnyRole('ADMIN','SOLUTION_OWNER','REQUESTER')")
     public RatesPageResponse listCurrentAndHistory(
         @RequestParam(defaultValue = "0") int page,
         @RequestParam(defaultValue = "25") int size
@@ -91,7 +91,7 @@ public class BlendedRateController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN','SOLUTION_OWNER')")
+    @PreAuthorize("hasAnyRole('ADMIN','SOLUTION_OWNER','REQUESTER')")
     public BlendedRateDto get(@PathVariable Long id) {
         BlendedRate rate = rateService.getById(id);
         LocalDate today = LocalDate.now();

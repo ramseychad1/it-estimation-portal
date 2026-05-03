@@ -15,10 +15,11 @@ interface StatCardProps {
   label: string;
   count: number;
   description?: string | null;
+  href?: string;
 }
 
-export function StatCard({ label, count, description }: StatCardProps) {
-  return (
+export function StatCard({ label, count, description, href }: StatCardProps) {
+  const inner = (
     <div
       data-testid="stat-card"
       className="bg-white"
@@ -26,6 +27,8 @@ export function StatCard({ label, count, description }: StatCardProps) {
         border: "1px solid var(--color-warm-gray-light)",
         borderRadius: 8,
         padding: 24,
+        cursor: href ? "pointer" : undefined,
+        transition: href ? "box-shadow 0.15s" : undefined,
       }}
     >
       <div
@@ -47,6 +50,15 @@ export function StatCard({ label, count, description }: StatCardProps) {
       )}
     </div>
   );
+
+  if (href) {
+    return (
+      <Link to={href} className="no-underline hover:shadow-sm block">
+        {inner}
+      </Link>
+    );
+  }
+  return inner;
 }
 
 interface QuickLinkTileProps {
