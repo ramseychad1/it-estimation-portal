@@ -320,14 +320,13 @@ describe("<EstimateDetailPage>", () => {
     // Justification under "Reviewer's justification" label.
     expect(screen.getByText(/Reviewer's justification/i)).toBeInTheDocument();
     expect(screen.getByText(/Validated answers; Medium complexity is correct here\./i)).toBeInTheDocument();
-    // Total hours: MED column → onshoreMed (10+80=90) + offshoreMed (4+40=44) = 134.
+    // Grand total row: ONS Med (90) + OFF Med (44) = 134 hrs total.
     await waitFor(() => {
-      expect(screen.getByText(/134 hours/i)).toBeInTheDocument();
+      expect(screen.getAllByText("134").length).toBeGreaterThan(0);
     });
     // Total cost: 90 onshore × $125 + 44 offshore × $45 = $11,250 + $1,980 = $13,230.
-    expect(screen.getByText(/\$13,230/i)).toBeInTheDocument();
-    // Rate-effective-date disclaimer.
-    expect(screen.getByText(/blended rates effective 2026-04-01/i)).toBeInTheDocument();
+    // Appears in both the Grand Total row and the Estimate Total $ row.
+    expect(screen.getAllByText(/\$13,230/i).length).toBeGreaterThan(0);
   });
 
   it("Rejected state renders rejection reason in a quoted block under Rejection reason label", async () => {
@@ -412,7 +411,7 @@ describe("<EstimateDetailPage>", () => {
     await waitFor(() => {
       expect(screen.getByText(/^Override$/i)).toBeInTheDocument();
     });
-    // Total hours: 100 onshore (override) + 40 offshore = 140.
-    expect(screen.getByText(/140 hours/i)).toBeInTheDocument();
+    // Grand total row Total Hrs: 100 onshore (override) + 40 offshore = 140.
+    expect(screen.getAllByText("140").length).toBeGreaterThan(0);
   });
 });

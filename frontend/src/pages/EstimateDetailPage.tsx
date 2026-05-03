@@ -358,9 +358,10 @@ function EstimateCard({
       <PhaseLineTable
         lines={detail.phaseLines}
         complexity={detail.complexity}
+        currentRate={currentRate}
       />
 
-      {detail.status === "APPROVED" && detail.complexity && (
+      {detail.status === "APPROVED" && detail.complexity && currentRate == null && (
         <CostSummary
           lines={detail.phaseLines}
           complexity={detail.complexity}
@@ -505,173 +506,202 @@ function CostSummary({
 function PhaseLineTable({
   lines,
   complexity,
+  currentRate,
 }: {
   lines: EstimateRequestPhaseLineView[];
   complexity: EstimateRequestDetail["complexity"];
+  currentRate: { onshoreRate: string; offshoreRate: string } | null;
 }) {
   if (lines.length === 0) return null;
-  // Per-row totals + grand total are computed only when complexity is
-  // set (which means we have a chosen column). Without a complexity
-  // pick (Submitted / In Review pre-pick), the totals row is omitted.
-  const totalHrs = totalHoursForLines(lines, complexity);
-  const showTotals = complexity != null;
+
+  // ---- Approved: complexity chosen → 2-column focused view ----------------
+  if (complexity != null) {
+    const chosenLabel = complexity === "LOW" ? "Low" : complexity === "MED" ? "Med" : "High";
+    const onsRate = currentRate ? Number(currentRate.onshoreRate) : 0;
+    const offsRate = currentRate ? Number(currentRate.offshoreRate) : 0;
+    const showCost = currentRate != null;
+
+    const rows = lines.map((line) => {
+      const d = displayedRow(line, complexity);
+      const snap = {
+        onshore: complexity === "LOW" ? line.onshoreLow : complexity === "MED" ? line.onshoreMed : line.onshoreHigh,
+        offshore: complexity === "LOW" ? line.offshoreLow : complexity === "MED" ? line.offshoreMed : line.offshoreHigh,
+      };
+      return { line, d, snap };
+    });
+
+    const totalOnshore = rows.reduce((s, r) => s + r.d.onshore, 0);
+    const totalOffshore = rows.reduce((s, r) => s + r.d.offshore, 0);
+    const grandHrs = Math.ceil(totalOnshore + totalOffshore);
+    const grandCost = Math.ceil(totalOnshore * onsRate + totalOffshore * offsRate);
+    const totalOnshoreCost = Math.ceil(totalOnshore * onsRate);
+    const totalOffshoreCost = Math.ceil(totalOffshore * offsRate);
+
+    const footerStyle = {
+      background: "var(--color-warm-gray-light)",
+      borderTop: "1px solid var(--color-border-strong)",
+    };
+    const footerLabel = {
+      fontSize: 11 as const,
+      letterSpacing: "0.06em",
+    };
+
+    return (
+      <div className="overflow-x-auto">
+        <table className="w-full" style={{ borderCollapse: "collapse", fontSize: 12 }}>
+          <thead>
+            <tr style={{ borderBottom: "1px solid var(--color-warm-gray-light)" }}>
+              <Th>Phase</Th>
+              <Th align="right">ONS {chosenLabel}</Th>
+              <Th align="right">OFF {chosenLabel}</Th>
+              <Th align="right">Total Hrs</Th>
+              {showCost && <Th align="right">Total $</Th>}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(({ line, d, snap }) => {
+              const rowHrs = Math.ceil(d.onshore + d.offshore);
+              const rowCost = Math.ceil(d.onshore * onsRate + d.offshore * offsRate);
+              return (
+                <tr key={line.sdlcPhaseId} style={{ borderBottom: "1px solid var(--color-warm-gray-light)" }}>
+                  <Td>{line.sdlcPhaseName}</Td>
+                  <Td align="right">
+                    <OverrideCell value={d.onshore} overridden={d.onshoreOverridden} snapshotValue={snap.onshore} />
+                  </Td>
+                  <Td align="right">
+                    <OverrideCell value={d.offshore} overridden={d.offshoreOverridden} snapshotValue={snap.offshore} />
+                  </Td>
+                  <Td align="right">
+                    <span className="tabular-nums">{rowHrs}</span>
+                  </Td>
+                  {showCost && (
+                    <Td align="right">
+                      <span className="tabular-nums">${rowCost.toLocaleString()}</span>
+                    </Td>
+                  )}
+                </tr>
+              );
+            })}
+
+            {/* Grand total */}
+            <tr style={footerStyle}>
+              <Td>
+                <span className="uppercase font-medium text-warm-gray-med" style={footerLabel}>
+                  Grand total
+                </span>
+              </Td>
+              <Td align="right">
+                <span className="font-semibold tabular-nums">{Math.ceil(totalOnshore)}</span>
+              </Td>
+              <Td align="right">
+                <span className="font-semibold tabular-nums">{Math.ceil(totalOffshore)}</span>
+              </Td>
+              <Td align="right">
+                <span className="font-semibold tabular-nums">{grandHrs}</span>
+              </Td>
+              {showCost && (
+                <Td align="right">
+                  <span className="font-semibold tabular-nums">${grandCost.toLocaleString()}</span>
+                </Td>
+              )}
+            </tr>
+
+            {/* Estimate Total $ */}
+            {showCost && (
+              <tr style={footerStyle}>
+                <Td>
+                  <span className="uppercase font-medium text-warm-gray-med" style={footerLabel}>
+                    Estimate Total $
+                  </span>
+                </Td>
+                <Td align="right">
+                  <span className="font-semibold tabular-nums">${totalOnshoreCost.toLocaleString()}</span>
+                </Td>
+                <Td align="right">
+                  <span className="font-semibold tabular-nums">${totalOffshoreCost.toLocaleString()}</span>
+                </Td>
+                <Td align="right">
+                  <span className="font-semibold tabular-nums">{grandHrs}</span>
+                </Td>
+                <Td align="right">
+                  <span className="font-semibold tabular-nums">${grandCost.toLocaleString()}</span>
+                </Td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+
+  // ---- Submitted / In Review: no complexity chosen → all 6 columns --------
   return (
     <div className="overflow-x-auto">
       <table className="w-full" style={{ borderCollapse: "collapse", fontSize: 12 }}>
         <thead>
           <tr style={{ borderBottom: "1px solid var(--color-warm-gray-light)" }}>
             <Th>Phase</Th>
-            <Th align="right" highlight={complexity === "LOW"}>ONS Low</Th>
-            <Th align="right" highlight={complexity === "MED"}>ONS Med</Th>
-            <Th align="right" highlight={complexity === "HIGH"}>ONS High</Th>
-            <Th align="right" highlight={complexity === "LOW"}>OFF Low</Th>
-            <Th align="right" highlight={complexity === "MED"}>OFF Med</Th>
-            <Th align="right" highlight={complexity === "HIGH"}>OFF High</Th>
-            {showTotals && <Th align="right">Row total</Th>}
+            <Th align="right">ONS Low</Th>
+            <Th align="right">ONS Med</Th>
+            <Th align="right">ONS High</Th>
+            <Th align="right">OFF Low</Th>
+            <Th align="right">OFF Med</Th>
+            <Th align="right">OFF High</Th>
           </tr>
         </thead>
         <tbody>
-          {lines.map((line) => {
-            const display = displayedRow(line, complexity);
-            const rowTotal = display.onshore + display.offshore;
-            return (
-              <tr
-                key={line.sdlcPhaseId}
-                style={{ borderBottom: "1px solid var(--color-warm-gray-light)" }}
-              >
-                <Td>{line.sdlcPhaseName}</Td>
-                {/* Onshore columns: when this is the chosen column AND
-                    overridden, render the override value with the pill;
-                    otherwise render the snapshot value. */}
-                <ChosenOrSnapshotCell
-                  active={complexity === "LOW"}
-                  isChosenOnshore={complexity === "LOW"}
-                  isChosenOffshore={false}
-                  display={display}
-                  snapshotValue={line.onshoreLow}
-                />
-                <ChosenOrSnapshotCell
-                  active={complexity === "MED"}
-                  isChosenOnshore={complexity === "MED"}
-                  isChosenOffshore={false}
-                  display={display}
-                  snapshotValue={line.onshoreMed}
-                />
-                <ChosenOrSnapshotCell
-                  active={complexity === "HIGH"}
-                  isChosenOnshore={complexity === "HIGH"}
-                  isChosenOffshore={false}
-                  display={display}
-                  snapshotValue={line.onshoreHigh}
-                />
-                <ChosenOrSnapshotCell
-                  active={complexity === "LOW"}
-                  isChosenOnshore={false}
-                  isChosenOffshore={complexity === "LOW"}
-                  display={display}
-                  snapshotValue={line.offshoreLow}
-                />
-                <ChosenOrSnapshotCell
-                  active={complexity === "MED"}
-                  isChosenOnshore={false}
-                  isChosenOffshore={complexity === "MED"}
-                  display={display}
-                  snapshotValue={line.offshoreMed}
-                />
-                <ChosenOrSnapshotCell
-                  active={complexity === "HIGH"}
-                  isChosenOnshore={false}
-                  isChosenOffshore={complexity === "HIGH"}
-                  display={display}
-                  snapshotValue={line.offshoreHigh}
-                />
-                {showTotals && (
-                  <Td align="right">
-                    <span className="font-semibold text-near-black tabular-nums">
-                      {fmtHrs(rowTotal)}
-                    </span>
-                  </Td>
-                )}
-              </tr>
-            );
-          })}
-          {showTotals && (
-            <tr style={{ background: "var(--color-warm-gray-light)" }}>
-              <Td>
-                <span className="uppercase font-medium text-warm-gray-med" style={{ fontSize: 11, letterSpacing: "0.06em" }}>
-                  Grand total
-                </span>
-              </Td>
-              <td colSpan={6} />
-              <Td align="right">
-                <span className="font-semibold text-near-black tabular-nums" style={{ fontSize: 13 }}>
-                  {fmtHrs(totalHrs)}
-                </span>
-              </Td>
+          {lines.map((line) => (
+            <tr key={line.sdlcPhaseId} style={{ borderBottom: "1px solid var(--color-warm-gray-light)" }}>
+              <Td>{line.sdlcPhaseName}</Td>
+              <Td align="right">{fmt(line.onshoreLow)}</Td>
+              <Td align="right">{fmt(line.onshoreMed)}</Td>
+              <Td align="right">{fmt(line.onshoreHigh)}</Td>
+              <Td align="right">{fmt(line.offshoreLow)}</Td>
+              <Td align="right">{fmt(line.offshoreMed)}</Td>
+              <Td align="right">{fmt(line.offshoreHigh)}</Td>
             </tr>
-          )}
+          ))}
         </tbody>
       </table>
     </div>
   );
 }
 
-/**
- * One cell inside {@link PhaseLineTable}. When this cell sits in the
- * chosen complexity's Onshore (or Offshore) column AND that side has an
- * override, renders the override value with a small "Override" pill and
- * the snapshot value as a tooltip. Otherwise renders the raw snapshot
- * value.
- */
-function ChosenOrSnapshotCell({
-  active,
-  isChosenOnshore,
-  isChosenOffshore,
-  display,
+function OverrideCell({
+  value,
+  overridden,
   snapshotValue,
 }: {
-  active: boolean;
-  isChosenOnshore: boolean;
-  isChosenOffshore: boolean;
-  display: ReturnType<typeof displayedRow>;
+  value: number;
+  overridden: boolean;
   snapshotValue: number;
 }) {
-  const isOverridden =
-    (isChosenOnshore && display.onshoreOverridden) ||
-    (isChosenOffshore && display.offshoreOverridden);
-  const value = isChosenOnshore
-    ? (isOverridden ? display.onshore : snapshotValue)
-    : isChosenOffshore
-      ? (isOverridden ? display.offshore : snapshotValue)
-      : snapshotValue;
   return (
-    <Td align="right" highlight={active}>
-      <span
-        className="inline-flex items-center justify-end tabular-nums"
-        style={{ gap: 4 }}
-        title={isOverridden ? `Original: ${fmt(snapshotValue)}` : undefined}
-      >
-        {fmt(value)}
-        {isOverridden && (
-          <span
-            className="inline-flex items-center text-near-black"
-            style={{
-              padding: "0 4px",
-              borderRadius: 3,
-              fontSize: 9,
-              fontWeight: 600,
-              background: "var(--color-light-blue-soft)",
-              border: "1px solid rgba(187,221,230,0.7)",
-              textTransform: "uppercase",
-              letterSpacing: "0.04em",
-              lineHeight: 1.2,
-            }}
-          >
-            Override
-          </span>
-        )}
-      </span>
-    </Td>
+    <span
+      className="inline-flex items-center justify-end tabular-nums"
+      style={{ gap: 4 }}
+      title={overridden ? `Original: ${fmt(snapshotValue)}` : undefined}
+    >
+      {fmt(value)}
+      {overridden && (
+        <span
+          className="inline-flex items-center text-near-black"
+          style={{
+            padding: "0 4px",
+            borderRadius: 3,
+            fontSize: 9,
+            fontWeight: 600,
+            background: "var(--color-light-blue-soft)",
+            border: "1px solid rgba(187,221,230,0.7)",
+            textTransform: "uppercase",
+            letterSpacing: "0.04em",
+            lineHeight: 1.2,
+          }}
+        >
+          Override
+        </span>
+      )}
+    </span>
   );
 }
 
