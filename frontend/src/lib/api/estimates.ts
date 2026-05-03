@@ -54,6 +54,7 @@ export interface EstimateRequestDetail {
   description: string | null;
   productId: number;
   productName: string;
+  teamName: string | null;
   subFeatureId: number | null;
   subFeatureName: string | null;
   templateId: number | null;

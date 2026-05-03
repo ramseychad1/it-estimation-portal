@@ -1,12 +1,16 @@
 package com.acme.estimator.catalog.products;
 
+import com.acme.estimator.teams.Team;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import java.time.OffsetDateTime;
 import lombok.AccessLevel;
@@ -45,6 +49,12 @@ public class Product {
 
     @Column(name = "active", nullable = false)
     private boolean active = true;
+
+    // Nullable for legacy products created before Phase 8. Service layer requires
+    // team on create; existing rows remain NULL ("Unassigned") until an admin assigns them.
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "team_id")
+    private Team team;
 
     @Column(name = "created_at", nullable = false, updatable = false, insertable = false)
     private OffsetDateTime createdAt;

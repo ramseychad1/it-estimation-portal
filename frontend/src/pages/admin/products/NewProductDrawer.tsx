@@ -3,6 +3,7 @@ import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { ApiError } from "../../../lib/api";
 import { useCreateProductMutation } from "../../../lib/queries/products";
+import { useTeamsQuery } from "../../../lib/queries/teams";
 import { useToast } from "../../../components/Toast";
 import { Drawer } from "../../../components/Drawer";
 import { PrimaryButton, SecondaryButton } from "../../../components/buttons";
@@ -44,17 +45,20 @@ export function NewProductDrawer({ open, onClose }: NewProductDrawerProps) {
   const navigate = useNavigate();
   const toast = useToast();
   const createMutation = useCreateProductMutation();
+  const teamsQuery = useTeamsQuery({ status: "ACTIVE", size: 100 });
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [mode, setMode] = useState<ProductMode | null>(null);
+  const [teamId, setTeamId] = useState<number | null>(null);
   const [active, setActive] = useState(true);
-  const [error, setError] = useState<{ name?: string; mode?: string; form?: string }>({});
+  const [error, setError] = useState<{ name?: string; mode?: string; teamId?: string; form?: string }>({});
 
   function reset() {
     setName("");
     setDescription("");
     setMode(null);
+    setTeamId(null);
     setActive(true);
     setError({});
   }
@@ -68,6 +72,7 @@ export function NewProductDrawer({ open, onClose }: NewProductDrawerProps) {
     const next: typeof error = {};
     if (!name.trim()) next.name = "Name is required.";
     if (!mode) next.mode = "Choose a mode for this product.";
+    if (!teamId) next.teamId = "Please select a team.";
     setError(next);
     return Object.keys(next).length === 0;
   }
@@ -81,6 +86,7 @@ export function NewProductDrawer({ open, onClose }: NewProductDrawerProps) {
         description: description.trim() || null,
         mode: mode as ProductMode,
         active,
+        teamId: teamId as number,
       });
       toast.success(`Product '${created.name}' created.`);
       reset();
@@ -96,7 +102,7 @@ export function NewProductDrawer({ open, onClose }: NewProductDrawerProps) {
   }
 
   const isDirty =
-    name.trim() !== "" || description.trim() !== "" || mode !== null || !active;
+    name.trim() !== "" || description.trim() !== "" || mode !== null || teamId !== null || !active;
 
   const infoCopy =
     mode === "ATOMIC"
@@ -106,6 +112,7 @@ export function NewProductDrawer({ open, onClose }: NewProductDrawerProps) {
         : "After saving, you'll be taken to the product's detail page to continue setup.";
 
   const busy = createMutation.isPending;
+  const activeTeams = teamsQuery.data?.items ?? [];
 
   return (
     <Drawer
@@ -145,6 +152,31 @@ export function NewProductDrawer({ open, onClose }: NewProductDrawerProps) {
           placeholder="Optional. What kind of work does this product cover?"
           disabled={busy}
         />
+
+        <FormField label="Team" required helper="Which team owns this product?">
+          {(field) => (
+            <>
+              <select
+                id={field.id}
+                value={teamId ?? ""}
+                onChange={(e) => setTeamId(e.currentTarget.value ? Number(e.currentTarget.value) : null)}
+                disabled={busy}
+                className="w-full rounded-md border bg-white text-near-black h-8 px-2 disabled:bg-warm-gray-light disabled:text-warm-gray-med"
+                style={{ borderColor: error.teamId ? "var(--color-cardinal-red)" : "var(--color-border-strong)", fontSize: 13 }}
+              >
+                <option value="">Select a team…</option>
+                {activeTeams.map((t) => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+              {error.teamId && (
+                <p className="m-0 mt-1" role="alert" style={{ fontSize: 12, color: "var(--color-cardinal-red)" }}>
+                  {error.teamId}
+                </p>
+              )}
+            </>
+          )}
+        </FormField>
 
         <fieldset className="border-0 p-0 m-0">
           <legend className="text-near-black font-medium" style={{ fontSize: 13 }}>

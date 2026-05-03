@@ -6,12 +6,10 @@ export interface InviteUserRequest {
   firstName: string;
   lastName: string;
   roleIds: number[];
-  // teamIds intentionally absent — the user/team association table doesn't
-  // exist yet (arrives in Phase 5 with Solution Owner work). The Invite User
-  // modal still renders a Teams multi-select for visual completeness; its
-  // value is local to the modal and is NOT submitted.
   expiresInDays?: number;
   personalNote?: string;
+  /** Optional. Each id must reference an active team. */
+  teamIds?: number[];
 }
 
 export interface InvitationResult {

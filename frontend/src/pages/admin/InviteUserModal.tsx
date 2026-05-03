@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { ApiError } from "../../lib/api";
 import { useInviteUserMutation } from "../../lib/queries/users";
+import { useTeamsQuery } from "../../lib/queries/teams";
 import { useToast } from "../../components/Toast";
 import { PrimaryButton, SecondaryButton } from "../../components/buttons";
 import { TextInput, Textarea } from "../../components/inputs";
@@ -40,11 +41,10 @@ export function InviteUserModal({ open, onClose, onCreated, prefillAdmin = false
   const [values, setValues] = useState<FormValues>(INITIAL);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [fieldError, setFieldError] = useState<{ email?: string; form?: string }>({});
-  // Local-only — the user/team join table doesn't exist yet (Phase 5).
-  // The select renders for visual completeness but is never submitted.
   const [teamIds, setTeamIds] = useState<number[]>([]);
 
   const inviteMutation = useInviteUserMutation();
+  const teamsQuery = useTeamsQuery({ status: "ACTIVE", size: 100 });
   const toast = useToast();
 
   useEffect(() => {
@@ -54,8 +54,6 @@ export function InviteUserModal({ open, onClose, onCreated, prefillAdmin = false
     setAdvancedOpen(false);
     setFieldError({});
   }, [open, prefillAdmin]);
-
-  const showsTeamSelect = values.roleIds.includes(2) || values.roleIds.includes(3);
 
   const isValid =
     values.email.trim().length > 0 &&
@@ -76,6 +74,7 @@ export function InviteUserModal({ open, onClose, onCreated, prefillAdmin = false
         roleIds: values.roleIds,
         expiresInDays: values.expiresInDays,
         personalNote: values.personalNote.trim() || undefined,
+        teamIds: teamIds.length > 0 ? teamIds : undefined,
       });
       toast.success("Invitation created.");
       onCreated(result);
@@ -174,26 +173,42 @@ export function InviteUserModal({ open, onClose, onCreated, prefillAdmin = false
                 />
               </div>
 
-              {showsTeamSelect && (
-                <div className="mt-5">
-                  <div className="text-near-black font-medium mb-1" style={{ fontSize: 13 }}>
-                    Teams
-                  </div>
-                  <p className="text-warm-gray-med m-0" style={{ fontSize: 12 }}>
-                    Estimators see estimate requests for their teams. Solution Owners aren't restricted by team — assignment helps reporting.
-                  </p>
-                  <p
-                    className="text-warm-gray-med italic mt-2 mb-0"
-                    style={{ fontSize: 12 }}
-                  >
-                    Team assignment is wired up in a later phase. Selections here are not saved yet.
-                  </p>
-                  <div className="text-warm-gray-med mt-2" style={{ fontSize: 12 }}>
-                    {/* Placeholder — local-only state to keep UI parity with the design. */}
-                    {teamIds.length === 0 ? "No teams selected." : `${teamIds.length} teams selected.`}
-                  </div>
+              <div className="mt-5">
+                <div className="text-near-black font-medium mb-1" style={{ fontSize: 13 }}>
+                  Teams <span className="text-warm-gray-med font-normal">(optional)</span>
                 </div>
-              )}
+                <p className="text-warm-gray-med m-0 mb-2" style={{ fontSize: 12 }}>
+                  Assign the invited user to teams for organizational reporting.
+                </p>
+                {teamsQuery.data?.items.length === 0 && (
+                  <p className="text-warm-gray-med italic" style={{ fontSize: 12 }}>No active teams configured.</p>
+                )}
+                <div className="flex flex-col gap-1">
+                  {(teamsQuery.data?.items ?? []).map((team) => {
+                    const checked = teamIds.includes(team.id);
+                    return (
+                      <label
+                        key={team.id}
+                        className="flex items-center gap-2 cursor-pointer"
+                        style={{ fontSize: 13 }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          disabled={busy}
+                          onChange={() =>
+                            setTeamIds((ids) =>
+                              checked ? ids.filter((id) => id !== team.id) : [...ids, team.id]
+                            )
+                          }
+                          className="accent-near-black"
+                        />
+                        <span className="text-near-black">{team.name}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
 
               <button
                 type="button"

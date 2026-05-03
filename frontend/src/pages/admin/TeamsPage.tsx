@@ -53,6 +53,7 @@ const PAGE_SIZE = 25;
 const TEAMS_COLUMN_DEFS = [
   { key: "name", label: "Name" },
   { key: "description", label: "Description" },
+  { key: "memberCount", label: "Members" },
   { key: "productCount", label: "# Products" },
   { key: "status", label: "Status" },
   { key: "updatedAt", label: "Last updated" },
@@ -191,6 +192,13 @@ export function TeamsPage() {
           {r.description ?? "—"}
         </span>
       ),
+    },
+    {
+      key: "memberCount",
+      header: "Members",
+      align: "right",
+      width: 90,
+      render: (r) => <span className="tabular text-near-black">{r.memberCount}</span>,
     },
     {
       key: "productCount",
@@ -467,6 +475,7 @@ export function TeamsPage() {
             description: t.description,
             active: t.active,
             productCount: 0,
+            memberCount: 0,
             updatedAt: t.updatedAt,
             updatedBy: t.updatedBy,
           })
@@ -507,8 +516,13 @@ export function TeamsPage() {
               setDrawer({ mode: "closed" });
             }
           } catch (err) {
-            const msg = err instanceof ApiError ? err.message : "Could not delete team.";
-            toast.error(msg);
+            setDeleteTarget(null);
+            if (err instanceof ApiError && err.status === 409) {
+              const body = err.body as { message?: string };
+              toast.error(body?.message ?? "Cannot delete this team — it has active products.");
+            } else {
+              toast.error("Could not delete team.");
+            }
           }
         }}
       />

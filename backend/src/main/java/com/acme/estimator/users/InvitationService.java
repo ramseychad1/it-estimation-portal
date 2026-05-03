@@ -10,6 +10,9 @@ import com.acme.estimator.auth.Role;
 import com.acme.estimator.auth.User;
 import com.acme.estimator.auth.UserRepository;
 import com.acme.estimator.common.ApiException;
+import com.acme.estimator.teams.Team;
+import com.acme.estimator.teams.TeamRepository;
+import com.acme.estimator.teams.dto.TeamRef;
 import com.acme.estimator.users.dto.AcceptInviteRequest;
 import com.acme.estimator.users.dto.AcceptInviteResult;
 import com.acme.estimator.users.dto.InvitationResult;
@@ -18,7 +21,10 @@ import com.acme.estimator.users.dto.UserDetail;
 import com.acme.estimator.users.dto.ValidateTokenResponse;
 import jakarta.persistence.EntityManager;
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -53,6 +59,7 @@ public class InvitationService {
     private final AuditService auditService;
     private final PasswordEncoder passwordEncoder;
     private final TokenGenerator tokenGenerator;
+    private final TeamRepository teamRepository;
     private final EntityManager em;
 
     @Value("${app.base-url}")
@@ -84,6 +91,18 @@ public class InvitationService {
         OffsetDateTime now = OffsetDateTime.now();
         OffsetDateTime expiresAt = now.plusDays(expiresInDays);
 
+        // Resolve team ids up front so an unknown/inactive id fails the whole call.
+        List<Team> assignedTeams = new ArrayList<>();
+        if (req.teamIds() != null && !req.teamIds().isEmpty()) {
+            for (Long tid : new HashSet<>(req.teamIds())) {
+                Team t = teamRepository.findById(tid).orElse(null);
+                if (t == null || !t.isActive()) {
+                    throw ApiException.badRequest("Unknown or inactive team id: " + tid);
+                }
+                assignedTeams.add(t);
+            }
+        }
+
         User user = new User();
         user.setEmail(req.email().trim());
         user.setFirstName(req.firstName().trim());
@@ -95,6 +114,7 @@ public class InvitationService {
         user.setInvitedAt(now);
         user.setInvitationExpiresAt(expiresAt);
         user.getRoles().addAll(roles);
+        user.getTeams().addAll(assignedTeams);
         userRepository.save(user);
 
         InvitationToken token = new InvitationToken();
@@ -111,8 +131,13 @@ public class InvitationService {
         log.info("Invitation created for {} (token prefix {})",
             user.getEmail(), TokenGenerator.shortPrefix(token.getToken()));
 
+        List<TeamRef> teamRefs = assignedTeams.stream()
+            .sorted(Comparator.comparing(Team::getName))
+            .map(TeamRef::from)
+            .toList();
+
         return new InvitationResult(
-            UserDetail.from(user),
+            UserDetail.from(user, teamRefs),
             buildInviteUrl(token.getToken()),
             token.getExpiresAt()
         );
@@ -176,8 +201,11 @@ public class InvitationService {
         log.info("Invitation resent for {} (new token prefix {})",
             user.getEmail(), TokenGenerator.shortPrefix(token.getToken()));
 
+        List<TeamRef> teamRefs = teamRepository.findTeamsByUserId(user.getId())
+            .stream().map(TeamRef::from).toList();
+
         return new InvitationResult(
-            UserDetail.from(user),
+            UserDetail.from(user, teamRefs),
             buildInviteUrl(token.getToken()),
             expiresAt
         );

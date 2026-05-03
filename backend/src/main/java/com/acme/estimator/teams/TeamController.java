@@ -55,8 +55,8 @@ public class TeamController {
         @RequestParam(defaultValue = "name,asc") String sort
     ) {
         Sort sortSpec = parseSort(sort);
-        Page<Team> result = teamService.list(search, status, PageRequest.of(page, size, sortSpec));
-        return PageResponse.from(result, TeamListItem::from);
+        Page<TeamListItem> result = teamService.list(search, status, PageRequest.of(page, size, sortSpec));
+        return PageResponse.from(result, t -> t);
     }
 
     @PostMapping

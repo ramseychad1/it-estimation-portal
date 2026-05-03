@@ -210,6 +210,9 @@ function SummaryCard({ detail }: { detail: EstimateRequestDetail }) {
             {detail.productName}
             {detail.subFeatureName && <> · {detail.subFeatureName}</>}
           </KV>
+          {detail.teamName && (
+            <KV label="Team">{detail.teamName}</KV>
+          )}
           {detail.submittedAt && (
             <KV label="Submitted">{relativeTime(detail.submittedAt)}</KV>
           )}

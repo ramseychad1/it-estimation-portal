@@ -61,16 +61,16 @@ public class UserController {
             role == null || role.isBlank() ? null : Arrays.stream(role.split(",")).map(String::trim).filter(s -> !s.isEmpty()).toList(),
             status
         );
-        Page<User> result = userService.list(filter, PageRequest.of(page, size, parseSort(sort)));
+        Page<UserListItem> result = userService.list(filter, PageRequest.of(page, size, parseSort(sort)));
         // List-level meta: total active-admin count so the front-end's
         // last-admin banner doesn't depend on what's visible on this page.
         Map<String, Object> meta = Map.of("activeAdminCount", userRepository.countActiveAdmins());
-        return PageResponse.from(result, UserListItem::from, meta);
+        return PageResponse.from(result, u -> u, meta);
     }
 
     @GetMapping("/{id}")
     public UserDetail get(@PathVariable Long id) {
-        return UserDetail.from(userService.get(id));
+        return userService.getDetail(id);
     }
 
     @PatchMapping("/{id}")
@@ -79,17 +79,20 @@ public class UserController {
         @Valid @RequestBody UpdateUserRequest body,
         @AuthenticationPrincipal AppUserDetails principal
     ) {
-        return UserDetail.from(userService.update(id, body, currentUser(principal)));
+        User updated = userService.update(id, body, currentUser(principal));
+        return UserDetail.from(updated, userService.loadUserTeams(updated.getId()));
     }
 
     @PostMapping("/{id}/activate")
     public UserDetail activate(@PathVariable Long id, @AuthenticationPrincipal AppUserDetails principal) {
-        return UserDetail.from(userService.activate(id, currentUser(principal)));
+        User activated = userService.activate(id, currentUser(principal));
+        return UserDetail.from(activated, userService.loadUserTeams(activated.getId()));
     }
 
     @PostMapping("/{id}/deactivate")
     public UserDetail deactivate(@PathVariable Long id, @AuthenticationPrincipal AppUserDetails principal) {
-        return UserDetail.from(userService.deactivate(id, currentUser(principal)));
+        User deactivated = userService.deactivate(id, currentUser(principal));
+        return UserDetail.from(deactivated, userService.loadUserTeams(deactivated.getId()));
     }
 
     @PostMapping("/{id}/reset-password")

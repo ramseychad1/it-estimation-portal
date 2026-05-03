@@ -6,6 +6,7 @@ import {
   useDeactivateUserMutation,
   useActivateUserMutation,
 } from "../../lib/queries/users";
+import { useTeamsQuery } from "../../lib/queries/teams";
 import { useToast } from "../../components/Toast";
 import { Drawer } from "../../components/Drawer";
 import {
@@ -38,6 +39,7 @@ interface FormValues {
   lastName: string;
   email: string;
   roleIds: number[];
+  teamIds: number[];
 }
 
 function valuesFor(user: UserDetail | null): FormValues {
@@ -50,6 +52,7 @@ function valuesFor(user: UserDetail | null): FormValues {
           .map((name) => ROLE_CATALOG.find((r) => r.name === name)?.id)
           .filter((id): id is number => id !== undefined)
       : [],
+    teamIds: user?.teams?.map((t) => t.id) ?? [],
   };
 }
 
@@ -65,6 +68,8 @@ export function EditUserDrawer({
   const initial = useMemo(() => valuesFor(user), [user]);
   const [values, setValues] = useState<FormValues>(initial);
   const [fieldError, setFieldError] = useState<{ email?: string; form?: string }>({});
+
+  const teamsQuery = useTeamsQuery({ status: "ACTIVE", size: 100 });
 
   const updateMutation = useUpdateUserMutation();
   const activateMutation = useActivateUserMutation();
@@ -93,7 +98,8 @@ export function EditUserDrawer({
     values.firstName !== initial.firstName ||
     values.lastName !== initial.lastName ||
     values.email !== initial.email ||
-    JSON.stringify([...values.roleIds].sort()) !== JSON.stringify([...initial.roleIds].sort());
+    JSON.stringify([...values.roleIds].sort()) !== JSON.stringify([...initial.roleIds].sort()) ||
+    JSON.stringify([...values.teamIds].sort()) !== JSON.stringify([...initial.teamIds].sort());
 
   const busy =
     updateMutation.isPending
@@ -112,6 +118,7 @@ export function EditUserDrawer({
         lastName?: string;
         email?: string;
         roleIds?: number[];
+        teamIds?: number[];
       } = {};
       if (values.firstName.trim() !== initial.firstName) body.firstName = values.firstName.trim();
       if (values.lastName.trim() !== initial.lastName) body.lastName = values.lastName.trim();
@@ -119,6 +126,9 @@ export function EditUserDrawer({
       const sortedNew = [...values.roleIds].sort();
       const sortedOld = [...initial.roleIds].sort();
       if (JSON.stringify(sortedNew) !== JSON.stringify(sortedOld)) body.roleIds = values.roleIds;
+      const sortedTeamsNew = [...values.teamIds].sort();
+      const sortedTeamsOld = [...initial.teamIds].sort();
+      if (JSON.stringify(sortedTeamsNew) !== JSON.stringify(sortedTeamsOld)) body.teamIds = values.teamIds;
 
       await updateMutation.mutateAsync({ id: user.id, body });
       toast.success("User saved.");
@@ -306,15 +316,48 @@ export function EditUserDrawer({
           />
         </div>
 
-        {/* TODO(post-5b-user-teams): once a user_teams join table exists,
-            add a Teams multi-select section here mirroring the Invite User
-            modal's. The modal currently renders the section as a placeholder;
-            this drawer should grow the same control plus the actual save
-            path. Phase 5a did NOT introduce user_teams (only the catalog
-            tables — products, sub_features, critical_questions, plus the
-            schema-only estimate_templates pair). Phase 5b ships the
-            Estimate Template editor, also without user_teams. The
-            user_teams join is its own later milestone. */}
+        <div className="mt-5">
+          <div
+            className="text-warm-gray-med uppercase font-medium mb-2"
+            style={{ fontSize: 11, letterSpacing: "0.06em" }}
+          >
+            Teams
+          </div>
+          <p className="text-warm-gray-med mt-0 mb-2" style={{ fontSize: 12 }}>
+            Assign this user to one or more teams for organizational reporting.
+          </p>
+          {teamsQuery.data?.items.length === 0 && (
+            <p className="text-warm-gray-med italic" style={{ fontSize: 12 }}>No active teams configured.</p>
+          )}
+          <div className="flex flex-col gap-1">
+            {(teamsQuery.data?.items ?? []).map((team) => {
+              const checked = values.teamIds.includes(team.id);
+              return (
+                <label
+                  key={team.id}
+                  className="flex items-center gap-2 cursor-pointer"
+                  style={{ fontSize: 13 }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    disabled={busy}
+                    onChange={() => {
+                      setValues((v) => ({
+                        ...v,
+                        teamIds: checked
+                          ? v.teamIds.filter((id) => id !== team.id)
+                          : [...v.teamIds, team.id],
+                      }));
+                    }}
+                    className="accent-near-black"
+                  />
+                  <span className="text-near-black">{team.name}</span>
+                </label>
+              );
+            })}
+          </div>
+        </div>
 
         {fieldError.form && (
           <p className="text-small text-cardinal-red" role="alert">{fieldError.form}</p>

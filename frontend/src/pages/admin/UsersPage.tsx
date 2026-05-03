@@ -55,6 +55,7 @@ const PAGE_SIZE = 25;
 const USERS_COLUMN_DEFS = [
   { key: "user", label: "User" },
   { key: "roles", label: "Roles" },
+  { key: "teams", label: "Teams" },
   { key: "status", label: "Status" },
   { key: "lastActive", label: "Last active" },
   { key: "added", label: "Added" },
@@ -248,6 +249,38 @@ export function UsersPage() {
           )}
         </div>
       ),
+    },
+    {
+      key: "teams",
+      header: "Teams",
+      width: 200,
+      render: (r) => {
+        const teams = r.teams ?? [];
+        if (teams.length === 0) return <span className="text-warm-gray-med" style={{ fontSize: 12 }}>—</span>;
+        const visible = teams.slice(0, 2);
+        const overflow = teams.length - visible.length;
+        return (
+          <div className="flex items-center gap-1 flex-wrap">
+            {visible.map((t) => (
+              <span
+                key={t.id}
+                className="text-warm-gray-med truncate"
+                style={{ fontSize: 12 }}
+              >
+                {t.name}
+              </span>
+            ))}
+            {overflow > 0 && (
+              <span
+                className="text-warm-gray-med"
+                style={{ fontSize: 11, padding: "2px 6px", borderRadius: 999, background: "var(--color-warm-gray-light)" }}
+              >
+                +{overflow}
+              </span>
+            )}
+          </div>
+        );
+      },
     },
     {
       key: "status",

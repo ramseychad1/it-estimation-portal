@@ -14,5 +14,7 @@ public record InviteUserRequest(
     @NotBlank @Size(max = 100) String lastName,
     @NotEmpty List<Short> roleIds,
     @Min(1) @Max(90) Integer expiresInDays,
-    @Size(max = 1000) String personalNote
+    @Size(max = 1000) String personalNote,
+    /** Optional. Each id must reference an active team. Null/empty = no teams. */
+    List<Long> teamIds
 ) {}

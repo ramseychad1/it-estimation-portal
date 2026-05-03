@@ -1,4 +1,5 @@
 import {
+  BarChart3,
   ChartLine,
   ClipboardList,
   Clock3,
@@ -57,6 +58,13 @@ export const NAV_SECTIONS: NavSection[] = [
       { label: "Products", to: "/catalog/products", icon: Package },
       { label: "Critical questions", to: "/catalog/questions", icon: HelpCircle },
       { label: "Template history", to: "/catalog/template-history", icon: History },
+    ],
+  },
+  {
+    label: "Reports",
+    requiresRole: ROLE_SOLUTION_OWNER,
+    items: [
+      { label: "Team workload", to: "/reports/team-workload", icon: BarChart3 },
     ],
   },
   {

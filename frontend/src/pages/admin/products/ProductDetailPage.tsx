@@ -119,7 +119,7 @@ export function ProductDetailPage() {
 
   const headerKebab: KebabMenuItem[] = [
     {
-      label: "Edit Quick Info",
+      label: "Edit Product",
       icon: <Pencil className="w-3.5 h-3.5" strokeWidth={1.5} />,
       onSelect: () => setDrawer({ kind: "edit-product" }),
     },
@@ -186,6 +186,12 @@ export function ProductDetailPage() {
         subtitle={
           <span className="inline-flex items-center gap-2">
             <ModePill mode={product.mode} />
+            {product.team && (
+              <>
+                <span aria-hidden="true">·</span>
+                <span>{product.team.name}</span>
+              </>
+            )}
             {product.description && (
               <>
                 <span aria-hidden="true">·</span>

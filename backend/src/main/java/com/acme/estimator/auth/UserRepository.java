@@ -39,4 +39,19 @@ public interface UserRepository
 
     /** Phase 7 dashboard: pendingInvitations + totalActiveUsers cards (Admin only). */
     long countByInvitationStatus(InvitationStatus invitationStatus);
+
+    /**
+     * Batch-loads users WITH their teams collection eagerly initialized.
+     * Use this after a paged list query to avoid N+1 on teams (open-in-view=false).
+     */
+    @org.springframework.data.jpa.repository.Query(
+        "SELECT DISTINCT u FROM User u LEFT JOIN FETCH u.teams WHERE u.id IN :ids"
+    )
+    java.util.List<User> findByIdInWithTeams(@org.springframework.data.repository.query.Param("ids") java.util.List<Long> ids);
+
+    /** Reporting: all users who are members of a specific team. */
+    @org.springframework.data.jpa.repository.Query(
+        "SELECT DISTINCT u FROM User u JOIN FETCH u.teams t WHERE t.id = :teamId ORDER BY u.lastName, u.firstName"
+    )
+    java.util.List<User> findByTeamId(@org.springframework.data.repository.query.Param("teamId") Long teamId);
 }

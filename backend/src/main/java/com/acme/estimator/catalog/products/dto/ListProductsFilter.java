@@ -11,5 +11,7 @@ import com.acme.estimator.catalog.products.ProductMode;
 public record ListProductsFilter(
     String search,
     ProductMode mode,
-    Boolean activeOnly
+    Boolean activeOnly,
+    /** Optional team filter — null means all teams (including unassigned). */
+    Long teamId
 ) {}

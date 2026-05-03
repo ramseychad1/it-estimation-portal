@@ -8,6 +8,7 @@ export interface TeamListItem {
   description: string | null;
   active: boolean;
   productCount: number;
+  memberCount: number;
   updatedAt: string | null;
   updatedBy: number | null;
 }

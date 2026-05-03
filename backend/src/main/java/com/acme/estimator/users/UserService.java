@@ -10,21 +10,32 @@ import com.acme.estimator.auth.Role;
 import com.acme.estimator.auth.User;
 import com.acme.estimator.auth.UserRepository;
 import com.acme.estimator.common.ApiException;
+import com.acme.estimator.teams.Team;
+import com.acme.estimator.teams.TeamRepository;
+import com.acme.estimator.teams.dto.TeamRef;
 import com.acme.estimator.users.dto.DeleteUserRequest;
 import com.acme.estimator.users.dto.ListUsersFilter;
 import com.acme.estimator.users.dto.UpdateUserRequest;
+import com.acme.estimator.users.dto.UserDetail;
+import com.acme.estimator.users.dto.UserListItem;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.criteria.Join;
 import jakarta.persistence.criteria.Predicate;
 import java.security.SecureRandom;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -49,6 +60,7 @@ public class UserService {
     private static final String ROLE_ADMIN = "Admin";
 
     private final UserRepository userRepository;
+    private final TeamRepository teamRepository;
     private final ChangeLogEntryRepository changeLogRepository;
     private final AuditService auditService;
     private final PasswordEncoder passwordEncoder;
@@ -58,16 +70,27 @@ public class UserService {
 
     // ---- reads ---------------------------------------------------------
 
+    /**
+     * Returns a page of UserListItems with teams pre-loaded via a single batch query.
+     * Mapping is done inside the transaction to avoid LazyInitializationException
+     * (open-in-view=false).
+     */
     @Transactional(readOnly = true)
-    public Page<User> list(ListUsersFilter filter, Pageable pageable) {
-        return userRepository.findAll(buildSpec(filter), pageable);
+    public Page<UserListItem> list(ListUsersFilter filter, Pageable pageable) {
+        Page<User> page = userRepository.findAll(buildSpec(filter), pageable);
+        if (page.isEmpty()) {
+            return page.map(u -> UserListItem.from(u, List.of()));
+        }
+        List<Long> ids = page.getContent().stream().map(User::getId).toList();
+        Map<Long, List<TeamRef>> teamMap = buildTeamMap(ids);
+        return page.map(u -> UserListItem.from(u, teamMap.getOrDefault(u.getId(), List.of())));
     }
 
     @Transactional(readOnly = true)
     public List<User> listAllForExport(ListUsersFilter filter) {
         return userRepository.findAll(
             buildSpec(filter),
-            org.springframework.data.domain.Sort.by("email").ascending()
+            Sort.by("email").ascending()
         );
     }
 
@@ -75,6 +98,21 @@ public class UserService {
     public User get(Long id) {
         return userRepository.findById(id)
             .orElseThrow(() -> ApiException.notFound("User " + id + " not found"));
+    }
+
+    /** Loads a user and their teams in one batch, returns a fully-populated UserDetail. */
+    @Transactional(readOnly = true)
+    public UserDetail getDetail(Long id) {
+        User user = get(id);
+        List<TeamRef> teams = loadUserTeams(user.getId());
+        return UserDetail.from(user, teams);
+    }
+
+    /** Returns the team refs for a single user (one query). */
+    @Transactional(readOnly = true)
+    public List<TeamRef> loadUserTeams(Long userId) {
+        return teamRepository.findTeamsByUserId(userId)
+            .stream().map(TeamRef::from).toList();
     }
 
     @Transactional(readOnly = true)
@@ -131,11 +169,10 @@ public class UserService {
 
         if (req.roleIds() != null) {
             Set<Role> currentRoles = user.getRoles();
-            Set<Short> currentIds = currentRoles.stream().map(Role::getId).collect(java.util.stream.Collectors.toSet());
+            Set<Short> currentIds = currentRoles.stream().map(Role::getId).collect(Collectors.toSet());
             Set<Short> nextIds = new HashSet<>(req.roleIds());
 
             if (!Objects.equals(currentIds, nextIds)) {
-                // Last-admin protection: if removing Admin from the only Admin, block.
                 boolean wasAdmin = user.hasRole(ROLE_ADMIN);
                 boolean willBeAdmin = nextIds.contains(adminRoleId(currentRoles));
                 if (wasAdmin && !willBeAdmin
@@ -148,7 +185,7 @@ public class UserService {
                 Set<Role> nextRoles = nextIds.stream()
                     .map(rid -> em.find(Role.class, rid))
                     .filter(Objects::nonNull)
-                    .collect(java.util.stream.Collectors.toSet());
+                    .collect(Collectors.toSet());
                 if (nextRoles.size() != nextIds.size()) {
                     throw ApiException.badRequest("One or more role ids were not recognised.");
                 }
@@ -159,6 +196,23 @@ public class UserService {
 
                 auditService.recordUpdated(
                     ENTITY_TYPE, user.getId(), "roles", oldRoleSummary, newRoleSummary, actor
+                );
+                dirty = true;
+            }
+        }
+
+        if (req.teamIds() != null) {
+            // user.getTeams() is safe here — we're inside @Transactional, session is open.
+            String oldSummary = teamSummary(new ArrayList<>(user.getTeams()));
+            Set<Long> dedupedIds = new HashSet<>(req.teamIds());
+            List<Team> newTeams = resolveActiveTeams(dedupedIds);
+            String newSummary = teamSummary(newTeams);
+
+            if (!Objects.equals(oldSummary, newSummary)) {
+                user.getTeams().clear();
+                user.getTeams().addAll(newTeams);
+                auditService.recordUpdated(
+                    ENTITY_TYPE, user.getId(), "teams", oldSummary, newSummary, actor
                 );
                 dirty = true;
             }
@@ -203,7 +257,6 @@ public class UserService {
     public void delete(Long id, DeleteUserRequest body, User actor) {
         User user = get(id);
 
-        // Typed-name confirmation: case-insensitive match against "First Last".
         String expected = (user.getFirstName() + " " + user.getLastName()).trim();
         String got = body.confirmationName() == null ? "" : body.confirmationName().trim();
         if (!expected.equalsIgnoreCase(got)) {
@@ -238,22 +291,48 @@ public class UserService {
         entry.setSource(ChangeSource.WEB);
         changeLogRepository.save(entry);
 
-        // DEV ONLY: surface the new password to the operator. Production
-        // will email this; for MVP the admin reads it from server logs.
         log.warn("[DEV ONLY] Password reset for {}: {}", user.getEmail(), newPassword);
         return newPassword;
     }
 
     // ---- helpers -------------------------------------------------------
 
+    /**
+     * Batch-loads teams for a list of user IDs and groups them by user.
+     * Two queries total per paged list request (the main page query + this one).
+     */
+    private Map<Long, List<TeamRef>> buildTeamMap(List<Long> userIds) {
+        if (userIds.isEmpty()) return Map.of();
+        List<User> withTeams = userRepository.findByIdInWithTeams(userIds);
+        Map<Long, List<TeamRef>> map = new HashMap<>();
+        for (User u : withTeams) {
+            map.put(u.getId(), u.getTeams().stream()
+                .sorted(Comparator.comparing(Team::getName))
+                .map(TeamRef::from)
+                .toList());
+        }
+        return map;
+    }
+
+    /**
+     * Resolves a set of team IDs to Team entities, validating each exists and is active.
+     * Uses a single findAllById to avoid N queries.
+     */
+    private List<Team> resolveActiveTeams(Set<Long> teamIds) {
+        if (teamIds.isEmpty()) return List.of();
+        List<Team> found = teamRepository.findAllById(teamIds);
+        if (found.size() != teamIds.size()) {
+            throw ApiException.badRequest("One or more team ids were not recognised.");
+        }
+        List<Team> inactive = found.stream().filter(t -> !t.isActive()).toList();
+        if (!inactive.isEmpty()) {
+            throw ApiException.badRequest("Team '" + inactive.get(0).getName() + "' is inactive.");
+        }
+        return found;
+    }
+
     private Specification<User> buildSpec(ListUsersFilter f) {
         return (root, cq, cb) -> {
-            // Spring Data 3.x annotates {@code cq} as @Nullable on
-            // Specification#toPredicate — count-query paths in some
-            // implementations pass null. JpaRepositoryImpl in practice
-            // always supplies a non-null cq for both the data fetch and
-            // the count fetch, but the guard is the safe contract per
-            // the API type.
             if (cq != null) cq.distinct(true);
             Predicate p = cb.conjunction();
 
@@ -287,17 +366,20 @@ public class UserService {
             .orElse("");
     }
 
-    /**
-     * The Admin role's id is fixed at 1 in V2 seed; we still look it up
-     * from the loaded set so this stays robust if seeds ever change.
-     */
+    private static String teamSummary(List<Team> teams) {
+        return teams.stream()
+            .map(Team::getName)
+            .sorted()
+            .reduce((a, b) -> a + ", " + b)
+            .orElse("");
+    }
+
     private Short adminRoleId(Set<Role> currentRoles) {
         return currentRoles.stream()
             .filter(r -> ROLE_ADMIN.equalsIgnoreCase(r.getName()))
             .map(Role::getId)
             .findFirst()
             .orElseGet(() -> {
-                // Fall back to a separate lookup if the user has no roles yet.
                 Role admin = em.find(Role.class, (short) 1);
                 return admin != null ? admin.getId() : (short) -1;
             });
@@ -318,19 +400,12 @@ public class UserService {
         );
     }
 
-    /**
-     * Generates a 14-char password with at least one letter and one digit.
-     * Just for admin-triggered resets; users set their own via the invite
-     * accept flow.
-     */
     private String generatePassword() {
-        // 14 chars, alphanumeric, with positions 0 and 7 reserved for letter and digit.
-        String alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789"; // omit confusables
+        String alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
         char[] out = new char[14];
         for (int i = 0; i < out.length; i++) {
             out[i] = alphabet.charAt(passwordRandom.nextInt(alphabet.length()));
         }
-        // Force at least one letter and one digit at known positions.
         out[0] = "ABCDEFGHJKLMNPQRSTUVWXYZ".charAt(passwordRandom.nextInt(24));
         out[7] = "23456789".charAt(passwordRandom.nextInt(8));
         return new String(out);

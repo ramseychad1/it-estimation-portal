@@ -1,5 +1,5 @@
 import { api } from "../api";
-import type { PageResponse } from "./users";
+import type { PageResponse, TeamRef } from "./users";
 
 export type ProductMode = "ATOMIC" | "CONTAINER";
 
@@ -9,6 +9,7 @@ export interface ProductListItem {
   description: string | null;
   mode: ProductMode;
   active: boolean;
+  team: TeamRef | null;
   subFeatureCount: number;
   questionCount: number;
   updatedAt: string | null;
@@ -24,17 +25,20 @@ export interface CreateProductRequest {
   description?: string | null;
   mode: ProductMode;
   active?: boolean;
+  teamId: number;
 }
 
 export interface UpdateProductRequest {
   name?: string;
   description?: string | null;
+  teamId?: number;
 }
 
 export interface ListProductsParams {
   search?: string;
   mode?: ProductMode;
   status?: "ALL" | "ACTIVE" | "INACTIVE";
+  teamId?: number;
   page?: number;
   size?: number;
   sort?: string;

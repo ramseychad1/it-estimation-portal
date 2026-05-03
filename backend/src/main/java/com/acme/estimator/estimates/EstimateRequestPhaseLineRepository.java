@@ -2,6 +2,8 @@ package com.acme.estimator.estimates;
 
 import java.util.List;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 public interface EstimateRequestPhaseLineRepository
     extends JpaRepository<EstimateRequestPhaseLine, Long> {
@@ -13,4 +15,9 @@ public interface EstimateRequestPhaseLineRepository
      */
     List<EstimateRequestPhaseLine>
         findAllByEstimateRequestIdOrderBySdlcPhaseDisplayOrderSnapshotAsc(Long estimateRequestId);
+
+    /** Batch-load all phase lines for a set of estimate request IDs (reporting). */
+    @Query("SELECT l FROM EstimateRequestPhaseLine l WHERE l.estimateRequestId IN :requestIds")
+    List<EstimateRequestPhaseLine> findByEstimateRequestIdIn(
+        @Param("requestIds") List<Long> requestIds);
 }

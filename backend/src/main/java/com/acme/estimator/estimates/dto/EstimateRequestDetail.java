@@ -23,6 +23,7 @@ public record EstimateRequestDetail(
     String description,
     Long productId,
     String productName,
+    String teamName,
     Long subFeatureId,
     String subFeatureName,
     Long templateId,

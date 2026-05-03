@@ -12,6 +12,7 @@ DROP TABLE IF EXISTS estimate_templates;
 DROP TABLE IF EXISTS critical_questions;
 DROP TABLE IF EXISTS sub_features;
 DROP TABLE IF EXISTS products;
+DROP TABLE IF EXISTS user_teams;
 DROP TABLE IF EXISTS invitation_tokens;
 DROP TABLE IF EXISTS blended_rates;
 DROP TABLE IF EXISTS change_log;
@@ -66,6 +67,15 @@ CREATE TABLE teams (
     updated_by  BIGINT       NOT NULL,
     CONSTRAINT teams_pk PRIMARY KEY (id),
     CONSTRAINT teams_name_uq UNIQUE (name)
+);
+
+-- Phase 8: user_teams join table
+CREATE TABLE user_teams (
+    user_id  BIGINT NOT NULL,
+    team_id  BIGINT NOT NULL,
+    CONSTRAINT user_teams_pk PRIMARY KEY (user_id, team_id),
+    CONSTRAINT user_teams_user_fk FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+    CONSTRAINT user_teams_team_fk FOREIGN KEY (team_id) REFERENCES teams (id) ON DELETE CASCADE
 );
 
 CREATE TABLE sdlc_phases (
@@ -133,12 +143,14 @@ CREATE TABLE products (
     description TEXT,
     mode        VARCHAR(16)  NOT NULL,
     active      BOOLEAN      NOT NULL DEFAULT TRUE,
+    team_id     BIGINT,
     created_at  TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
     created_by  BIGINT       NOT NULL,
     updated_at  TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_by  BIGINT       NOT NULL,
     CONSTRAINT products_pk PRIMARY KEY (id),
-    CONSTRAINT products_mode_chk CHECK (mode IN ('ATOMIC', 'CONTAINER'))
+    CONSTRAINT products_mode_chk CHECK (mode IN ('ATOMIC', 'CONTAINER')),
+    CONSTRAINT products_team_fk FOREIGN KEY (team_id) REFERENCES teams (id)
 );
 
 CREATE TABLE sub_features (

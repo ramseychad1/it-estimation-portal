@@ -9,5 +9,7 @@ public record CreateProductRequest(
     @NotBlank @Size(max = 255) String name,
     @Size(max = 4000) String description,
     @NotNull ProductMode mode,
-    Boolean active
+    Boolean active,
+    /** Required. Must reference an active team. */
+    @NotNull Long teamId
 ) {}

@@ -492,6 +492,7 @@ public class EstimateRequestService {
         String search = filter == null || filter.search() == null
             ? null : filter.search().trim();
         Long productFilter = filter == null ? null : filter.productId();
+        Long teamFilter = filter == null ? null : filter.teamId();
         boolean mineOnly = filter != null && filter.mineOnly();
 
         var spec = (org.springframework.data.jpa.domain.Specification<EstimateRequest>)
@@ -512,6 +513,14 @@ public class EstimateRequestService {
                 }
                 if (productFilter != null) {
                     ps.add(cb.equal(root.get("productId"), productFilter));
+                }
+                if (teamFilter != null) {
+                    // Subquery: product_id IN (SELECT p.id FROM products p WHERE p.team_id = teamFilter)
+                    var sub = query.subquery(Long.class);
+                    var prod = sub.from(com.acme.estimator.catalog.products.Product.class);
+                    sub.select(prod.get("id"))
+                       .where(cb.equal(prod.get("team").get("id"), teamFilter));
+                    ps.add(root.get("productId").in(sub));
                 }
                 if (mineOnly) {
                     ps.add(cb.equal(root.get("reviewerId"), actorId));
@@ -971,12 +980,16 @@ public class EstimateRequestService {
             }
         }
 
+        String teamName = (product != null && product.getTeam() != null)
+            ? product.getTeam().getName() : null;
+
         return new EstimateRequestDetail(
             request.getId(),
             request.getTitle(),
             request.getDescription(),
             request.getProductId(),
             product == null ? "Deleted product" : product.getName(),
+            teamName,
             request.getSubFeatureId(),
             subFeature == null ? null : subFeature.getName(),
             request.getTemplateId(),

@@ -14,5 +14,6 @@ public record ListReviewQueueFilter(
     EstimateStatus status,
     String search,
     Long productId,
+    Long teamId,
     boolean mineOnly
 ) {}

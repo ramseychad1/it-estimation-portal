@@ -51,6 +51,7 @@ public class ProductController {
         @RequestParam(required = false) String search,
         @RequestParam(required = false) ProductMode mode,
         @RequestParam(required = false, defaultValue = "ALL") String status,
+        @RequestParam(required = false) Long teamId,
         @RequestParam(defaultValue = "0") int page,
         @RequestParam(defaultValue = "25") int size,
         @RequestParam(defaultValue = "name,asc") String sort
@@ -61,7 +62,7 @@ public class ProductController {
             case "ALL" -> null;
             default -> throw ApiException.badRequest("Invalid status: " + status);
         };
-        ListProductsFilter filter = new ListProductsFilter(search, mode, activeOnly);
+        ListProductsFilter filter = new ListProductsFilter(search, mode, activeOnly, teamId);
         Sort sortSpec = parseSort(sort);
         Page<ProductListItem> result = productService.list(
             filter, PageRequest.of(page, size, sortSpec)
@@ -134,7 +135,7 @@ public class ProductController {
             default -> throw ApiException.badRequest("Invalid status: " + status);
         };
         ProductService.ProductExport bundle = productService.listForExport(
-            new ListProductsFilter(search, mode, activeOnly)
+            new ListProductsFilter(search, mode, activeOnly, null)
         );
         String filename = "products_export_" + LocalDate.now() + ".csv";
         StreamingResponseBody stream = out -> {

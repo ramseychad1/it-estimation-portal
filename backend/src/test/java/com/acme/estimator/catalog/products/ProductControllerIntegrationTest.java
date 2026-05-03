@@ -21,6 +21,8 @@ import com.acme.estimator.auth.AppUserDetails;
 import com.acme.estimator.auth.UserRepository;
 import com.acme.estimator.catalog.questions.CriticalQuestionRepository;
 import com.acme.estimator.catalog.subfeatures.SubFeatureRepository;
+import com.acme.estimator.teams.Team;
+import com.acme.estimator.teams.TeamRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import java.util.Map;
@@ -46,21 +48,29 @@ class ProductControllerIntegrationTest {
     @Autowired private CriticalQuestionRepository questionRepository;
     @Autowired private ChangeLogEntryRepository changeLogRepository;
     @Autowired private UserRepository userRepository;
+    @Autowired private TeamRepository teamRepository;
 
     private AppUserDetails admin;
     private AppUserDetails estimator;
+    private Team defaultTeam;
 
     @BeforeEach
     void setUp() {
-        // Cascade-safe order: questions → sub_features → products. Postgres
-        // would handle the cascade for us, but H2 doesn't always cascade
-        // partial-unique indexes the same way, so be explicit.
+        // Cascade-safe order: questions → sub_features → products → teams.
         questionRepository.deleteAll();
         subFeatureRepository.deleteAll();
         productRepository.deleteAll();
+        teamRepository.deleteAll();
         changeLogRepository.deleteAll();
         admin = new AppUserDetails(userRepository.findByEmailIgnoreCase("admin@local").orElseThrow());
         estimator = new AppUserDetails(userRepository.findByEmailIgnoreCase("estimator@local").orElseThrow());
+
+        defaultTeam = new Team();
+        defaultTeam.setName("Test Team");
+        defaultTeam.setActive(true);
+        defaultTeam.setCreatedBy(admin.getUserId());
+        defaultTeam.setUpdatedBy(admin.getUserId());
+        defaultTeam = teamRepository.save(defaultTeam);
     }
 
     // ---- security ----------------------------------------------------------
@@ -109,7 +119,8 @@ class ProductControllerIntegrationTest {
                 .content(json.writeValueAsString(Map.of(
                     "name", "Eligibility API",
                     "description", "Real-time member eligibility lookup",
-                    "mode", "ATOMIC"
+                    "mode", "ATOMIC",
+                    "teamId", defaultTeam.getId()
                 ))))
             .andExpect(status().isCreated())
             .andExpect(jsonPath("$.name").value("Eligibility API"))
@@ -130,7 +141,7 @@ class ProductControllerIntegrationTest {
         mvc.perform(asAdmin(post("/api/catalog/products"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(json.writeValueAsString(Map.of(
-                    "name", "already here", "mode", "ATOMIC"
+                    "name", "already here", "mode", "ATOMIC", "teamId", defaultTeam.getId()
                 ))))
             .andExpect(status().isConflict());
     }
@@ -152,7 +163,7 @@ class ProductControllerIntegrationTest {
         mvc.perform(asAdmin(post("/api/catalog/products"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(json.writeValueAsString(Map.of(
-                    "name", "Foo", "mode", "ATOMIC"
+                    "name", "Foo", "mode", "ATOMIC", "teamId", defaultTeam.getId()
                 ))))
             .andExpect(status().isCreated());
 
@@ -175,7 +186,7 @@ class ProductControllerIntegrationTest {
         mvc.perform(asAdmin(post("/api/catalog/products/" + first.getId() + "/deactivate")));
         mvc.perform(asAdmin(post("/api/catalog/products"))
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(json.writeValueAsString(Map.of("name", "Bar", "mode", "ATOMIC"))));
+                .content(json.writeValueAsString(Map.of("name", "Bar", "mode", "ATOMIC", "teamId", defaultTeam.getId()))));
 
         mvc.perform(asAdmin(post("/api/catalog/products/" + first.getId() + "/activate")))
             .andExpect(status().isConflict());
@@ -318,6 +329,7 @@ class ProductControllerIntegrationTest {
         p.setDescription(description);
         p.setMode(mode);
         p.setActive(active);
+        p.setTeam(defaultTeam);
         p.setCreatedBy(admin.getUserId());
         p.setUpdatedBy(admin.getUserId());
         return productRepository.save(p);

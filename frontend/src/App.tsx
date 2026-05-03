@@ -11,6 +11,8 @@ import { NewEstimateRequestPage } from "./pages/NewEstimateRequestPage";
 import { EstimateDetailPage } from "./pages/EstimateDetailPage";
 import { ReviewQueuePage } from "./pages/ReviewQueuePage";
 import { ReviewScreenPage } from "./pages/ReviewScreenPage";
+import { TeamWorkloadPage } from "./pages/TeamWorkloadPage";
+import { TeamWorkloadDetailPage } from "./pages/TeamWorkloadDetailPage";
 import { TeamsPage } from "./pages/admin/TeamsPage";
 import { SdlcPhasesPage } from "./pages/admin/SdlcPhasesPage";
 import { BlendedRatesPage } from "./pages/admin/BlendedRatesPage";
@@ -73,6 +75,10 @@ export default function App() {
       {/* Reviewer surface — Admins inherit. */}
       <Route path="/review" element={<RoleProtectedShell requires={ROLE_SOLUTION_OWNER}><ReviewQueuePage /></RoleProtectedShell>} />
       <Route path="/review/:id" element={<RoleProtectedShell requires={ROLE_SOLUTION_OWNER}><ReviewScreenPage /></RoleProtectedShell>} />
+
+      {/* Reports surface — SO + Admin. */}
+      <Route path="/reports/team-workload" element={<RoleProtectedShell requires={ROLE_SOLUTION_OWNER}><TeamWorkloadPage /></RoleProtectedShell>} />
+      <Route path="/reports/team-workload/:teamId" element={<RoleProtectedShell requires={ROLE_SOLUTION_OWNER}><TeamWorkloadDetailPage /></RoleProtectedShell>} />
 
       {/* Catalog surface — Admins inherit. */}
       <Route path="/catalog/products" element={<RoleProtectedShell requires={ROLE_SOLUTION_OWNER}><ProductsPage /></RoleProtectedShell>} />

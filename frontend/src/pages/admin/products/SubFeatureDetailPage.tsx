@@ -111,7 +111,7 @@ export function SubFeatureDetailPage() {
 
   const headerKebab: KebabMenuItem[] = [
     {
-      label: "Edit Quick Info",
+      label: "Edit Product",
       icon: <Pencil className="w-3.5 h-3.5" strokeWidth={1.5} />,
       onSelect: () => setDrawer({ kind: "edit-sub-feature" }),
     },

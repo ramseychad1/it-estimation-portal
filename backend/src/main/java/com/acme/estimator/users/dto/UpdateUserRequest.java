@@ -20,5 +20,10 @@ public record UpdateUserRequest(
      * roles — controllers can't enforce "at least one" without making this
      * required. Last-admin protection still applies when this list omits Admin.
      */
-    List<Short> roleIds
+    List<Short> roleIds,
+    /**
+     * If null, team membership is unchanged. If empty list, all teams are removed.
+     * Duplicates are silently deduplicated. Each id must reference an active team.
+     */
+    List<Long> teamIds
 ) {}

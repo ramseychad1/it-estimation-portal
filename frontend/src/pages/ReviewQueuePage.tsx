@@ -17,6 +17,7 @@ import { useToast } from "../components/Toast";
 import { useAuth } from "../lib/auth";
 import { useDebouncedValue } from "../lib/useDebouncedValue";
 import { useProductsQuery } from "../lib/queries/products";
+import { useTeamsQuery } from "../lib/queries/teams";
 import {
   useReviewQueueQuery,
   useStartReviewMutation,
@@ -51,6 +52,7 @@ export function ReviewQueuePage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL_OPEN");
   const [productFilter, setProductFilter] = useState<"" | string>("");
+  const [teamFilter, setTeamFilter] = useState<"" | string>("");
   const [mineOnly, setMineOnly] = useState(false);
   const [page, setPage] = useState(0);
   const [hiddenCols, setHiddenCols] = useColumnsVisibility(
@@ -67,11 +69,12 @@ export function ReviewQueuePage() {
       status: statusFilter === "ALL_OPEN" ? undefined : statusFilter,
       search: debouncedSearch.trim() || undefined,
       productId: productFilter ? Number(productFilter) : undefined,
+      teamId: teamFilter ? Number(teamFilter) : undefined,
       mineOnly: mineOnly || undefined,
       page,
       size: PAGE_SIZE,
     }),
-    [statusFilter, debouncedSearch, productFilter, mineOnly, page],
+    [statusFilter, debouncedSearch, productFilter, teamFilter, mineOnly, page],
   );
 
   const queueQuery = useReviewQueueQuery(queryParams);
@@ -80,6 +83,7 @@ export function ReviewQueuePage() {
   // Product filter list — pulled from the catalog so it always matches
   // the active product set without an extra endpoint.
   const productsQuery = useProductsQuery({ status: "ACTIVE", size: 200 });
+  const teamsQuery = useTeamsQuery({ status: "ACTIVE", size: 100 });
   const productOptions = useMemo(() => {
     const opts = (productsQuery.data?.items ?? []).map((p) => ({
       value: String(p.id),
@@ -95,6 +99,7 @@ export function ReviewQueuePage() {
     !!debouncedSearch.trim() ||
     statusFilter !== "ALL_OPEN" ||
     productFilter !== "" ||
+    teamFilter !== "" ||
     mineOnly;
   const isEmpty = !queueQuery.isLoading && items.length === 0;
 
@@ -102,6 +107,7 @@ export function ReviewQueuePage() {
     setSearch("");
     setStatusFilter("ALL_OPEN");
     setProductFilter("");
+    setTeamFilter("");
     setMineOnly(false);
     setPage(0);
   }
@@ -246,6 +252,19 @@ export function ReviewQueuePage() {
             value={productFilter}
             options={productOptions}
             onChange={(v) => setProductFilter(v)}
+          />
+          <FilterDropdown
+            mode="single"
+            label="Team"
+            value={teamFilter}
+            options={[
+              { value: "", label: "All teams" },
+              ...(teamsQuery.data?.items ?? []).map((t) => ({
+                value: String(t.id),
+                label: t.name,
+              })),
+            ]}
+            onChange={(v) => setTeamFilter(v)}
           />
           <Toggle
             checked={mineOnly}

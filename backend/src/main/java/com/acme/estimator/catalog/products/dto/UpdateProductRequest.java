@@ -23,5 +23,7 @@ public record UpdateProductRequest(
     @Size(max = 255) String name,
     @Size(max = 4000) String description,
     ProductMode mode,
-    Boolean active
+    Boolean active,
+    /** Optional. If provided, must reference an active team. Product can move teams. */
+    Long teamId
 ) {}

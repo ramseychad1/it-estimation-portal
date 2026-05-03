@@ -34,6 +34,7 @@ import {
   useDeactivateProductMutation,
   useProductsQuery,
 } from "../../lib/queries/products";
+import { useTeamsQuery } from "../../lib/queries/teams";
 import { NewProductDrawer } from "./products/NewProductDrawer";
 import { EditProductDrawer } from "./products/EditProductDrawer";
 import { DeleteProductModal } from "./products/DeleteProductModal";
@@ -48,6 +49,7 @@ const PAGE_SIZE = 25;
 const PRODUCTS_COLUMN_DEFS = [
   { key: "name", label: "Name" },
   { key: "mode", label: "Mode" },
+  { key: "team", label: "Team" },
   { key: "subFeatureCount", label: "Sub-features" },
   { key: "questionCount", label: "Questions" },
   { key: "status", label: "Status" },
@@ -67,6 +69,7 @@ export function ProductsPage() {
   const [search, setSearch] = useState("");
   const [modeFilter, setModeFilter] = useState<"" | ProductMode>("");
   const [statusFilter, setStatusFilter] = useState<"ALL" | "ACTIVE" | "INACTIVE">("ALL");
+  const [teamIdFilter, setTeamIdFilter] = useState<number | undefined>(undefined);
   const [page, setPage] = useState(0);
   const [sort, setSort] = useState<{ by: string; dir: "asc" | "desc" }>({
     by: "name",
@@ -82,21 +85,23 @@ export function ProductsPage() {
       search: search.trim() || undefined,
       mode: modeFilter || undefined,
       status: statusFilter,
+      teamId: teamIdFilter,
       page,
       size: PAGE_SIZE,
       sort: `${sort.by},${sort.dir}`,
     }),
-    [search, modeFilter, statusFilter, page, sort],
+    [search, modeFilter, statusFilter, teamIdFilter, page, sort],
   );
 
   const productsQuery = useProductsQuery(queryParams);
   const activateMutation = useActivateProductMutation();
   const deactivateMutation = useDeactivateProductMutation();
+  const teamsQuery = useTeamsQuery({ status: "ACTIVE", size: 100 });
 
   const items = productsQuery.data?.items ?? [];
   const totalElements = productsQuery.data?.totalElements ?? 0;
   const totalPages = productsQuery.data?.totalPages ?? 1;
-  const hasFilter = !!search.trim() || modeFilter !== "" || statusFilter !== "ALL";
+  const hasFilter = !!search.trim() || modeFilter !== "" || statusFilter !== "ALL" || teamIdFilter !== undefined;
 
   function clearSelection() {
     setSelectedIds([]);
@@ -106,6 +111,7 @@ export function ProductsPage() {
     setSearch("");
     setModeFilter("");
     setStatusFilter("ALL");
+    setTeamIdFilter(undefined);
     setPage(0);
   }
 
@@ -134,7 +140,7 @@ export function ProductsPage() {
         onSelect: () => navigate(`/catalog/products/${row.id}`),
       },
       {
-        label: "Edit Quick Info",
+        label: "Edit Product",
         icon: <Pencil className="w-3.5 h-3.5" strokeWidth={1.5} />,
         onSelect: () => void openEdit(row),
       },
@@ -201,6 +207,16 @@ export function ProductsPage() {
       header: "Mode",
       width: 110,
       render: (r) => <ModePill mode={r.mode} />,
+    },
+    {
+      key: "team",
+      header: "Team",
+      width: 150,
+      render: (r) => r.team ? (
+        <span className="text-near-black" style={{ fontSize: 13 }}>{r.team.name}</span>
+      ) : (
+        <span className="text-warm-gray-med" style={{ fontSize: 13 }}>—</span>
+      ),
     },
     {
       key: "subFeatureCount",
@@ -339,6 +355,19 @@ export function ProductsPage() {
               { value: "INACTIVE", label: "Inactive" },
             ]}
             onChange={(v) => setStatusFilter(v as "ALL" | "ACTIVE" | "INACTIVE")}
+          />
+          <FilterDropdown
+            mode="single"
+            label="Team"
+            value={teamIdFilter !== undefined ? String(teamIdFilter) : ""}
+            options={[
+              { value: "", label: "All teams" },
+              ...(teamsQuery.data?.items ?? []).map((t) => ({
+                value: String(t.id),
+                label: t.name,
+              })),
+            ]}
+            onChange={(v) => setTeamIdFilter(v ? Number(v) : undefined)}
           />
           <ListToolbar.Spacer />
           <span className="text-warm-gray-med" style={{ fontSize: 12 }}>

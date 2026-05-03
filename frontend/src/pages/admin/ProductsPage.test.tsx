@@ -85,6 +85,13 @@ function installRouter() {
     }
     if (path === "/api/health") return Promise.resolve(jsonResponse({ status: "ok" }));
 
+    if (path === "/api/admin/teams" && method === "GET") {
+      return Promise.resolve(jsonResponse({
+        items: [{ id: 1, name: "Platform", description: null, active: true, productCount: 0, memberCount: 0, updatedAt: null, updatedBy: null }],
+        page: 0, size: 100, totalElements: 1, totalPages: 1,
+      }));
+    }
+
     if (path === "/api/catalog/products" && method === "GET") {
       // Sort by name asc to match the page's default sort.
       const sorted = [...state.products].sort((a, b) => a.name.localeCompare(b.name));
@@ -169,6 +176,9 @@ describe("<ProductsPage>", () => {
     await user.click(newButtons[0]);
 
     await user.type(await screen.findByLabelText(/Name/i), "New Product Foo");
+    // Select a team (required since Phase 8).
+    const teamSelect = await screen.findByRole("combobox");
+    await user.selectOptions(teamSelect, "1");
     await user.click(screen.getByRole("radio", { name: /Atomic product/i }));
     await user.click(screen.getByRole("button", { name: /Create & Continue/i }));
 

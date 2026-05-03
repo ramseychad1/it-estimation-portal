@@ -1,5 +1,6 @@
 package com.acme.estimator.auth;
 
+import com.acme.estimator.teams.Team;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -84,6 +85,17 @@ public class User {
         inverseJoinColumns = @JoinColumn(name = "role_id")
     )
     private Set<Role> roles = new HashSet<>();
+
+    // LAZY: teams are organizational metadata, never needed for auth checks.
+    // Access user.getTeams() only within an open Hibernate session (i.e., inside
+    // a @Transactional method or via a JOIN FETCH query).
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(
+        name = "user_teams",
+        joinColumns = @JoinColumn(name = "user_id"),
+        inverseJoinColumns = @JoinColumn(name = "team_id")
+    )
+    private Set<Team> teams = new HashSet<>();
 
     public String fullName() {
         return firstName + " " + lastName;

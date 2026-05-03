@@ -8,17 +8,19 @@ public record TeamListItem(
     String name,
     String description,
     boolean active,
-    int productCount,
+    long productCount,
+    long memberCount,
     OffsetDateTime updatedAt,
     Long updatedBy
 ) {
-    public static TeamListItem from(Team team) {
+    public static TeamListItem from(Team team, long productCount, long memberCount) {
         return new TeamListItem(
             team.getId(),
             team.getName(),
             team.getDescription(),
             team.isActive(),
-            0,
+            productCount,
+            memberCount,
             team.getUpdatedAt(),
             team.getUpdatedBy()
         );

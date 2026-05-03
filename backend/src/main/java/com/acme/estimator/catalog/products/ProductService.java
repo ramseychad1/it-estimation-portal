@@ -13,6 +13,8 @@ import com.acme.estimator.catalog.products.dto.UpdateProductRequest;
 import com.acme.estimator.catalog.questions.CriticalQuestionRepository;
 import com.acme.estimator.catalog.subfeatures.SubFeatureRepository;
 import com.acme.estimator.common.ApiException;
+import com.acme.estimator.teams.Team;
+import com.acme.estimator.teams.TeamRepository;
 import jakarta.persistence.criteria.Predicate;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -36,6 +38,7 @@ public class ProductService {
     private final CriticalQuestionRepository questionRepository;
     private final ChangeLogEntryRepository changeLogRepository;
     private final UserRepository userRepository;
+    private final TeamRepository teamRepository;
     private final AuditService auditService;
 
     // ---- reads ---------------------------------------------------------
@@ -88,11 +91,14 @@ public class ProductService {
                 );
             });
 
+        Team team = resolveActiveTeam(req.teamId());
+
         Product product = new Product();
         product.setName(req.name().trim());
         product.setDescription(blankToNull(req.description()));
         product.setMode(req.mode());
         product.setActive(req.active() == null ? true : req.active());
+        product.setTeam(team);
         product.setCreatedBy(actor.getId());
         product.setUpdatedBy(actor.getId());
         Product saved = productRepository.save(product);
@@ -161,6 +167,20 @@ public class ProductService {
             )) {
                 product.setDescription(newDescription);
                 dirty = true;
+            }
+        }
+
+        if (req.teamId() != null) {
+            Team newTeam = resolveActiveTeam(req.teamId());
+            String oldTeamName = product.getTeam() != null ? product.getTeam().getName() : null;
+            String newTeamName = newTeam.getName();
+            if (!newTeam.getId().equals(product.getTeam() != null ? product.getTeam().getId() : null)) {
+                if (auditService.recordUpdated(
+                    Product.ENTITY_TYPE, product.getId(), "team", oldTeamName, newTeamName, actor
+                )) {
+                    product.setTeam(newTeam);
+                    dirty = true;
+                }
             }
         }
 
@@ -247,7 +267,7 @@ public class ProductService {
 
     private Specification<Product> buildSpec(ListProductsFilter filter) {
         ListProductsFilter f = filter == null
-            ? new ListProductsFilter(null, null, null) : filter;
+            ? new ListProductsFilter(null, null, null, null) : filter;
         String query = f.search() == null ? null : f.search().trim();
 
         return (root, cq, cb) -> {
@@ -266,8 +286,20 @@ public class ProductService {
                 p = cb.and(p, cb.equal(root.get("active"),
                     f.activeOnly() ? Boolean.TRUE : Boolean.FALSE));
             }
+            if (f.teamId() != null) {
+                p = cb.and(p, cb.equal(root.get("team").get("id"), f.teamId()));
+            }
             return p;
         };
+    }
+
+    private Team resolveActiveTeam(Long teamId) {
+        Team team = teamRepository.findById(teamId)
+            .orElseThrow(() -> ApiException.badRequest("Team " + teamId + " not found."));
+        if (!team.isActive()) {
+            throw ApiException.badRequest("Team '" + team.getName() + "' is inactive.");
+        }
+        return team;
     }
 
     private ProductListItem toListItem(Product p) {

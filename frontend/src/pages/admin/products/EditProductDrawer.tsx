@@ -5,6 +5,7 @@ import {
   useDeactivateProductMutation,
   useUpdateProductMutation,
 } from "../../../lib/queries/products";
+import { useTeamsQuery } from "../../../lib/queries/teams";
 import { useToast } from "../../../components/Toast";
 import { Drawer } from "../../../components/Drawer";
 import { PrimaryButton, SecondaryButton, TertiaryButton } from "../../../components/buttons";
@@ -26,6 +27,7 @@ interface FormValues {
   name: string;
   description: string;
   active: boolean;
+  teamId: number | null;
 }
 
 function valuesFor(product: ProductDetail | null): FormValues {
@@ -33,6 +35,7 @@ function valuesFor(product: ProductDetail | null): FormValues {
     name: product?.name ?? "",
     description: product?.description ?? "",
     active: product?.active ?? true,
+    teamId: product?.team?.id ?? null,
   };
 }
 
@@ -50,6 +53,7 @@ export function EditProductDrawer({
   const updateMutation = useUpdateProductMutation();
   const activateMutation = useActivateProductMutation();
   const deactivateMutation = useDeactivateProductMutation();
+  const teamsQuery = useTeamsQuery({ status: "ACTIVE", size: 100 });
   const toast = useToast();
 
   useEffect(() => {
@@ -62,7 +66,8 @@ export function EditProductDrawer({
   const isDirty =
     values.name !== initial.name ||
     values.description !== initial.description ||
-    values.active !== initial.active;
+    values.active !== initial.active ||
+    values.teamId !== initial.teamId;
 
   const busy =
     updateMutation.isPending || activateMutation.isPending || deactivateMutation.isPending;
@@ -84,12 +89,14 @@ export function EditProductDrawer({
       }
       const nameChanged = values.name.trim() !== initial.name;
       const descChanged = (values.description ?? "").trim() !== (initial.description ?? "");
-      if (nameChanged || descChanged) {
+      const teamChanged = values.teamId !== initial.teamId;
+      if (nameChanged || descChanged || teamChanged) {
         await updateMutation.mutateAsync({
           id: product.id,
           body: {
             ...(nameChanged ? { name: values.name.trim() } : {}),
             ...(descChanged ? { description: values.description.trim() || null } : {}),
+            ...(teamChanged && values.teamId ? { teamId: values.teamId } : {}),
           },
         });
       }
@@ -105,6 +112,8 @@ export function EditProductDrawer({
   }
 
   if (!product) return null;
+
+  const activeTeams = teamsQuery.data?.items ?? [];
 
   return (
     <Drawer
@@ -150,6 +159,27 @@ export function EditProductDrawer({
           onChange={(e) => setValues((v) => ({ ...v, description: e.target.value }))}
           disabled={busy}
         />
+
+        <FormField label="Team" helper="Which team owns this product?">
+          {(field) => (
+            <select
+              id={field.id}
+              value={values.teamId ?? ""}
+              onChange={(e) => {
+                const val = e.currentTarget.value;
+                setValues((v) => ({ ...v, teamId: val ? Number(val) : null }));
+              }}
+              disabled={busy}
+              className="w-full rounded-md border bg-white text-near-black h-8 px-2 disabled:bg-warm-gray-light disabled:text-warm-gray-med"
+              style={{ borderColor: "var(--color-border-strong)", fontSize: 13 }}
+            >
+              <option value="">No team assigned</option>
+              {activeTeams.map((t) => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            </select>
+          )}
+        </FormField>
 
         <FormField label="Type" helper="Mode is set at creation and cannot be changed.">
           {(field) => (

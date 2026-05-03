@@ -338,7 +338,7 @@ describe("<ProductDetailPage>", () => {
     });
   });
 
-  it("Edit Quick Info drawer surfaces Mode as read-only (no editable mode field)", async () => {
+  it("Edit Product drawer surfaces Mode as read-only (no editable mode field)", async () => {
     state.product = {
       id: 1, name: "Atomic", description: null,
       mode: "ATOMIC", active: true, subFeatureCount: 0, questionCount: 0,
@@ -348,7 +348,7 @@ describe("<ProductDetailPage>", () => {
 
     await screen.findByRole("heading", { level: 1, name: "Atomic" });
     await user.click(await screen.findByRole("button", { name: /Row actions/i }));
-    await user.click(await screen.findByRole("menuitem", { name: /Edit Quick Info/i }));
+    await user.click(await screen.findByRole("menuitem", { name: /Edit Product/i }));
 
     // The drawer renders a Type field with the read-only mode pill, NOT a
     // radio group. Searching for either the helper copy or the pill testid

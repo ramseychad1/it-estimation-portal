@@ -9,6 +9,7 @@ import com.acme.estimator.common.ApiException;
 import com.acme.estimator.teams.dto.BulkResult;
 import com.acme.estimator.teams.dto.BulkResult.BulkFailure;
 import com.acme.estimator.teams.dto.TeamCreateRequest;
+import com.acme.estimator.teams.dto.TeamListItem;
 import com.acme.estimator.teams.dto.TeamUpdateRequest;
 import jakarta.persistence.criteria.Predicate;
 import java.util.ArrayList;
@@ -22,6 +23,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -40,8 +42,27 @@ public class TeamService {
     public enum StatusFilter { ALL, ACTIVE, INACTIVE }
 
     @Transactional(readOnly = true)
-    public Page<Team> list(String search, StatusFilter status, Pageable pageable) {
-        return teamRepository.findAll(buildSpec(search, status), pageable);
+    public Page<TeamListItem> list(String search, StatusFilter status, Pageable pageable) {
+        Page<Team> page = teamRepository.findAll(buildSpec(search, status), pageable);
+        if (page.isEmpty()) {
+            return page.map(t -> TeamListItem.from(t, 0L, 0L));
+        }
+        List<Long> teamIds = page.getContent().stream().map(Team::getId).toList();
+        Map<Long, Long> memberCounts = buildCountMap(teamRepository.countMembersByTeamIdIn(teamIds));
+        Map<Long, Long> productCounts = buildCountMap(teamRepository.countActiveProductsByTeamIdIn(teamIds));
+        return page.map(t -> TeamListItem.from(
+            t,
+            productCounts.getOrDefault(t.getId(), 0L),
+            memberCounts.getOrDefault(t.getId(), 0L)
+        ));
+    }
+
+    private static Map<Long, Long> buildCountMap(List<Object[]> rows) {
+        Map<Long, Long> map = new HashMap<>();
+        for (Object[] row : rows) {
+            map.put(((Number) row[0]).longValue(), ((Number) row[1]).longValue());
+        }
+        return map;
     }
 
     public record TeamExport(List<Team> teams, Map<Long, String> userNames) {}
@@ -171,6 +192,16 @@ public class TeamService {
     @Transactional
     public void delete(Long id, User actor) {
         Team team = get(id);
+        long activeProducts = teamRepository.countActiveProductsByTeamId(team.getId());
+        if (activeProducts > 0) {
+            throw new ApiException(
+                HttpStatus.CONFLICT,
+                "TEAM_HAS_PRODUCTS",
+                "This team has " + activeProducts + " active product" +
+                    (activeProducts == 1 ? "" : "s") +
+                    ". Reassign or deactivate them before deleting the team."
+            );
+        }
         Long teamId = team.getId();
         teamRepository.delete(team);
         auditService.recordDeleted(Team.ENTITY_TYPE, teamId, actor, null);

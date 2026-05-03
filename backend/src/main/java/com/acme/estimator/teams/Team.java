@@ -1,12 +1,17 @@
 package com.acme.estimator.teams;
 
+import com.acme.estimator.auth.User;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.ManyToMany;
 import jakarta.persistence.Table;
 import java.time.OffsetDateTime;
+import java.util.HashSet;
+import java.util.Set;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -44,6 +49,9 @@ public class Team {
 
     @Column(name = "updated_by", nullable = false)
     private Long updatedBy;
+
+    @ManyToMany(mappedBy = "teams", fetch = FetchType.LAZY)
+    private Set<User> members = new HashSet<>();
 
     public static final String ENTITY_TYPE = "Team";
 }

@@ -3,6 +3,11 @@ import { api } from "../api";
 export type InvitationStatus = "ACTIVE" | "PENDING_INVITE" | "INACTIVE";
 export type RoleId = number;
 
+export interface TeamRef {
+  id: number;
+  name: string;
+}
+
 export interface UserListItem {
   id: number;
   email: string;
@@ -11,6 +16,7 @@ export interface UserListItem {
   invitationStatus: InvitationStatus;
   active: boolean;
   roles: string[];
+  teams: TeamRef[];
   lastActiveAt: string | null;
   createdAt: string | null;
 }
@@ -23,6 +29,7 @@ export interface UserDetail {
   invitationStatus: InvitationStatus;
   active: boolean;
   roles: string[];
+  teams: TeamRef[];
   invitedAt: string | null;
   invitedBy: number | null;
   invitationExpiresAt: string | null;
@@ -51,6 +58,8 @@ export interface UpdateUserRequest {
   lastName?: string;
   email?: string;
   roleIds?: number[];
+  /** null = leave unchanged; empty array = clear all teams */
+  teamIds?: number[] | null;
 }
 
 export interface UserHistoryItem {

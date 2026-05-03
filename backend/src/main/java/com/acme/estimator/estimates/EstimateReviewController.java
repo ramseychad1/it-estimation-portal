@@ -54,6 +54,7 @@ public class EstimateReviewController {
         @RequestParam(required = false) EstimateStatus status,
         @RequestParam(required = false) String search,
         @RequestParam(required = false) Long productId,
+        @RequestParam(required = false) Long teamId,
         @RequestParam(required = false, defaultValue = "false") boolean mineOnly,
         @RequestParam(defaultValue = "0") int page,
         @RequestParam(defaultValue = "25") int size,
@@ -63,7 +64,7 @@ public class EstimateReviewController {
         // override is intentionally not exposed yet — keep the queue
         // semantics simple until the SO population grows.
         Sort sort = Sort.by(Sort.Direction.ASC, "submittedAt").and(Sort.by(Sort.Direction.ASC, "id"));
-        var filter = new ListReviewQueueFilter(status, search, productId, mineOnly);
+        var filter = new ListReviewQueueFilter(status, search, productId, teamId, mineOnly);
         Page<EstimateRequestListItem> result = service.reviewQueue(
             filter, PageRequest.of(page, size, sort), currentUser(principal)
         );

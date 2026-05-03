@@ -11,6 +11,7 @@ export interface ListReviewQueueParams {
   status?: EstimateStatus;
   search?: string;
   productId?: number;
+  teamId?: number;
   mineOnly?: boolean;
   page?: number;
   size?: number;
