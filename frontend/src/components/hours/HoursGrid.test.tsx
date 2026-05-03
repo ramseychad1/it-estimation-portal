@@ -54,7 +54,7 @@ describe("<HoursGrid>", () => {
     expect(screen.getByLabelText("Offshore M total")).toHaveTextContent("10");
     expect(screen.getByLabelText("Offshore H total")).toHaveTextContent("12");
     // Grid grand total = 11+22+33+8+10+12 = 96.
-    expect(screen.getByLabelText("Grid total")).toHaveTextContent("96");
+    expect(screen.getByLabelText("Grid total hours")).toHaveTextContent("96");
   });
 });
 

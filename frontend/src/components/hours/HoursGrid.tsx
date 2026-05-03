@@ -1,5 +1,5 @@
 import { useMemo, useRef } from "react";
-import { COLUMNS, EMPTY_ROW, editableKeysForComplexity, type RowKey, type RowValues } from "./columns";
+import { COLUMNS, EMPTY_ROW, editableKeysForComplexity, fmtCost, fmtHrs, GRID_COLS, GRID_COLS_NO_COST, type RowKey, type RowValues } from "./columns";
 import { HoursRow, type HoursRowHandle, type PhaseMeta } from "./HoursRow";
 
 /**
@@ -31,13 +31,11 @@ export interface TemplateEditorProps {
   /** Per-cell errors keyed by phase id and column key. */
   errors?: Map<number, Partial<Record<RowKey, string>>>;
   onChange: (phaseId: number, key: RowKey, next: number) => void;
-  /**
-   * Multi-cell paste origin: phase id + column index of the focused cell.
-   * Grid distributes the pasted 2D array starting at this anchor, fanning
-   * right and down. Out-of-range values are silently dropped.
-   */
   onPaste?: (anchor: { phaseId: number; colIndex: number }, rows: (number | null)[][]) => void;
   disabled?: boolean;
+  /** When provided, renders Total $ column and Estimate Total $ row. */
+  onshoreRate?: number;
+  offshoreRate?: number;
 }
 
 export interface ReviewerProps {
@@ -84,6 +82,10 @@ export interface ReviewerProps {
  */
 export function HoursGrid(props: HoursGridProps) {
   const isReviewer = props.mode === "reviewer";
+  const onshoreRate = isReviewer ? undefined : (props as TemplateEditorProps).onshoreRate;
+  const offshoreRate = isReviewer ? undefined : (props as TemplateEditorProps).offshoreRate;
+  const showCost = onshoreRate != null && offshoreRate != null;
+  const gridCols = showCost ? GRID_COLS : GRID_COLS_NO_COST;
 
   // In reviewer mode, derive the displayed values per phase by overlaying
   // overrides onto snapshot. Template-editor mode uses the values map
@@ -141,7 +143,7 @@ export function HoursGrid(props: HoursGridProps) {
         role="rowheader"
         className="grid items-center text-warm-gray-med uppercase font-medium"
         style={{
-          gridTemplateColumns: "minmax(180px, 1.2fr) repeat(6, 84px) 80px",
+          gridTemplateColumns: gridCols,
           gap: 8,
           padding: "10px 12px",
           fontSize: 11,
@@ -167,7 +169,8 @@ export function HoursGrid(props: HoursGridProps) {
             </span>
           );
         })}
-        <span style={{ textAlign: "right" }}>Row total</span>
+        <span style={{ textAlign: "right" }}>Total Hrs</span>
+        {showCost && <span style={{ textAlign: "right" }}>Total $</span>}
       </div>
 
       {/* Body */}
@@ -208,6 +211,9 @@ export function HoursGrid(props: HoursGridProps) {
             values={phaseValues}
             errors={phaseErrors}
             disabled={disabled}
+            onshoreRate={onshoreRate}
+            offshoreRate={offshoreRate}
+            costComplexity="Med"
             onChange={(key, next) => {
               if (isReviewer) {
                 const r = props as ReviewerProps;
@@ -237,7 +243,7 @@ export function HoursGrid(props: HoursGridProps) {
         role="row"
         className="grid items-center"
         style={{
-          gridTemplateColumns: "minmax(180px, 1.2fr) repeat(6, 84px) 80px",
+          gridTemplateColumns: gridCols,
           gap: 8,
           padding: "10px 12px",
           fontSize: 13,
@@ -264,18 +270,72 @@ export function HoursGrid(props: HoursGridProps) {
               }}
               aria-label={`${col.label} total`}
             >
-              {grandTotals[col.key]}
+              {fmtHrs(grandTotals[col.key])}
             </span>
           );
         })}
         <span
           className="tabular-nums"
           style={{ textAlign: "right" }}
-          aria-label="Grid total"
+          aria-label="Grid total hours"
         >
-          {COLUMNS.reduce((sum, c) => sum + grandTotals[c.key], 0)}
+          {fmtHrs(COLUMNS.reduce((sum, c) => sum + grandTotals[c.key], 0))}
         </span>
       </div>
+
+      {/* Estimate Total $ — per-column cost breakdown, only when rates are available */}
+      {showCost && (
+        <div
+          role="row"
+          className="grid items-center"
+          style={{
+            gridTemplateColumns: gridCols,
+            gap: 8,
+            padding: "10px 12px",
+            fontSize: 12,
+            fontWeight: 600,
+            color: "var(--color-near-black)",
+            background: "var(--color-warm-gray-light)",
+            borderTop: "1px solid var(--color-border-strong)",
+          }}
+        >
+          <span className="uppercase" style={{ fontSize: 11, letterSpacing: "0.06em" }}>
+            Estimate Total $
+          </span>
+          {COLUMNS.map((col) => {
+            const rate = col.group === "onshore" ? onshoreRate! : offshoreRate!;
+            return (
+              <span
+                key={col.key}
+                className="tabular-nums"
+                style={{ textAlign: "right" }}
+                aria-label={`${col.label} estimated cost`}
+              >
+                {fmtCost(grandTotals[col.key] * rate)}
+              </span>
+            );
+          })}
+          <span
+            className="tabular-nums"
+            style={{ textAlign: "right" }}
+            aria-label="Estimate total hours"
+          >
+            {fmtHrs(COLUMNS.reduce((sum, c) => sum + grandTotals[c.key], 0))}
+          </span>
+          <span
+            className="tabular-nums"
+            style={{ textAlign: "right" }}
+            aria-label="Estimate total cost"
+          >
+            {fmtCost(
+              COLUMNS.reduce((sum, col) => {
+                const rate = col.group === "onshore" ? onshoreRate! : offshoreRate!;
+                return sum + grandTotals[col.key] * rate;
+              }, 0),
+            )}
+          </span>
+        </div>
+      )}
     </div>
   );
 }

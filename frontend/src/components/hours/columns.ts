@@ -38,6 +38,19 @@ export function rowSum(values: RowValues): number {
   return COLUMNS.reduce((sum, c) => sum + (values[c.key] ?? 0), 0);
 }
 
+/** gridTemplateColumns shared by HoursGrid rows and HoursRow — with cost column. */
+export const GRID_COLS = "minmax(180px, 1.2fr) repeat(6, 84px) 80px 100px";
+/** Narrow variant used when no rate data is available (no Total $ column). */
+export const GRID_COLS_NO_COST = "minmax(180px, 1.2fr) repeat(6, 84px) 80px";
+
+export function fmtHrs(n: number): number {
+  return Math.ceil(n);
+}
+
+export function fmtCost(n: number): string {
+  return "$" + Math.ceil(n).toLocaleString();
+}
+
 /**
  * Maps a chosen complexity (LOW/MED/HIGH) to the two {@link RowKey}s that
  * become editable in {@code HoursGrid} reviewer mode — one Onshore column

@@ -1,6 +1,6 @@
 import { forwardRef, useImperativeHandle, useRef } from "react";
 import { Undo2 } from "lucide-react";
-import { COLUMNS, rowSum, type RowKey, type RowValues } from "./columns";
+import { COLUMNS, fmtCost, fmtHrs, GRID_COLS, GRID_COLS_NO_COST, rowSum, type RowKey, type RowValues } from "./columns";
 import { HoursCell, type HoursCellHandle } from "./HoursCell";
 import { ReadOnlyCell } from "./ReadOnlyCell";
 
@@ -21,21 +21,16 @@ interface HoursRowProps {
   values: RowValues;
   onChange: (key: RowKey, next: number) => void;
   errors?: Partial<Record<RowKey, string>>;
-  /**
-   * Called when keyboard nav wants to leave this row vertically. The grid
-   * resolves to the appropriate row + column.
-   */
   onMoveVertical?: (dir: "up" | "down", colIndex: number) => void;
-  /** Multi-cell paste anchored at the given column. */
   onPasteAt?: (colIndex: number, rows: (number | null)[][]) => void;
   disabled?: boolean;
-  /**
-   * Reviewer-mode metadata. When omitted, every cell is editable
-   * (template-editor behaviour). When present, only the cells whose
-   * column key is in {@link ReviewerCellMeta#editableKeys} are editable;
-   * the rest render dimmed and read-only.
-   */
   reviewer?: ReviewerCellMeta;
+  /** When provided, renders a "Total $" cell using Med complexity (template-editor)
+   *  or the reviewer's chosen complexity column. */
+  onshoreRate?: number;
+  offshoreRate?: number;
+  /** Which complexity column to use for the cost cell. Defaults to "Med". */
+  costComplexity?: "Low" | "Med" | "High";
 }
 
 export interface ReviewerCellMeta {
@@ -71,9 +66,12 @@ export interface ReviewerCellMeta {
  * #onMoveVertical}.
  */
 export const HoursRow = forwardRef<HoursRowHandle, HoursRowProps>(function HoursRow(
-  { phase, values, onChange, errors, onMoveVertical, onPasteAt, disabled, reviewer },
+  { phase, values, onChange, errors, onMoveVertical, onPasteAt, disabled, reviewer,
+    onshoreRate, offshoreRate, costComplexity = "Med" },
   ref,
 ) {
+  const showCost = onshoreRate != null && offshoreRate != null;
+  const gridCols = showCost ? GRID_COLS : GRID_COLS_NO_COST;
   const cellRefs = useRef<(HoursCellHandle | null)[]>([]);
 
   useImperativeHandle(ref, () => ({
@@ -110,7 +108,7 @@ export const HoursRow = forwardRef<HoursRowHandle, HoursRowProps>(function Hours
       role="row"
       className="grid items-center"
       style={{
-        gridTemplateColumns: "minmax(180px, 1.2fr) repeat(6, 84px) 80px",
+        gridTemplateColumns: gridCols,
         gap: 8,
         padding: "8px 12px",
         background: phase.active ? "transparent" : "var(--color-warm-gray-light)",
@@ -201,10 +199,23 @@ export const HoursRow = forwardRef<HoursRowHandle, HoursRowProps>(function Hours
       <span
         className="text-warm-gray-med tabular-nums"
         style={{ fontSize: 12, textAlign: "right" }}
-        aria-label={`Row total: ${rowSum(values)}`}
+        aria-label={`Total hours: ${fmtHrs(rowSum(values))}`}
       >
-        {rowSum(values)}
+        {fmtHrs(rowSum(values))}
       </span>
+
+      {showCost && (
+        <span
+          className="text-warm-gray-med tabular-nums"
+          style={{ fontSize: 12, textAlign: "right" }}
+          aria-label={`Total cost at ${costComplexity}`}
+        >
+          {fmtCost(
+            values[`onshore${costComplexity}` as RowKey] * onshoreRate! +
+            values[`offshore${costComplexity}` as RowKey] * offshoreRate!,
+          )}
+        </span>
+      )}
     </div>
   );
 });

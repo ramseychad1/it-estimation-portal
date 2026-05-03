@@ -18,6 +18,7 @@ import { TextInput } from "../../../components/inputs";
 import { UserCell } from "../../../components/UserCell";
 import { useToast } from "../../../components/Toast";
 import { useUnsavedChangesGuard } from "../../../lib/useUnsavedChangesGuard";
+import { useRatesPageQuery } from "../../../lib/queries/rates";
 import type {
   SaveTemplateLineInput,
   SaveTemplateVersionRequest,
@@ -59,6 +60,10 @@ export function TemplateEditorCard({
   parentNoun,
 }: TemplateEditorCardProps) {
   const toast = useToast();
+  const ratesQuery = useRatesPageQuery({ size: 1 });
+  const currentRate = ratesQuery.data?.current;
+  const onshoreRate = currentRate ? parseFloat(currentRate.onshoreRate) : undefined;
+  const offshoreRate = currentRate ? parseFloat(currentRate.offshoreRate) : undefined;
 
   // Snapshot comes from the server response; local edit state is a
   // separate map so "Discard" is a simple snapshot restore.
@@ -209,6 +214,8 @@ export function TemplateEditorCard({
         phases={phases}
         values={values}
         errors={errors}
+        onshoreRate={onshoreRate}
+        offshoreRate={offshoreRate}
         onChange={(phaseId, key, next) => {
           setValues((prev) => {
             const out = new Map(prev);
