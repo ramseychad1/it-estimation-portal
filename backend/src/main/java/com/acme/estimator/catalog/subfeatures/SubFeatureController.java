@@ -50,6 +50,7 @@ public class SubFeatureController {
     // ---- under-product: list + create -------------------------------------
 
     @GetMapping("/api/catalog/products/{productId}/sub-features")
+    @PreAuthorize("hasAnyRole('ADMIN','SOLUTION_OWNER','REQUESTER')")
     public List<SubFeatureListItem> listForProduct(@PathVariable Long productId) {
         return subFeatureService.listByProduct(productId);
     }

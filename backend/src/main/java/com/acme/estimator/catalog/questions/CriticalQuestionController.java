@@ -55,6 +55,7 @@ public class CriticalQuestionController {
     // ---- in-context: under product -----------------------------------------
 
     @GetMapping("/api/catalog/products/{productId}/questions")
+    @PreAuthorize("hasAnyRole('ADMIN','SOLUTION_OWNER','REQUESTER')")
     public List<QuestionListItem> listForProduct(@PathVariable Long productId) {
         return questionService.listByProduct(productId);
     }
@@ -81,6 +82,7 @@ public class CriticalQuestionController {
     // ---- in-context: under sub-feature ------------------------------------
 
     @GetMapping("/api/catalog/sub-features/{subFeatureId}/questions")
+    @PreAuthorize("hasAnyRole('ADMIN','SOLUTION_OWNER','REQUESTER')")
     public List<QuestionListItem> listForSubFeature(@PathVariable Long subFeatureId) {
         return questionService.listBySubFeature(subFeatureId);
     }

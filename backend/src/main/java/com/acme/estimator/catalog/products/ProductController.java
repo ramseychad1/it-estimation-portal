@@ -47,6 +47,7 @@ public class ProductController {
     private final UserRepository userRepository;
 
     @GetMapping
+    @PreAuthorize("hasAnyRole('ADMIN','SOLUTION_OWNER','REQUESTER')")
     public PageResponse<ProductListItem> list(
         @RequestParam(required = false) String search,
         @RequestParam(required = false) ProductMode mode,

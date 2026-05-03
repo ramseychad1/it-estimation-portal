@@ -42,6 +42,7 @@ public class EstimateTemplateController {
     // ---- under product -----------------------------------------------------
 
     @GetMapping("/api/catalog/products/{productId}/template")
+    @PreAuthorize("hasAnyRole('ADMIN','SOLUTION_OWNER','REQUESTER')")
     public TemplateView getForProduct(@PathVariable Long productId) {
         return templateService.getActiveForProduct(productId).orElse(null);
     }
@@ -69,6 +70,7 @@ public class EstimateTemplateController {
     // ---- under sub-feature -------------------------------------------------
 
     @GetMapping("/api/catalog/sub-features/{subFeatureId}/template")
+    @PreAuthorize("hasAnyRole('ADMIN','SOLUTION_OWNER','REQUESTER')")
     public TemplateView getForSubFeature(@PathVariable Long subFeatureId) {
         return templateService.getActiveForSubFeature(subFeatureId).orElse(null);
     }
