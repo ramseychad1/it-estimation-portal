@@ -222,3 +222,9 @@ export function reviseAndResubmitItem(
 export function dropItem(id: number, itemId: number): Promise<void> {
   return api(`/estimates/my/${id}/items/${itemId}`, { method: "DELETE" });
 }
+
+// ---- Admin delete (hard delete, audit logged) -------------------------
+
+export function adminDeleteRequest(id: number): Promise<void> {
+  return api(`/estimates/admin/${id}`, { method: "DELETE" });
+}

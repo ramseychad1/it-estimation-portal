@@ -799,6 +799,15 @@ public class EstimateRequestService {
         return toDetail(request, actor);
     }
 
+    @Transactional
+    public void deleteRequest(Long requestId, User actor) {
+        EstimateRequest request = requestRepository.findById(requestId)
+            .orElseThrow(() -> ApiException.notFound("Estimate request " + requestId + " not found."));
+        String title = request.getTitle();
+        requestRepository.deleteById(requestId);
+        auditService.recordDeleted(EstimateRequest.ENTITY_TYPE, requestId, actor, "\"" + title + "\"");
+    }
+
     // ---- derived status ---------------------------------------------------
 
     /**

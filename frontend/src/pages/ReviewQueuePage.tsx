@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Inbox } from "lucide-react";
 import { ColumnsToggle, useColumnsVisibility } from "../components/ColumnsToggle";
+import { ConfirmModal } from "../components/ConfirmModal";
 import { DataTable, type DataTableColumn } from "../components/data-table/DataTable";
 import { EmptyState } from "../components/EmptyState";
 import { FilterDropdown } from "../components/FilterDropdown";
@@ -13,10 +14,13 @@ import { SecondaryButton } from "../components/buttons";
 import { StatusBadge, estimateStatusBadge } from "../components/StatusBadge";
 import { Toggle } from "../components/Toggle";
 import { UserCell } from "../components/UserCell";
+import { useAuth } from "../lib/auth";
+import { isAdmin } from "../lib/permissions";
 import { useDebouncedValue } from "../lib/useDebouncedValue";
 import { useProductsQuery } from "../lib/queries/products";
 import { useTeamsQuery } from "../lib/queries/teams";
 import {
+  useAdminDeleteRequestMutation,
   useReviewQueueQuery,
 } from "../lib/queries/reviews";
 import type {
@@ -44,6 +48,9 @@ export function ReviewQueuePage() {
 
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const { user: currentUser } = useAuth();
+  const adminDelete = useAdminDeleteRequestMutation();
+  const [deleteTarget, setDeleteTarget] = useState<EstimateRequestListItem | null>(null);
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>(() => {
@@ -112,20 +119,21 @@ export function ReviewQueuePage() {
   }
 
   function buildKebab(row: EstimateRequestListItem): KebabMenuItem[] {
-    // Per-item review (Phase 9b): starting a review happens on the detail
-    // page per item. The queue navigates directly — no request-level claim.
+    const items: KebabMenuItem[] = [];
+
     if (row.derivedStatus === "IN_REVIEW") {
-      return [
-        {
-          label: "Continue review",
-          onSelect: () => navigate(`/review/${row.id}`),
-        },
-      ];
+      items.push({ label: "Continue review", onSelect: () => navigate(`/review/${row.id}`) });
+    } else if (row.derivedStatus === "SUBMITTED") {
+      items.push({ label: "Review", onSelect: () => navigate(`/review/${row.id}`) });
+    } else {
+      items.push({ label: "View", onSelect: () => navigate(`/review/${row.id}`) });
     }
-    if (row.derivedStatus === "SUBMITTED") {
-      return [{ label: "Review", onSelect: () => navigate(`/review/${row.id}`) }];
+
+    if (currentUser && isAdmin(currentUser.roles)) {
+      items.push({ label: "Delete request", destructive: true, onSelect: () => setDeleteTarget(row) });
     }
-    return [{ label: "View", onSelect: () => navigate(`/review/${row.id}`) }];
+
+    return items;
   }
 
   const allColumns: DataTableColumn<EstimateRequestListItem>[] = [
@@ -340,6 +348,26 @@ export function ReviewQueuePage() {
           </div>
         )}
       </div>
+
+      <ConfirmModal
+        open={deleteTarget !== null}
+        title="Delete estimate request?"
+        body={
+          <>
+            <strong>{deleteTarget?.title}</strong> and all of its items will be permanently
+            deleted. This action cannot be undone. The deletion will be recorded in the
+            Change Log.
+          </>
+        }
+        confirmLabel="Delete"
+        destructive
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={async () => {
+          if (!deleteTarget) return;
+          await adminDelete.mutateAsync(deleteTarget.id);
+          setDeleteTarget(null);
+        }}
+      />
     </>
   );
 }

@@ -12,6 +12,7 @@ import {
   type RejectItemRequest,
   type SendBackRequest,
 } from "../api/reviews";
+import { adminDeleteRequest } from "../api/estimates";
 
 const REVIEWS_KEY = ["reviews"] as const;
 const ESTIMATES_KEY = ["estimates"] as const;
@@ -119,5 +120,16 @@ export function useSendBackItemMutation() {
       body: SendBackRequest;
     }) => sendBackItem(requestId, itemId, body),
     onSuccess: (_data, { requestId }) => invalidateAfterTransition(qc, requestId),
+  });
+}
+
+export function useAdminDeleteRequestMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (requestId: number) => adminDeleteRequest(requestId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: REVIEWS_KEY });
+      qc.invalidateQueries({ queryKey: ESTIMATES_KEY });
+    },
   });
 }
