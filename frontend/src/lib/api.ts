@@ -73,7 +73,12 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<T>
     }
   }
 
-  if (response.status === 401 && window.location.pathname !== "/login") {
+  // Redirect to login on 401 only when a *protected* endpoint rejects the
+  // request — i.e., a session that was valid has since expired. A 401 from
+  // /auth/me is the normal "not logged in" signal used by AuthProvider on
+  // every page load (including public routes like /invite/:token), so we
+  // must not redirect there or public pages loop / flash.
+  if (response.status === 401 && path !== "/auth/me") {
     window.location.href = "/login";
     throw new ApiError(401, parsed);
   }
