@@ -26,6 +26,9 @@ server:
   port: ${PORT:8080}
   error:
     include-message: always
+  servlet:
+    session:
+      timeout: 8h
 
 # Application-specific properties.
 app:

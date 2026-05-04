@@ -73,6 +73,11 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<T>
     }
   }
 
+  if (response.status === 401) {
+    window.location.href = "/login";
+    throw new ApiError(401, parsed);
+  }
+
   if (!response.ok) {
     throw new ApiError(response.status, parsed);
   }
