@@ -73,7 +73,7 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<T>
     }
   }
 
-  if (response.status === 401) {
+  if (response.status === 401 && window.location.pathname !== "/login") {
     window.location.href = "/login";
     throw new ApiError(401, parsed);
   }
