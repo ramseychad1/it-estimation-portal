@@ -2,7 +2,7 @@
 
 Internal tool used by HealthCare Development Group, Inc. to produce work estimates for pre-defined products, features, and enhancements. Solution Owners maintain a versioned catalog of Products, Sub-features, Critical Questions, and Estimate Templates; Admins configure Teams, SDLC Phases, blended rates, and users; Requesters submit estimate requests against the catalog and Solution Owners review, override, and approve them. Every mutation lands in a full audit trail.
 
-**Status:** Phases 0 through 9 shipped. Authentication, full admin surface (Teams, SDLC Phases, Blended Rates, Users & Roles, Invitations, Change Log), the Solution Owner catalog (Products, Sub-features, Critical Questions, Estimate Templates with grid + paste + version-on-save + per-row Total Hrs/$ + Grand Total footer), the Requester workflow (multi-step new request supporting multiple product line items per request, My Requests list, detail page with per-item status), the Reviewer workflow (review queue, per-item review screen with complexity + per-cell overrides + autosave + approve/reject/revise-and-resubmit, admin send-back), the role-aware Dashboard, the Phase 7.5 admin-implies-everything authorization model, Team Workload reporting, and the Phase 9 multi-product estimate request model (each request holds N product line items, each with its own independent review lifecycle) are all live. Only `/catalog/template-history` remains a placeholder, intentionally.
+**Status:** Phases 0 through 9 shipped, plus post-Phase-9 increments (go live date on estimate requests; approved-estimate column-header cleanup). Authentication, full admin surface (Teams, SDLC Phases, Blended Rates, Users & Roles, Invitations, Change Log), the Solution Owner catalog (Products, Sub-features, Critical Questions, Estimate Templates with grid + paste + version-on-save + per-row Total Hrs/$ + Grand Total footer), the Requester workflow (multi-step new request supporting multiple product line items per request with a go-live date field, My Requests list, detail page with per-item status), the Reviewer workflow (review queue, per-item review screen with complexity + per-cell overrides + autosave + approve/reject/revise-and-resubmit, admin send-back), the role-aware Dashboard, the Phase 7.5 admin-implies-everything authorization model, Team Workload reporting, and the Phase 9 multi-product estimate request model (each request holds N product line items, each with its own independent review lifecycle) are all live. Only `/catalog/template-history` remains a placeholder, intentionally.
 
 ---
 
@@ -13,7 +13,7 @@ Internal tool used by HealthCare Development Group, Inc. to produce work estimat
 | Frontend | React 18, TypeScript, Vite, Tailwind CSS |
 | Backend | Spring Boot 3.3, Java 21, Maven (wrapper) |
 | Database | PostgreSQL 16 (Docker); H2 in PostgreSQL mode for backend tests |
-| Migrations | Flyway (V1–V14) |
+| Migrations | Flyway (V1–V15) |
 | Auth | Spring Security, form login + session cookies, CSRF via cookie+header |
 | State | TanStack React Query + React Context |
 | Drag-and-drop | @dnd-kit (reorder lists in SDLC Phases + Critical Questions) |
@@ -63,7 +63,7 @@ No GraphQL, no JWT, no Redux, no Next.js, no UI component libraries beyond Tailw
 - **Review screen** at `/review/:id` covering all four state variants:
   - **Submitted** — Start review CTA; shows snapshot read-only with race-condition guard (409 → refetch surfacing claimed-by message)
   - **In Review** — interactive with `ComplexitySelector` (Low/Med/High), per-cell hour `overrides` overlaid on snapshot, `JustificationField` autosave (debounced, per-field settle-gate to avoid stale PUTs)
-  - **Approved / Rejected** — read-only, snapshot + chosen complexity + override pills + cost summary. Approved view collapses to just the two chosen complexity columns (ONS/OFF) with Total Hrs and Total $ per row, Grand Total + Estimate Total $ footer.
+  - **Approved / Rejected** — read-only, snapshot + chosen complexity + override pills + cost summary. Approved view collapses to just the two chosen complexity columns (Onshore Hours / Offshore Hours) with Total Hrs and Total $ per row, Grand Total + Estimate Total $ footer.
   - **Claimed-by-other-SO** — read-only with reviewer name in the banner
 - **HoursGrid discriminated-union `mode` prop** (`template-editor` | `reviewer`) — single grid component serves both Phase 5b and Phase 6b without forking
 - **Approve / Reject** snapshot the current blended rate via `findCurrentAsOf(LocalDate.now())` into `approved_blended_rate_id` (V11)
@@ -106,6 +106,13 @@ No GraphQL, no JWT, no Redux, no Next.js, no UI component libraries beyond Tailw
 - **`EstimateRequestItem` entity** is now the core per-product unit of work. New DTOs: `EstimateRequestItemDto`, `CreateItemRequest`, `ApproveItemRequest`, `RejectItemRequest`, `ReviseAndResubmitRequest`.
 - **Frontend rework** — `NewEstimateRequestPage`, `EstimateDetailPage`, `ReviewQueuePage`, and `ReviewScreenPage` all significantly updated for the multi-item model.
 - **New backend tests** — `EstimateRequestItemReviewTest` + `EstimateRequestRevisionTest` cover the full per-item lifecycle and the revision flow end-to-end.
+
+**Go Live Date & approved-estimate cleanup (post-Phase-9)**
+- **V15 migration** — nullable `go_live_date DATE` column on `estimate_requests`. Null means the requester selected "Unknown at this time."
+- **New request flow (Step 1)** — date picker + "Unknown at this time" checkbox. Checking the box clears and disables the picker. The value (or null) is saved with the draft and audited on every update.
+- **Requester detail page** — Go Live Date appears as a key-value item in the Summary card alongside Product, Team, and Submitted date.
+- **Review screen** — A context card above the per-item grids shows the description and Go Live Date so the SO has the deadline in view while choosing complexity.
+- **Approved estimate column headers** — changed from "ONS {complexity}" / "OFF {complexity}" to "Onshore Hours" / "Offshore Hours". The chosen complexity is already surfaced by the pill above the grid; repeating it in the column headers was redundant.
 
 ---
 
@@ -183,7 +190,7 @@ docker compose -f docker/docker-compose.yml down -v
 docker compose -f docker/docker-compose.yml up -d
 ```
 
-Next backend startup re-runs all Flyway migrations (V1 through V14) against a clean database.
+Next backend startup re-runs all Flyway migrations (V1 through V15) against a clean database.
 
 ---
 
