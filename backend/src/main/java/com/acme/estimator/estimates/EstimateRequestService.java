@@ -161,6 +161,7 @@ public class EstimateRequestService {
         EstimateRequest entity = new EstimateRequest();
         entity.setTitle(req.title().trim());
         entity.setDescription(blankToNull(req.description()));
+        entity.setGoLiveDate(req.goLiveDate());
         entity.setRequesterId(requester.getId());
         EstimateRequest saved = requestRepository.save(entity);
 
@@ -217,6 +218,18 @@ public class EstimateRequestService {
                 request.setDescription(newDesc);
                 dirty = true;
             }
+        }
+
+        // goLiveDate: always applied — null means "unknown/clear", not "omitted"
+        java.time.LocalDate newGoLiveDate = req.goLiveDate();
+        if (!java.util.Objects.equals(request.getGoLiveDate(), newGoLiveDate)) {
+            String oldVal = request.getGoLiveDate() != null ? request.getGoLiveDate().toString() : null;
+            String newVal = newGoLiveDate != null ? newGoLiveDate.toString() : null;
+            auditService.recordUpdated(
+                EstimateRequest.ENTITY_TYPE, request.getId(), "goLiveDate", oldVal, newVal, requester
+            );
+            request.setGoLiveDate(newGoLiveDate);
+            dirty = true;
         }
 
         if (dirty) requestRepository.save(request);
@@ -1178,6 +1191,7 @@ public class EstimateRequestService {
             request.getId(),
             request.getTitle(),
             request.getDescription(),
+            request.getGoLiveDate(),
             request.getRequesterId(),
             derivedStatus,
             request.getCreatedAt(),
@@ -1212,6 +1226,7 @@ public class EstimateRequestService {
             request.getId(),
             request.getTitle(),
             request.getDescription(),
+            request.getGoLiveDate(),
             request.getRequesterId(),
             derivedStatus,
             request.getCreatedAt(),
@@ -1404,6 +1419,7 @@ public class EstimateRequestService {
             derivedStatus,
             items.size(),
             displayProductNames,
+            request.getGoLiveDate(),
             earliestSubmitted,
             request.getUpdatedAt(),
             request.getCreatedAt()

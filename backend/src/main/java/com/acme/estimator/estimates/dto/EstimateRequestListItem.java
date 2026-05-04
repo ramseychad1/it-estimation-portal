@@ -1,5 +1,6 @@
 package com.acme.estimator.estimates.dto;
 
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 
 /**
@@ -18,6 +19,8 @@ public record EstimateRequestListItem(
     int itemCount,
     /** Comma-joined display string of product names (+ sub-feature if applicable), truncated at 3. */
     String productNames,
+    /** Null means the requester selected "Unknown at this time". */
+    LocalDate goLiveDate,
     /** Earliest non-null submittedAt across items; null if all items are DRAFT. */
     OffsetDateTime submittedAt,
     OffsetDateTime updatedAt,

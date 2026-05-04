@@ -109,6 +109,12 @@ export function ReviewScreenPage() {
       />
 
       <div className="flex flex-col" style={{ gap: 16, marginTop: 24 }}>
+        {(detail.description || detail.goLiveDate !== undefined) && (
+          <RequestContextCard
+            description={detail.description ?? null}
+            goLiveDate={detail.goLiveDate ?? null}
+          />
+        )}
         {detail.items.map((item) => (
           <ItemReviewCard
             key={item.id}
@@ -438,6 +444,58 @@ function ItemReviewCard({
 // ====================================================================
 // Sub-components
 // ====================================================================
+
+function RequestContextCard({
+  description,
+  goLiveDate,
+}: {
+  description: string | null;
+  goLiveDate: string | null;
+}) {
+  const formattedDate = goLiveDate
+    ? new Date(goLiveDate + "T00:00:00").toLocaleDateString(undefined, {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      })
+    : null;
+
+  return (
+    <section
+      className="bg-white rounded-lg"
+      style={{ border: "1px solid var(--color-warm-gray-light)", padding: "14px 16px" }}
+    >
+      <div className="flex flex-wrap items-start" style={{ gap: 24 }}>
+        {description && (
+          <div style={{ flex: "1 1 300px" }}>
+            <div
+              className="text-warm-gray-med uppercase font-medium"
+              style={{ fontSize: 11, letterSpacing: "0.04em", marginBottom: 4 }}
+            >
+              Description
+            </div>
+            <p className="m-0 text-near-black" style={{ fontSize: 13 }}>
+              {description}
+            </p>
+          </div>
+        )}
+        <div>
+          <div
+            className="text-warm-gray-med uppercase font-medium"
+            style={{ fontSize: 11, letterSpacing: "0.04em", marginBottom: 4 }}
+          >
+            Go Live Date
+          </div>
+          <div className="text-near-black" style={{ fontSize: 13 }}>
+            {formattedDate ?? (
+              <span className="text-warm-gray-med italic">Unknown</span>
+            )}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
 
 function Card({
   title,

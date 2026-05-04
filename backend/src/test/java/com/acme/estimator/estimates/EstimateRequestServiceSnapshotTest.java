@@ -129,7 +129,7 @@ class EstimateRequestServiceSnapshotTest {
         seedTemplateLine(template.getId(), build.getId(),     40, 80, 120, 20, 40, 60);
 
         EstimateRequestDetail draft = service.createDraft(
-            new CreateDraftRequest("Member portal v2", "Background context",
+            new CreateDraftRequest("Member portal v2", "Background context", null,
                 List.of(new CreateItemRequest(product.getId(), null, null))),
             requester
         );
@@ -203,7 +203,7 @@ class EstimateRequestServiceSnapshotTest {
         seedTemplateLine(template.getId(), phase.getId(), 1, 1, 1, 1, 1, 1);
 
         EstimateRequestDetail draft = service.createDraft(
-            new CreateDraftRequest("R", null,
+            new CreateDraftRequest("R", null, null,
                 List.of(new CreateItemRequest(product.getId(), null, null))),
             requester
         );
@@ -241,7 +241,7 @@ class EstimateRequestServiceSnapshotTest {
         // No template seeded.
 
         EstimateRequestDetail draft = service.createDraft(
-            new CreateDraftRequest("R", null,
+            new CreateDraftRequest("R", null, null,
                 List.of(new CreateItemRequest(product.getId(), null, null))),
             requester
         );
@@ -270,7 +270,7 @@ class EstimateRequestServiceSnapshotTest {
         seedTemplateLine(template.getId(), phase.getId(), 1, 1, 1, 1, 1, 1);
 
         EstimateRequestDetail draft = service.createDraft(
-            new CreateDraftRequest("R", null,
+            new CreateDraftRequest("R", null, null,
                 List.of(new CreateItemRequest(product.getId(), null, null))),
             requester
         );
@@ -301,7 +301,7 @@ class EstimateRequestServiceSnapshotTest {
         seedTemplateLine(subTemplate.getId(), phase.getId(), 7, 7, 7, 7, 7, 7);
 
         EstimateRequestDetail draft = service.createDraft(
-            new CreateDraftRequest("R", null,
+            new CreateDraftRequest("R", null, null,
                 List.of(new CreateItemRequest(container.getId(), sub.getId(), null))),
             requester
         );
@@ -323,7 +323,7 @@ class EstimateRequestServiceSnapshotTest {
         seedTemplateLine(template2.getId(), phase.getId(), 100, 200, 300, 50, 100, 150);
 
         EstimateRequestDetail draft = service.createDraft(
-            new CreateDraftRequest("Multi-product", null,
+            new CreateDraftRequest("Multi-product", null, null,
                 List.of(
                     new CreateItemRequest(product1.getId(), null, null),
                     new CreateItemRequest(product2.getId(), null, null)

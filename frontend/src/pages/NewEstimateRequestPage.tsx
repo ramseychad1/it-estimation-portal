@@ -65,6 +65,8 @@ export function NewEstimateRequestPage() {
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [goLiveDate, setGoLiveDate] = useState("");
+  const [goLiveDateUnknown, setGoLiveDateUnknown] = useState(false);
   const [localItems, setLocalItems] = useState<LocalItem[]>([]);
   const [pendingProductId, setPendingProductId] = useState<number | null>(null);
   const [pendingSubFeatureId, setPendingSubFeatureId] = useState<number | null>(null);
@@ -83,6 +85,13 @@ export function NewEstimateRequestPage() {
     const d = existingQuery.data;
     setTitle(d.title);
     setDescription(d.description ?? "");
+    if (d.goLiveDate) {
+      setGoLiveDate(d.goLiveDate);
+      setGoLiveDateUnknown(false);
+    } else {
+      setGoLiveDate("");
+      setGoLiveDateUnknown(false);
+    }
     const hydrated = d.items.map((item) => ({
       productId: item.productId,
       productName: item.productName,
@@ -181,10 +190,12 @@ export function NewEstimateRequestPage() {
     }
     try {
       let id = draftId;
+      const resolvedGoLiveDate = goLiveDateUnknown ? null : (goLiveDate || null);
       if (id == null) {
         const created = await createMutation.mutateAsync({
           title: title.trim(),
           description: description.trim() || null,
+          goLiveDate: resolvedGoLiveDate,
           items: localItems.map((item) => ({
             productId: item.productId,
             subFeatureId: item.subFeatureId ?? null,
@@ -201,6 +212,7 @@ export function NewEstimateRequestPage() {
           body: {
             title: title.trim(),
             description: description.trim() || null,
+            goLiveDate: resolvedGoLiveDate,
           },
         });
       }
@@ -309,6 +321,8 @@ export function NewEstimateRequestPage() {
         <Step1
           title={title}
           description={description}
+          goLiveDate={goLiveDate}
+          goLiveDateUnknown={goLiveDateUnknown}
           localItems={localItems}
           pendingProductId={pendingProductId}
           pendingSubFeatureId={pendingSubFeatureId}
@@ -320,6 +334,12 @@ export function NewEstimateRequestPage() {
           saving={createMutation.isPending || updateMutation.isPending}
           onTitleChange={(v) => { setTitle(v); setDirty(true); }}
           onDescriptionChange={(v) => { setDescription(v); setDirty(true); }}
+          onGoLiveDateChange={(v) => { setGoLiveDate(v); setGoLiveDateUnknown(false); setDirty(true); }}
+          onGoLiveDateUnknownChange={(unknown) => {
+            setGoLiveDateUnknown(unknown);
+            if (unknown) setGoLiveDate("");
+            setDirty(true);
+          }}
           onPendingProductChange={(id) => {
             setPendingProductId(id);
             setPendingSubFeatureId(null);
@@ -408,6 +428,8 @@ export function NewEstimateRequestPage() {
 interface Step1Props {
   title: string;
   description: string;
+  goLiveDate: string;
+  goLiveDateUnknown: boolean;
   localItems: LocalItem[];
   pendingProductId: number | null;
   pendingSubFeatureId: number | null;
@@ -419,6 +441,8 @@ interface Step1Props {
   saving: boolean;
   onTitleChange: (v: string) => void;
   onDescriptionChange: (v: string) => void;
+  onGoLiveDateChange: (date: string) => void;
+  onGoLiveDateUnknownChange: (unknown: boolean) => void;
   onPendingProductChange: (id: number | null) => void;
   onPendingSubFeatureChange: (id: number | null) => void;
   onAddItem: () => void;
@@ -432,6 +456,8 @@ interface Step1Props {
 function Step1({
   title,
   description,
+  goLiveDate,
+  goLiveDateUnknown,
   localItems,
   pendingProductId,
   pendingSubFeatureId,
@@ -443,6 +469,8 @@ function Step1({
   saving,
   onTitleChange,
   onDescriptionChange,
+  onGoLiveDateChange,
+  onGoLiveDateUnknownChange,
   onPendingProductChange,
   onPendingSubFeatureChange,
   onAddItem,
@@ -479,6 +507,45 @@ function Step1({
           onChange={(e) => onDescriptionChange(e.currentTarget.value)}
           maxLength={4000}
         />
+
+        {/* Go Live Date */}
+        <div>
+          <label
+            htmlFor="go-live-date"
+            className="block text-near-black font-medium"
+            style={{ fontSize: 13, marginBottom: 4 }}
+          >
+            Go Live Date
+          </label>
+          <input
+            id="go-live-date"
+            type="date"
+            value={goLiveDate}
+            disabled={goLiveDateUnknown}
+            onChange={(e) => onGoLiveDateChange(e.currentTarget.value)}
+            className={
+              "w-full rounded-md border border-border bg-white text-body text-near-black " +
+              "transition-colors duration-hover ease-out-soft " +
+              "focus:outline-none focus:border-warm-gray-med focus:ring-2 focus:ring-light-blue " +
+              "disabled:bg-warm-gray-light disabled:text-warm-gray-med " +
+              "h-8 px-3"
+            }
+            style={{ maxWidth: 200 }}
+          />
+          <label
+            className="inline-flex items-center cursor-pointer"
+            style={{ marginTop: 8, gap: 6, fontSize: 13 }}
+          >
+            <input
+              type="checkbox"
+              checked={goLiveDateUnknown}
+              onChange={(e) => onGoLiveDateUnknownChange(e.currentTarget.checked)}
+              className="rounded border-border"
+              style={{ width: 14, height: 14, accentColor: "var(--color-near-black)" }}
+            />
+            <span className="text-warm-gray-med">Unknown at this time</span>
+          </label>
+        </div>
 
         {/* Selected products list */}
         {localItems.length > 0 && (

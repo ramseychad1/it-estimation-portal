@@ -271,6 +271,12 @@ function SummaryCard({
           {item?.teamName && (
             <KV label="Team">{item.teamName}</KV>
           )}
+          <KV label="Go Live Date">
+            {detail.goLiveDate
+              ? new Date(detail.goLiveDate + "T00:00:00").toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })
+              : <span className="text-warm-gray-med italic">Unknown</span>
+            }
+          </KV>
           {item?.submittedAt && (
             <KV label="Submitted">{relativeTime(item.submittedAt)}</KV>
           )}
@@ -581,7 +587,6 @@ function PhaseLineTable({
 
   // ---- Approved: complexity chosen → 2-column focused view ----------------
   if (complexity != null) {
-    const chosenLabel = complexity === "LOW" ? "Low" : complexity === "MED" ? "Med" : "High";
     const onsRate = currentRate ? Number(currentRate.onshoreRate) : 0;
     const offsRate = currentRate ? Number(currentRate.offshoreRate) : 0;
     const showCost = currentRate != null;
@@ -617,8 +622,8 @@ function PhaseLineTable({
           <thead>
             <tr style={{ borderBottom: "1px solid var(--color-warm-gray-light)" }}>
               <Th>Phase</Th>
-              <Th align="right">ONS {chosenLabel}</Th>
-              <Th align="right">OFF {chosenLabel}</Th>
+              <Th align="right">Onshore Hours</Th>
+              <Th align="right">Offshore Hours</Th>
               <Th align="right">Total Hrs</Th>
               {showCost && <Th align="right">Total $</Th>}
             </tr>

@@ -20,6 +20,8 @@ export interface EstimateRequestListItem {
   itemCount: number;
   /** Comma-joined display string, e.g. "Member Portal, Provider · Login" */
   productNames: string;
+  /** ISO date string "YYYY-MM-DD", or null if unknown. */
+  goLiveDate: string | null;
   submittedAt: string | null;
   updatedAt: string | null;
   createdAt: string | null;
@@ -82,6 +84,8 @@ export interface EstimateRequestDetail {
   id: number;
   title: string;
   description: string | null;
+  /** ISO date string "YYYY-MM-DD", or null if the requester selected "Unknown at this time". */
+  goLiveDate: string | null;
   requesterId: number;
   /** Derived from items: DRAFT / SUBMITTED / IN_REVIEW / PARTIALLY_APPROVED / APPROVED / NEEDS_REVISION */
   derivedStatus: string;
@@ -100,12 +104,16 @@ export interface CreateItemRequest {
 export interface CreateDraftRequest {
   title: string;
   description?: string | null;
+  /** ISO date string "YYYY-MM-DD", or null if "Unknown at this time". */
+  goLiveDate?: string | null;
   items: CreateItemRequest[];
 }
 
 export interface UpdateDraftRequest {
   title?: string;
   description?: string | null;
+  /** Always included so the server can distinguish "clear to null" from "omit". */
+  goLiveDate?: string | null;
 }
 
 export interface AnswerInput {

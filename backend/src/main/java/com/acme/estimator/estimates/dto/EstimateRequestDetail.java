@@ -1,5 +1,6 @@
 package com.acme.estimator.estimates.dto;
 
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
 
@@ -18,6 +19,8 @@ public record EstimateRequestDetail(
     Long id,
     String title,
     String description,
+    /** Null means the requester selected "Unknown at this time". */
+    LocalDate goLiveDate,
     Long requesterId,
     /** Derived from items: DRAFT / SUBMITTED / IN_REVIEW / PARTIALLY_APPROVED / APPROVED / NEEDS_REVISION */
     String derivedStatus,

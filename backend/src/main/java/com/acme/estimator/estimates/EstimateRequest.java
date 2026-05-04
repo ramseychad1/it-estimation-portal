@@ -6,6 +6,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -45,6 +46,10 @@ public class EstimateRequest {
 
     @Column(name = "description")
     private String description;
+
+    /** Null means the requester hasn't specified a target date yet ("unknown"). */
+    @Column(name = "go_live_date")
+    private LocalDate goLiveDate;
 
     /** Locked once the Draft is created. */
     @Column(name = "requester_id", nullable = false, updatable = false)
