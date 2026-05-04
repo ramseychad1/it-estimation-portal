@@ -3,12 +3,11 @@ import type {
   Complexity,
   EstimateRequestDetail,
   EstimateRequestListItem,
-  EstimateStatus,
 } from "./estimates";
 import type { PageResponse } from "./users";
 
 export interface ListReviewQueueParams {
-  status?: EstimateStatus;
+  status?: string;
   search?: string;
   productId?: number;
   teamId?: number;
@@ -25,23 +24,20 @@ export interface LineOverrideInput {
   offshoreOverride: number | null;
 }
 
-/**
- * Autosave payload. See backend SaveReviewStateRequest javadoc for the
- * null-vs-clear conventions — top-level null = "no change", in-line
- * null = "clear that override."
- */
-export interface SaveReviewStateRequest {
-  complexity?: Complexity | null;
+export interface SendBackRequest {
+  reason: string;
+}
+
+// ---- Per-item review action payloads (Phase 9b) -----------------------
+
+export interface ApproveItemRequest {
+  complexity: Complexity;
   justification?: string | null;
   lineOverrides?: LineOverrideInput[];
 }
 
-export interface RejectRequest {
-  justification: string;
-}
-
-export interface SendBackRequest {
-  reason: string;
+export interface RejectItemRequest {
+  rejectionReason: string;
 }
 
 function toQuery(params: Record<string, unknown>): string {
@@ -66,39 +62,42 @@ export function getReviewDetail(id: number): Promise<EstimateRequestDetail> {
   return api(`/estimates/review/${id}`);
 }
 
-// ---- State transitions ------------------------------------------------
+// ---- Per-item review actions (Phase 9b) --------------------------------
 
-export function startReview(id: number): Promise<EstimateRequestDetail> {
-  return api(`/estimates/review/${id}/start`, { method: "POST" });
-}
-
-export function releaseReview(id: number): Promise<EstimateRequestDetail> {
-  return api(`/estimates/review/${id}/release`, { method: "POST" });
-}
-
-export function saveReviewState(
-  id: number,
-  body: SaveReviewStateRequest,
+export function startItemReview(
+  requestId: number,
+  itemId: number,
 ): Promise<EstimateRequestDetail> {
-  return api(`/estimates/review/${id}/state`, { method: "PUT", body });
+  return api(`/estimates/review/${requestId}/items/${itemId}/start`, { method: "POST" });
 }
 
-export function approveReview(id: number): Promise<EstimateRequestDetail> {
-  return api(`/estimates/review/${id}/approve`, { method: "POST" });
-}
-
-export function rejectReview(
-  id: number,
-  body: RejectRequest,
+export function releaseItemReview(
+  requestId: number,
+  itemId: number,
 ): Promise<EstimateRequestDetail> {
-  return api(`/estimates/review/${id}/reject`, { method: "POST", body });
+  return api(`/estimates/review/${requestId}/items/${itemId}/release`, { method: "POST" });
 }
 
-// ---- Admin send-back --------------------------------------------------
+export function approveItem(
+  requestId: number,
+  itemId: number,
+  body: ApproveItemRequest,
+): Promise<EstimateRequestDetail> {
+  return api(`/estimates/review/${requestId}/items/${itemId}/approve`, { method: "POST", body });
+}
 
-export function sendBack(
-  id: number,
+export function rejectItem(
+  requestId: number,
+  itemId: number,
+  body: RejectItemRequest,
+): Promise<EstimateRequestDetail> {
+  return api(`/estimates/review/${requestId}/items/${itemId}/reject`, { method: "POST", body });
+}
+
+export function sendBackItem(
+  requestId: number,
+  itemId: number,
   body: SendBackRequest,
 ): Promise<EstimateRequestDetail> {
-  return api(`/estimates/admin/${id}/send-back`, { method: "POST", body });
+  return api(`/estimates/admin/${requestId}/items/${itemId}/send-back`, { method: "POST", body });
 }

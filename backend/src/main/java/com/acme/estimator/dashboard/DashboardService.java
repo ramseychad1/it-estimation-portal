@@ -14,8 +14,9 @@ import com.acme.estimator.auth.UserRepository;
 import com.acme.estimator.dashboard.dto.ActivityFeedItem;
 import com.acme.estimator.dashboard.dto.DashboardSummary;
 import com.acme.estimator.dashboard.dto.StatCard;
+import com.acme.estimator.catalog.products.ProductRepository;
+import com.acme.estimator.estimates.EstimateRequestItemRepository;
 import com.acme.estimator.estimates.EstimateRequestRepository;
-import com.acme.estimator.estimates.EstimateStatus;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -26,6 +27,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -61,6 +63,8 @@ public class DashboardService {
     static final java.time.Duration RECENT_ACTIVITY_WINDOW = java.time.Duration.ofDays(7);
 
     private final EstimateRequestRepository requestRepository;
+    private final EstimateRequestItemRepository itemRepository;
+    private final ProductRepository productRepository;
     private final UserRepository userRepository;
     private final ChangeLogEntryRepository changeLogRepository;
     private final ActivityFeedSpecifications visibility;
@@ -92,21 +96,31 @@ public class DashboardService {
         // signal for an SO who's also a Requester (multi-role users see
         // their highest-stakes work at the top).
         if (isSO) {
-            long awaitingReview = requestRepository.countByStatus(EstimateStatus.SUBMITTED);
+            // Phase 9b M4: count items (not requests) in SUBMITTED status
+            // from products belonging to the SO's teams. Admin sees all items.
+            long awaitingReview;
+            if (isAdmin) {
+                awaitingReview = itemRepository.countAllSubmitted();
+            } else {
+                Set<Long> accessibleProductIds = soAccessibleProductIds(actorId);
+                awaitingReview = accessibleProductIds.isEmpty()
+                    ? 0L
+                    : itemRepository.countSubmittedForProducts(accessibleProductIds);
+            }
             cards.add(new StatCard(
                 "awaitingReview",
                 "Awaiting review",
                 awaitingReview,
-                "Submitted estimate requests with no SO claim yet"
+                "Submitted items assigned to your team"
             ));
 
-            long myActiveReviews = requestRepository
-                .countByReviewerIdAndStatus(actorId, EstimateStatus.IN_REVIEW);
+            // Phase 9b M4: count items (not requests) in IN_REVIEW by this SO.
+            long myActiveReviews = itemRepository.countInReviewByReviewer(actorId);
             cards.add(new StatCard(
                 "myActiveReviews",
                 "My active reviews",
                 myActiveReviews,
-                "Requests you're currently reviewing"
+                "Items you're currently reviewing"
             ));
         }
 
@@ -114,14 +128,26 @@ public class DashboardService {
         // started drafts (the dev seed gives admin@local both Admin and
         // Requester). The card returning 0 for someone who never drafts
         // is harmless and consistent.
-        long myDrafts = requestRepository
-            .countByRequesterIdAndStatus(actorId, EstimateStatus.DRAFT);
+        long myDrafts = requestRepository.countDraftsByRequesterId(actorId);
         cards.add(new StatCard(
             "myDrafts",
             "My drafts",
             myDrafts,
             "Estimate requests you started but haven't submitted"
         ));
+
+        // Phase 9b M4: Requester "Needs revision" card — requests where at
+        // least one item was rejected and is awaiting the requester's action.
+        boolean isRequester = actor.hasRole("Requester");
+        if (isRequester || isAdmin) {
+            long needsRevision = requestRepository.countNeedsRevisionByRequesterId(actorId);
+            cards.add(new StatCard(
+                "needsRevision",
+                "Needs revision",
+                needsRevision,
+                "Your requests with at least one rejected item"
+            ));
+        }
 
         if (isAdmin) {
             long pendingInvitations = userRepository
@@ -155,6 +181,21 @@ public class DashboardService {
         ));
 
         return new DashboardSummary(cards);
+    }
+
+    /**
+     * Product IDs accessible to an SO for review: products on their teams
+     * plus products with no team assignment (permissive). Same logic as
+     * {@code EstimateRequestService.requireTeamMembership}.
+     */
+    private Set<Long> soAccessibleProductIds(Long actorId) {
+        Set<Long> teamIds = userRepository.findTeamIdsByUserId(actorId);
+        Set<Long> teamProductIds = teamIds.isEmpty()
+            ? Set.of()
+            : productRepository.findIdsByTeamIdIn(teamIds);
+        Set<Long> noTeamProductIds = productRepository.findIdsWithNullTeam();
+        return Stream.concat(teamProductIds.stream(), noTeamProductIds.stream())
+            .collect(Collectors.toSet());
     }
 
     // ---- activity feed ----------------------------------------------------

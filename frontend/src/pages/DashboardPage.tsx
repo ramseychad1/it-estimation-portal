@@ -139,6 +139,7 @@ export function DashboardPage() {
 
 const CARD_HREFS: Record<string, string> = {
   myDrafts: "/requests?status=DRAFT",
+  needsRevision: "/requests?status=NEEDS_REVISION",
   awaitingReview: "/review?status=SUBMITTED",
   myActiveReviews: "/review?status=IN_REVIEW",
   pendingInvitations: "/admin/users",

@@ -2,14 +2,18 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createDraft,
   discardDraft,
+  dropItem,
   getMyRequest,
   listMyRequestHistory,
   listMyRequests,
+  reviseAndResubmitItem,
   saveDraftAnswers,
+  saveDraftItemAnswers,
   submitRequest,
   updateDraft,
   type CreateDraftRequest,
   type ListMyRequestsParams,
+  type ReviseAndResubmitRequest,
   type SaveAnswersRequest,
   type UpdateDraftRequest,
 } from "../api/estimates";
@@ -45,8 +49,6 @@ function invalidateAll(qc: ReturnType<typeof useQueryClient>) {
 
 function invalidateDetail(qc: ReturnType<typeof useQueryClient>, id: number) {
   qc.invalidateQueries({ queryKey: [...ESTIMATES_KEY, "my", "detail", id] });
-  // List queries depend on status changes too; invalidate them broadly so
-  // any open list with a matching status filter refetches.
   qc.invalidateQueries({ queryKey: [...ESTIMATES_KEY, "my"] });
 }
 
@@ -84,12 +86,43 @@ export function useSaveDraftAnswersMutation() {
   });
 }
 
+export function useSaveDraftItemAnswersMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, itemId, body }: { id: number; itemId: number; body: SaveAnswersRequest }) =>
+      saveDraftItemAnswers(id, itemId, body),
+    onSuccess: (_data, { id }) => invalidateDetail(qc, id),
+  });
+}
+
 export function useSubmitRequestMutation() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: number) => submitRequest(id),
-    // Submit changes status — invalidate the whole tree so open lists,
-    // detail views, and (Phase 6b) the SO review queue all refresh.
     onSuccess: () => invalidateAll(qc),
+  });
+}
+
+export function useReviseAndResubmitMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      itemId,
+      body,
+    }: {
+      id: number;
+      itemId: number;
+      body: ReviseAndResubmitRequest;
+    }) => reviseAndResubmitItem(id, itemId, body),
+    onSuccess: (_data, { id }) => invalidateDetail(qc, id),
+  });
+}
+
+export function useDropItemMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, itemId }: { id: number; itemId: number }) => dropItem(id, itemId),
+    onSuccess: (_data, { id }) => invalidateDetail(qc, id),
   });
 }

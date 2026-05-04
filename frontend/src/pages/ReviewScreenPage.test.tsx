@@ -19,14 +19,18 @@ interface MockDetail {
   justification: string | null;
   approvedBlendedRateId: number | null;
   reviewedAt: string | null;
+  isReviewable: boolean;
+  rejectionReason: string | null;
+  revisionCount: number;
+  originalProductId: null;
+  originalProductName: null;
 }
 
 interface MockState {
   detail: MockDetail | null;
-  starts: number[];
-  saves: { id: number; body: any }[];
-  approves: number[];
-  rejects: { id: number; justification: string }[];
+  itemStarts: { requestId: number; itemId: number }[];
+  itemApprovals: { requestId: number; itemId: number; body: any }[];
+  itemRejections: { requestId: number; itemId: number; body: any }[];
 }
 let state: MockState;
 let currentSoId = 1;
@@ -43,46 +47,64 @@ function fullDetail(d: MockDetail) {
     id: d.id,
     title: d.title,
     description: "Some context",
-    productId: 1,
-    productName: "Member Portal",
-    subFeatureId: null,
-    subFeatureName: null,
-    templateId: 5,
-    templateVersionNumber: 2,
-    complexity: d.complexity,
-    status: d.status,
     requesterId: 99,
-    reviewerId: d.reviewerId,
-    reviewerName: d.reviewerName,
-    reviewerStatus: d.reviewerStatus,
-    justification: d.justification,
-    submittedAt: "2026-04-15T00:00:00Z",
-    reviewedAt: d.reviewedAt,
-    approvedBlendedRateId: d.approvedBlendedRateId,
+    derivedStatus: d.status,
     createdAt: "2026-04-10T00:00:00Z",
     updatedAt: "2026-04-15T00:00:00Z",
-    phaseLines: [
+    items: [
       {
-        sdlcPhaseId: 1, sdlcPhaseName: "Discovery", displayOrder: 1,
-        onshoreLow: 5, onshoreMed: 10, onshoreHigh: 15,
-        offshoreLow: 2, offshoreMed: 4, offshoreHigh: 6,
-        onshoreOverride: null, offshoreOverride: null,
+        id: 1,
+        productId: 1,
+        productName: "Member Portal",
+        subFeatureId: null,
+        subFeatureName: null,
+        teamName: null,
+        templateId: 5,
+        templateVersionNumber: 2,
+        status: d.status,
+        complexity: d.complexity,
+        reviewerId: d.reviewerId,
+        reviewerName: d.reviewerName,
+        reviewerStatus: d.reviewerStatus,
+        justification: d.justification,
+        submittedAt: "2026-04-15T00:00:00Z",
+        reviewedAt: d.reviewedAt,
+        approvedBlendedRateId: d.approvedBlendedRateId,
+        displayOrder: 0,
+        phaseLines: [
+          {
+            sdlcPhaseId: 1, sdlcPhaseName: "Discovery", displayOrder: 1,
+            onshoreLow: 5, onshoreMed: 10, onshoreHigh: 15,
+            offshoreLow: 2, offshoreMed: 4, offshoreHigh: 6,
+            onshoreOverride: null, offshoreOverride: null,
+          },
+          {
+            sdlcPhaseId: 2, sdlcPhaseName: "Build", displayOrder: 2,
+            onshoreLow: 40, onshoreMed: 80, onshoreHigh: 120,
+            offshoreLow: 20, offshoreMed: 40, offshoreHigh: 60,
+            onshoreOverride: null, offshoreOverride: null,
+          },
+        ],
+        answers: [
+          { questionId: 100, questionText: "How many users?", required: true, answerText: "50000" },
+        ],
+        isReviewable: d.isReviewable,
+        rejectionReason: d.rejectionReason,
+        revisionCount: d.revisionCount,
+        originalProductId: d.originalProductId,
+        originalProductName: d.originalProductName,
       },
-      {
-        sdlcPhaseId: 2, sdlcPhaseName: "Build", displayOrder: 2,
-        onshoreLow: 40, onshoreMed: 80, onshoreHigh: 120,
-        offshoreLow: 20, offshoreMed: 40, offshoreHigh: 60,
-        onshoreOverride: null, offshoreOverride: null,
-      },
-    ],
-    answers: [
-      { questionId: 100, questionText: "How many users?", required: true, answerText: "50000" },
     ],
   };
 }
 
 function installRouter() {
-  state = { detail: null, starts: [], saves: [], approves: [], rejects: [] };
+  state = {
+    detail: null,
+    itemStarts: [],
+    itemApprovals: [],
+    itemRejections: [],
+  };
   fetchMock.mockImplementation((url: string, init?: RequestInit) => {
     const u = new URL(url, "http://localhost");
     const path = u.pathname;
@@ -113,10 +135,12 @@ function installRouter() {
       return Promise.resolve(jsonResponse(fullDetail(state.detail)));
     }
 
-    const startMatch = path.match(/^\/api\/estimates\/review\/(\d+)\/start$/);
-    if (startMatch && method === "POST") {
-      const id = Number(startMatch[1]);
-      state.starts.push(id);
+    // Per-item start: POST /api/estimates/review/{requestId}/items/{itemId}/start
+    const itemStartMatch = path.match(/^\/api\/estimates\/review\/(\d+)\/items\/(\d+)\/start$/);
+    if (itemStartMatch && method === "POST") {
+      const requestId = Number(itemStartMatch[1]);
+      const itemId = Number(itemStartMatch[2]);
+      state.itemStarts.push({ requestId, itemId });
       if (state.detail) {
         state.detail.status = "IN_REVIEW";
         state.detail.reviewerId = currentSoId;
@@ -126,38 +150,32 @@ function installRouter() {
       return Promise.resolve(jsonResponse(fullDetail(state.detail!)));
     }
 
-    const stateMatch = path.match(/^\/api\/estimates\/review\/(\d+)\/state$/);
-    if (stateMatch && method === "PUT") {
-      const id = Number(stateMatch[1]);
+    // Per-item approve: POST /api/estimates/review/{requestId}/items/{itemId}/approve
+    const itemApproveMatch = path.match(/^\/api\/estimates\/review\/(\d+)\/items\/(\d+)\/approve$/);
+    if (itemApproveMatch && method === "POST") {
+      const requestId = Number(itemApproveMatch[1]);
+      const itemId = Number(itemApproveMatch[2]);
       const body = JSON.parse(init?.body as string);
-      state.saves.push({ id, body });
-      if (state.detail) {
-        if (body.complexity !== undefined) state.detail.complexity = body.complexity;
-        if (body.justification !== undefined) state.detail.justification = body.justification;
-      }
-      return Promise.resolve(jsonResponse(fullDetail(state.detail!)));
-    }
-
-    const approveMatch = path.match(/^\/api\/estimates\/review\/(\d+)\/approve$/);
-    if (approveMatch && method === "POST") {
-      const id = Number(approveMatch[1]);
-      state.approves.push(id);
+      state.itemApprovals.push({ requestId, itemId, body });
       if (state.detail) {
         state.detail.status = "APPROVED";
         state.detail.reviewedAt = new Date().toISOString();
         state.detail.approvedBlendedRateId = 1;
+        state.detail.complexity = body.complexity;
       }
       return Promise.resolve(jsonResponse(fullDetail(state.detail!)));
     }
 
-    const rejectMatch = path.match(/^\/api\/estimates\/review\/(\d+)\/reject$/);
-    if (rejectMatch && method === "POST") {
-      const id = Number(rejectMatch[1]);
+    // Per-item reject: POST /api/estimates/review/{requestId}/items/{itemId}/reject
+    const itemRejectMatch = path.match(/^\/api\/estimates\/review\/(\d+)\/items\/(\d+)\/reject$/);
+    if (itemRejectMatch && method === "POST") {
+      const requestId = Number(itemRejectMatch[1]);
+      const itemId = Number(itemRejectMatch[2]);
       const body = JSON.parse(init?.body as string);
-      state.rejects.push({ id, justification: body.justification });
+      state.itemRejections.push({ requestId, itemId, body });
       if (state.detail) {
         state.detail.status = "REJECTED";
-        state.detail.justification = body.justification;
+        state.detail.rejectionReason = body.rejectionReason;
       }
       return Promise.resolve(jsonResponse(fullDetail(state.detail!)));
     }
@@ -195,6 +213,8 @@ describe("<ReviewScreenPage>", () => {
       id: 1, title: "Submitted Request", status: "SUBMITTED",
       reviewerId: null, reviewerName: null, reviewerStatus: "unclaimed",
       complexity: null, justification: null, approvedBlendedRateId: null, reviewedAt: null,
+      isReviewable: true, rejectionReason: null, revisionCount: 0,
+      originalProductId: null, originalProductName: null,
     };
     renderAt("1");
 
@@ -209,6 +229,8 @@ describe("<ReviewScreenPage>", () => {
       id: 2, title: "Mine to Review", status: "IN_REVIEW",
       reviewerId: 1, reviewerName: "SO One", reviewerStatus: "you",
       complexity: null, justification: null, approvedBlendedRateId: null, reviewedAt: null,
+      isReviewable: true, rejectionReason: null, revisionCount: 0,
+      originalProductId: null, originalProductName: null,
     };
     renderAt("2");
 
@@ -235,6 +257,8 @@ describe("<ReviewScreenPage>", () => {
       id: 3, title: "Approve Gating", status: "IN_REVIEW",
       reviewerId: 1, reviewerName: "SO One", reviewerStatus: "you",
       complexity: null, justification: null, approvedBlendedRateId: null, reviewedAt: null,
+      isReviewable: true, rejectionReason: null, revisionCount: 0,
+      originalProductId: null, originalProductName: null,
     };
     renderAt("3");
 
@@ -264,6 +288,8 @@ describe("<ReviewScreenPage>", () => {
       id: 4, title: "About to Approve", status: "IN_REVIEW",
       reviewerId: 1, reviewerName: "SO One", reviewerStatus: "you",
       complexity: "MED", justification: "Approved.", approvedBlendedRateId: null, reviewedAt: null,
+      isReviewable: true, rejectionReason: null, revisionCount: 0,
+      originalProductId: null, originalProductName: null,
     };
     renderAt("4");
 
@@ -271,14 +297,17 @@ describe("<ReviewScreenPage>", () => {
     await screen.findByRole("radiogroup", { name: /Complexity/i });
 
     await user.click(screen.getByRole("button", { name: /^Approve$/ }));
-    // ConfirmModal uses role="alertdialog" (alert variant since it
-    // initiates an action with a confirmation step).
+    // ConfirmModal uses role="alertdialog"
     const dialog = await screen.findByRole("alertdialog");
     expect(within(dialog).getByText(/Approve this estimate\?/i)).toBeInTheDocument();
     await user.click(within(dialog).getByRole("button", { name: /^Approve$/ }));
 
     await waitFor(() => {
-      expect(state.approves).toContain(4);
+      expect(state.itemApprovals).toHaveLength(1);
+      expect(state.itemApprovals[0].requestId).toBe(4);
+      expect(state.itemApprovals[0].itemId).toBe(1);
+      expect(state.itemApprovals[0].body.complexity).toBe("MED");
+      expect(state.itemApprovals[0].body).toHaveProperty("lineOverrides");
     });
     expect(await screen.findByTestId("queue-stub")).toBeInTheDocument();
   });
@@ -288,6 +317,8 @@ describe("<ReviewScreenPage>", () => {
       id: 5, title: "Reject Me", status: "IN_REVIEW",
       reviewerId: 1, reviewerName: "SO One", reviewerStatus: "you",
       complexity: "LOW", justification: "Pre-fill text", approvedBlendedRateId: null, reviewedAt: null,
+      isReviewable: true, rejectionReason: null, revisionCount: 0,
+      originalProductId: null, originalProductName: null,
     };
     renderAt("5");
 
@@ -296,15 +327,17 @@ describe("<ReviewScreenPage>", () => {
 
     await user.click(screen.getByRole("button", { name: /^Reject$/ }));
     const dialog = await screen.findByRole("alertdialog");
-    // Justification textarea defaults to current saved justification.
+    // Rejection reason textarea pre-filled with current justification.
     const reasonField = within(dialog).getByRole("textbox", { name: /Rejection reason/i });
     expect(reasonField).toHaveValue("Pre-fill text");
 
     // Confirm rejection.
     await user.click(within(dialog).getByRole("button", { name: /^Reject$/ }));
     await waitFor(() => {
-      expect(state.rejects).toHaveLength(1);
-      expect(state.rejects[0].justification).toBe("Pre-fill text");
+      expect(state.itemRejections).toHaveLength(1);
+      expect(state.itemRejections[0].requestId).toBe(5);
+      expect(state.itemRejections[0].itemId).toBe(1);
+      expect(state.itemRejections[0].body.rejectionReason).toBe("Pre-fill text");
     });
   });
 
@@ -313,6 +346,8 @@ describe("<ReviewScreenPage>", () => {
       id: 6, title: "Override Math", status: "IN_REVIEW",
       reviewerId: 1, reviewerName: "SO One", reviewerStatus: "you",
       complexity: "MED", justification: "Reviewing", approvedBlendedRateId: null, reviewedAt: null,
+      isReviewable: true, rejectionReason: null, revisionCount: 0,
+      originalProductId: null, originalProductName: null,
     };
     renderAt("6");
 
@@ -340,11 +375,12 @@ describe("<ReviewScreenPage>", () => {
       id: 7, title: "Other SO's Claim", status: "IN_REVIEW",
       reviewerId: 99, reviewerName: "SO Two", reviewerStatus: "other-so",
       complexity: "MED", justification: "Their reasoning", approvedBlendedRateId: null, reviewedAt: null,
+      isReviewable: false, rejectionReason: null, revisionCount: 0,
+      originalProductId: null, originalProductName: null,
     };
     renderAt("7");
 
     // Banner is "<strong>SO Two</strong> is reviewing this request..."
-    // — find the unique fragment text + verify SO Two is in the same area.
     const matches = await screen.findAllByText(/is reviewing this request/i);
     expect(matches.length).toBeGreaterThan(0);
     expect(screen.getByText("SO Two")).toBeInTheDocument();
@@ -355,27 +391,34 @@ describe("<ReviewScreenPage>", () => {
     expect(screen.getByRole("button", { name: /^Approve$/ })).toBeDisabled();
   });
 
-  it("autosave fires on complexity change (debounced PUT to /state)", async () => {
+  it("complexity change is local — no PUT fired before approve", async () => {
     state.detail = {
-      id: 8, title: "Autosave Trigger", status: "IN_REVIEW",
+      id: 8, title: "No Autosave", status: "IN_REVIEW",
       reviewerId: 1, reviewerName: "SO One", reviewerStatus: "you",
       complexity: null, justification: null, approvedBlendedRateId: null, reviewedAt: null,
+      isReviewable: true, rejectionReason: null, revisionCount: 0,
+      originalProductId: null, originalProductName: null,
     };
     renderAt("8");
 
     const user = userEvent.setup();
     await screen.findByRole("radiogroup", { name: /Complexity/i });
 
-    expect(state.saves).toHaveLength(0);
+    // Click a complexity radio.
     await user.click(screen.getByRole("radio", { name: /High/i }));
 
-    // Wait past the 1s debounce.
-    await waitFor(
-      () => {
-        expect(state.saves.length).toBeGreaterThanOrEqual(1);
-        expect(state.saves[state.saves.length - 1].body.complexity).toBe("HIGH");
-      },
-      { timeout: 3000 },
+    // Wait 200ms — no PUT /state should have been fired.
+    await new Promise((r) => setTimeout(r, 200));
+
+    // Verify no PUT to /state was made.
+    const putCalls = fetchMock.mock.calls.filter(
+      (args: any[]) =>
+        String(args[0]).includes("/state") && ((args[1]?.method ?? "GET") as string).toUpperCase() === "PUT",
     );
+    expect(putCalls).toHaveLength(0);
+
+    // Also verify no item-level endpoints were called yet (no approve, no reject).
+    expect(state.itemApprovals).toHaveLength(0);
+    expect(state.itemRejections).toHaveLength(0);
   });
 });

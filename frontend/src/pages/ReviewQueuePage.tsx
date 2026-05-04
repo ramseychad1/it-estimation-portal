@@ -13,24 +13,21 @@ import { SecondaryButton } from "../components/buttons";
 import { StatusBadge, estimateStatusBadge } from "../components/StatusBadge";
 import { Toggle } from "../components/Toggle";
 import { UserCell } from "../components/UserCell";
-import { useToast } from "../components/Toast";
-import { useAuth } from "../lib/auth";
 import { useDebouncedValue } from "../lib/useDebouncedValue";
 import { useProductsQuery } from "../lib/queries/products";
 import { useTeamsQuery } from "../lib/queries/teams";
 import {
   useReviewQueueQuery,
-  useStartReviewMutation,
 } from "../lib/queries/reviews";
 import type {
   EstimateRequestListItem,
-  EstimateStatus,
 } from "../lib/api/estimates";
 
 const PAGE_SIZE = 25;
 
 const COLUMN_DEFS = [
   { key: "title", label: "Title" },
+  { key: "items", label: "Items" },
   { key: "requester", label: "Requester" },
   { key: "status", label: "Status" },
   { key: "reviewer", label: "Reviewer" },
@@ -38,7 +35,7 @@ const COLUMN_DEFS = [
 ];
 const REQUIRED_COLS = ["title"];
 
-type StatusFilter = "ALL_OPEN" | EstimateStatus;
+type StatusFilter = "ALL_OPEN" | string;
 
 export function ReviewQueuePage() {
   useEffect(() => {
@@ -47,8 +44,6 @@ export function ReviewQueuePage() {
 
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const toast = useToast();
-  const { user } = useAuth();
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>(() => {
@@ -83,7 +78,6 @@ export function ReviewQueuePage() {
   );
 
   const queueQuery = useReviewQueueQuery(queryParams);
-  const startMutation = useStartReviewMutation();
 
   // Product filter list — pulled from the catalog so it always matches
   // the active product set without an extra endpoint.
@@ -118,30 +112,18 @@ export function ReviewQueuePage() {
   }
 
   function buildKebab(row: EstimateRequestListItem): KebabMenuItem[] {
-    if (row.status === "SUBMITTED") {
-      return [
-        {
-          label: "Start review",
-          onSelect: () =>
-            startMutation.mutate(row.id, {
-              onSuccess: () => navigate(`/review/${row.id}`),
-              onError: (err) =>
-                // 409 ALREADY_IN_REVIEW: another SO claimed it between
-                // page render and click. Toast + refresh queue.
-                toast.error(
-                  err instanceof Error ? err.message : "Could not start review.",
-                ),
-            }),
-        },
-      ];
-    }
-    if (row.status === "IN_REVIEW") {
+    // Per-item review (Phase 9b): starting a review happens on the detail
+    // page per item. The queue navigates directly — no request-level claim.
+    if (row.derivedStatus === "IN_REVIEW") {
       return [
         {
           label: "Continue review",
           onSelect: () => navigate(`/review/${row.id}`),
         },
       ];
+    }
+    if (row.derivedStatus === "SUBMITTED") {
+      return [{ label: "Review", onSelect: () => navigate(`/review/${row.id}`) }];
     }
     return [{ label: "View", onSelect: () => navigate(`/review/${row.id}`) }];
   }
@@ -158,21 +140,28 @@ export function ReviewQueuePage() {
             {r.title}
           </span>
           <span className="text-warm-gray-med" style={{ fontSize: 12 }}>
-            {r.subFeatureName
-              ? `${r.productName} · ${r.subFeatureName}`
-              : r.productName}
+            {r.productNames}
           </span>
         </div>
+      ),
+    },
+    {
+      key: "items",
+      header: "Items",
+      width: 70,
+      render: (r) => (
+        <span className="text-warm-gray-med" style={{ fontSize: 12 }}>
+          {r.itemCount ?? "—"}
+        </span>
       ),
     },
     {
       key: "requester",
       header: "Requester",
       width: 180,
-      // The list DTO doesn't include requesterId. Phase 6b leaves the
-      // queue's requester column blank-friendly; the detail page surfaces
-      // the requester name. Future enhancement: extend list DTO with
-      // requesterId so the queue can render UserCell here too.
+      // The list DTO doesn't include requesterId. The detail page surfaces
+      // the requester name. Carry-over #11: extend list DTO with requesterId
+      // so the queue can render UserCell here too.
       render: () => (
         <span className="text-warm-gray-med" style={{ fontSize: 12 }}>—</span>
       ),
@@ -182,7 +171,7 @@ export function ReviewQueuePage() {
       header: "Status",
       width: 120,
       render: (r) => {
-        const { variant, label } = estimateStatusBadge(r.status);
+        const { variant, label } = estimateStatusBadge(r.derivedStatus);
         return <StatusBadge variant={variant}>{label}</StatusBadge>;
       },
     },
@@ -220,16 +209,12 @@ export function ReviewQueuePage() {
     (c) => !hiddenCols.has(c.key) || c.key === "actions",
   );
 
-  // Reference user for visual reminder while we wait for list DTO to
-  // surface reviewer + requester columns.
-  void user;
-
   return (
     <>
       <PageHeader
         breadcrumb={[{ label: "Workspace" }, { label: "Review queue" }]}
         title="Review queue"
-        subtitle="Estimate requests awaiting review."
+        subtitle="Estimate requests containing items from products assigned to your team."
       />
 
       <div className="mt-6">
@@ -292,8 +277,8 @@ export function ReviewQueuePage() {
         {isEmpty && !hasFilter ? (
           <EmptyState
             icon={Inbox}
-            title="No requests in the queue yet"
-            description="Submitted estimate requests will appear here. Once you start a review, you can come back and find it under 'Mine only.'"
+            title="No requests need your review"
+            description="Requests appear here when they contain items from products assigned to your team."
           />
         ) : (
           <DataTable
@@ -363,6 +348,4 @@ export function ReviewQueuePage() {
 // can mock it cheaply if needed.
 import { relativeTime as relTime } from "../lib/relativeTime";
 
-// Render the imported icon to satisfy the linter and document that we
-// reuse the shared shell column types here too.
 void UserCell;

@@ -21,6 +21,8 @@ import com.acme.estimator.catalog.templates.EstimateTemplateLine;
 import com.acme.estimator.catalog.templates.EstimateTemplateLineRepository;
 import com.acme.estimator.catalog.templates.EstimateTemplateRepository;
 import com.acme.estimator.estimates.EstimateRequest;
+import com.acme.estimator.estimates.EstimateRequestItem;
+import com.acme.estimator.estimates.EstimateRequestItemRepository;
 import com.acme.estimator.estimates.EstimateRequestPhaseLineRepository;
 import com.acme.estimator.estimates.EstimateRequestQuestionAnswerRepository;
 import com.acme.estimator.estimates.EstimateRequestRepository;
@@ -79,6 +81,7 @@ class AdminPrivilegeTest {
     @Autowired private MockMvc mvc;
     @Autowired private ObjectMapper json;
     @Autowired private EstimateRequestRepository requestRepository;
+    @Autowired private EstimateRequestItemRepository itemRepository;
     @Autowired private EstimateRequestPhaseLineRepository phaseLineRepository;
     @Autowired private EstimateRequestQuestionAnswerRepository answerRepository;
     @Autowired private ProductRepository productRepository;
@@ -136,6 +139,7 @@ class AdminPrivilegeTest {
     private void cleanAll() {
         phaseLineRepository.deleteAll();
         answerRepository.deleteAll();
+        itemRepository.deleteAll();
         requestRepository.deleteAll();
         templateLineRepository.deleteAll();
         templateRepository.deleteAll();
@@ -166,7 +170,7 @@ class AdminPrivilegeTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(json.writeValueAsString(Map.of(
                     "title", "Admin's own draft",
-                    "productId", ctx.product.getId()
+                    "items", List.of(Map.of("productId", ctx.product.getId()))
                 ))))
             .andExpect(status().isCreated())
             .andExpect(jsonPath("$.requesterId").value(adminOnly.getUserId()));
@@ -223,12 +227,13 @@ class AdminPrivilegeTest {
     void adminOnly_canClaimAReview() throws Exception {
         AtomicCtx ctx = seedAtomicProductContext();
         Long submittedId = submitAs(requester, ctx.product.getId(), "To be claimed");
+        Long itemId = firstItemId(submittedId);
 
-        mvc.perform(post("/api/estimates/review/" + submittedId + "/start")
+        mvc.perform(post("/api/estimates/review/" + submittedId + "/items/" + itemId + "/start")
                 .with(user(adminOnly)).with(csrf()))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.status").value("IN_REVIEW"))
-            .andExpect(jsonPath("$.reviewerId").value(adminOnly.getUserId()));
+            .andExpect(jsonPath("$.items[0].status").value("IN_REVIEW"))
+            .andExpect(jsonPath("$.items[0].reviewerId").value(adminOnly.getUserId()));
     }
 
     // ---- 7) Admin override: release a review claimed by another SO --------
@@ -237,24 +242,22 @@ class AdminPrivilegeTest {
     void adminOnly_canReleaseAReviewClaimedByAnotherSO() throws Exception {
         AtomicCtx ctx = seedAtomicProductContext();
         Long submittedId = submitAs(requester, ctx.product.getId(), "Override release");
-        // SO1 claims it.
-        mvc.perform(post("/api/estimates/review/" + submittedId + "/start")
+        Long itemId = firstItemId(submittedId);
+
+        mvc.perform(post("/api/estimates/review/" + submittedId + "/items/" + itemId + "/start")
                 .with(user(so1)).with(csrf()))
             .andExpect(status().isOk());
 
-        // Pre-7.5 this would 403 NOT_THE_REVIEWER. Post-7.5 admin
-        // overrides.
-        mvc.perform(post("/api/estimates/review/" + submittedId + "/release")
+        mvc.perform(post("/api/estimates/review/" + submittedId + "/items/" + itemId + "/release")
                 .with(user(adminOnly)).with(csrf()))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.status").value("SUBMITTED"))
-            .andExpect(jsonPath("$.reviewerId").doesNotExist());
+            .andExpect(jsonPath("$.items[0].status").value("SUBMITTED"))
+            .andExpect(jsonPath("$.items[0].reviewerId").doesNotExist());
 
-        // Audit row attributes the action to the admin.
         long rows = changeLogRepository.findByEntityTypeAndEntityIdOrderByChangedAtDesc(
             EstimateRequest.ENTITY_TYPE, submittedId
         ).stream()
-            .filter(r -> r.getAction() == ChangeAction.REVIEW_RELEASED
+            .filter(r -> r.getAction() == ChangeAction.ITEM_REVIEW_RELEASED
                 && adminOnly.getUserId().equals(r.getChangedBy()))
             .count();
         assertThat(rows).isEqualTo(1);
@@ -266,39 +269,33 @@ class AdminPrivilegeTest {
     void adminOnly_canApproveAReviewClaimedByAnotherSO() throws Exception {
         AtomicCtx ctx = seedAtomicProductContext();
         Long submittedId = submitAs(requester, ctx.product.getId(), "Override approve");
-        mvc.perform(post("/api/estimates/review/" + submittedId + "/start")
+        Long itemId = firstItemId(submittedId);
+
+        mvc.perform(post("/api/estimates/review/" + submittedId + "/items/" + itemId + "/start")
                 .with(user(so1)).with(csrf()))
             .andExpect(status().isOk());
 
-        // Set complexity + justification as the override admin (could
-        // also have been done by the original SO — autosave doesn't
-        // require that the saver match the reviewer per Phase 7.5).
-        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
-                .put("/api/estimates/review/" + submittedId + "/state")
+        // Admin approves with complexity + justification in one call (no saveState step).
+        mvc.perform(post("/api/estimates/review/" + submittedId + "/items/" + itemId + "/approve")
                 .with(user(adminOnly)).with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(json.writeValueAsString(Map.of(
                     "complexity", "MED",
                     "justification", "Admin override; pushing through"
                 ))))
-            .andExpect(status().isOk());
-
-        mvc.perform(post("/api/estimates/review/" + submittedId + "/approve")
-                .with(user(adminOnly)).with(csrf()))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.status").value("APPROVED"))
-            .andExpect(jsonPath("$.reviewedAt").exists());
+            .andExpect(jsonPath("$.items[0].status").value("APPROVED"))
+            .andExpect(jsonPath("$.items[0].reviewedAt").exists());
 
-        // Reviewer_id stays as the original SO — we don't lose the SO
-        // who was on the hook.
-        EstimateRequest after = requestRepository.findById(submittedId).orElseThrow();
-        assertThat(after.getReviewerId()).isEqualTo(so1.getUserId());
+        // reviewer_id stays as the original SO — we don't lose the SO who was on the hook.
+        EstimateRequestItem afterItem = itemRepository
+            .findByEstimateRequestIdOrderByDisplayOrderAsc(submittedId).get(0);
+        assertThat(afterItem.getReviewerId()).isEqualTo(so1.getUserId());
 
-        // Audit row attributes the APPROVED action to the admin.
         long rows = changeLogRepository.findByEntityTypeAndEntityIdOrderByChangedAtDesc(
             EstimateRequest.ENTITY_TYPE, submittedId
         ).stream()
-            .filter(r -> r.getAction() == ChangeAction.APPROVED
+            .filter(r -> r.getAction() == ChangeAction.ITEM_APPROVED
                 && adminOnly.getUserId().equals(r.getChangedBy()))
             .count();
         assertThat(rows).isEqualTo(1);
@@ -317,9 +314,10 @@ class AdminPrivilegeTest {
     }
 
     private Long createDraftAs(AppUserDetails as, String title, Long productId) throws Exception {
-        var body = new java.util.HashMap<String, Object>();
-        body.put("title", title);
-        body.put("productId", productId);
+        var body = Map.of(
+            "title", title,
+            "items", List.of(Map.of("productId", productId))
+        );
         String responseBody = mvc.perform(post("/api/estimates/my")
                 .with(user(as)).with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
@@ -334,6 +332,12 @@ class AdminPrivilegeTest {
         mvc.perform(post("/api/estimates/my/" + id + "/submit").with(user(as)).with(csrf()))
             .andExpect(status().isOk());
         return id;
+    }
+
+    private Long firstItemId(Long requestId) {
+        return itemRepository
+            .findByEstimateRequestIdOrderByDisplayOrderAsc(requestId)
+            .get(0).getId();
     }
 
     private SdlcPhase seedPhase(String name, int order) {

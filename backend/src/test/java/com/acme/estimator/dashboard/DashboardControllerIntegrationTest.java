@@ -26,9 +26,11 @@ import com.acme.estimator.catalog.templates.EstimateTemplate;
 import com.acme.estimator.catalog.templates.EstimateTemplateLine;
 import com.acme.estimator.catalog.templates.EstimateTemplateLineRepository;
 import com.acme.estimator.catalog.templates.EstimateTemplateRepository;
+import com.acme.estimator.estimates.EstimateRequestItemRepository;
 import com.acme.estimator.estimates.EstimateRequestPhaseLineRepository;
 import com.acme.estimator.estimates.EstimateRequestQuestionAnswerRepository;
 import com.acme.estimator.estimates.EstimateRequestRepository;
+import com.acme.estimator.estimates.EstimateStatus;
 import com.acme.estimator.phases.SdlcPhase;
 import com.acme.estimator.phases.SdlcPhaseRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -64,6 +66,7 @@ class DashboardControllerIntegrationTest {
     @Autowired private MockMvc mvc;
     @Autowired private ObjectMapper json;
     @Autowired private EstimateRequestRepository requestRepository;
+    @Autowired private EstimateRequestItemRepository itemRepository;
     @Autowired private EstimateRequestPhaseLineRepository phaseLineRepository;
     @Autowired private EstimateRequestQuestionAnswerRepository answerRepository;
     @Autowired private ProductRepository productRepository;
@@ -110,6 +113,7 @@ class DashboardControllerIntegrationTest {
     private void cleanAll() {
         phaseLineRepository.deleteAll();
         answerRepository.deleteAll();
+        itemRepository.deleteAll();
         requestRepository.deleteAll();
         templateLineRepository.deleteAll();
         templateRepository.deleteAll();
@@ -135,12 +139,14 @@ class DashboardControllerIntegrationTest {
     // ---- summary: role-driven card visibility ------------------------------
 
     @Test
-    void summary_requesterOnly_returnsTwoCards() throws Exception {
+    void summary_requesterOnly_returnsThreeCards() throws Exception {
+        // Phase 9b M4 adds the "needsRevision" card for Requesters.
         mvc.perform(get("/api/dashboard/summary").with(user(requester)))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.cards.length()").value(2))
+            .andExpect(jsonPath("$.cards.length()").value(3))
             .andExpect(jsonPath("$.cards[0].key").value("myDrafts"))
-            .andExpect(jsonPath("$.cards[1].key").value("myRecentActivity"));
+            .andExpect(jsonPath("$.cards[1].key").value("needsRevision"))
+            .andExpect(jsonPath("$.cards[2].key").value("myRecentActivity"));
     }
 
     @Test
@@ -155,29 +161,35 @@ class DashboardControllerIntegrationTest {
     }
 
     @Test
-    void summary_adminOnly_returnsFourCards() throws Exception {
-        // admin@local seed has Admin only (no SO, no Requester). Cards:
-        // myDrafts (always-on) + pendingInvitations + totalActiveUsers + myRecentActivity
+    void summary_adminOnly_returnsFiveCards() throws Exception {
+        // admin@local has Admin only (no SO, no Requester). Phase 9b M4 adds
+        // "needsRevision" for isAdmin users. Cards:
+        // myDrafts + needsRevision + pendingInvitations + totalActiveUsers + myRecentActivity
         mvc.perform(get("/api/dashboard/summary").with(user(admin)))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.cards.length()").value(4))
+            .andExpect(jsonPath("$.cards.length()").value(5))
             .andExpect(jsonPath("$.cards[0].key").value("myDrafts"))
-            .andExpect(jsonPath("$.cards[1].key").value("pendingInvitations"))
-            .andExpect(jsonPath("$.cards[2].key").value("totalActiveUsers"))
-            .andExpect(jsonPath("$.cards[3].key").value("myRecentActivity"));
+            .andExpect(jsonPath("$.cards[1].key").value("needsRevision"))
+            .andExpect(jsonPath("$.cards[2].key").value("pendingInvitations"))
+            .andExpect(jsonPath("$.cards[3].key").value("totalActiveUsers"))
+            .andExpect(jsonPath("$.cards[4].key").value("myRecentActivity"));
     }
 
     @Test
-    void summary_multiRoleAdminPlusSO_returnsSixCards_noDuplicates() throws Exception {
+    void summary_multiRoleAdminPlusSO_returnsSevenCards_noDuplicates() throws Exception {
+        // Phase 9b M4: Admin implies needsRevision card.
+        // awaitingReview + myActiveReviews + myDrafts + needsRevision
+        // + pendingInvitations + totalActiveUsers + myRecentActivity
         mvc.perform(get("/api/dashboard/summary").with(user(multiRole)))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.cards.length()").value(6))
+            .andExpect(jsonPath("$.cards.length()").value(7))
             .andExpect(jsonPath("$.cards[0].key").value("awaitingReview"))
             .andExpect(jsonPath("$.cards[1].key").value("myActiveReviews"))
             .andExpect(jsonPath("$.cards[2].key").value("myDrafts"))
-            .andExpect(jsonPath("$.cards[3].key").value("pendingInvitations"))
-            .andExpect(jsonPath("$.cards[4].key").value("totalActiveUsers"))
-            .andExpect(jsonPath("$.cards[5].key").value("myRecentActivity"));
+            .andExpect(jsonPath("$.cards[3].key").value("needsRevision"))
+            .andExpect(jsonPath("$.cards[4].key").value("pendingInvitations"))
+            .andExpect(jsonPath("$.cards[5].key").value("totalActiveUsers"))
+            .andExpect(jsonPath("$.cards[6].key").value("myRecentActivity"));
     }
 
     // ---- summary: counts come from the right tables ------------------------
@@ -217,7 +229,8 @@ class DashboardControllerIntegrationTest {
         Long aId = createDraft(requester, "Claimable", ctx.product.getId());
         mvc.perform(post("/api/estimates/my/" + aId + "/submit")
             .with(user(requester)).with(csrf())).andExpect(status().isOk());
-        mvc.perform(post("/api/estimates/review/" + aId + "/start")
+        Long aItemId = itemRepository.findByEstimateRequestIdOrderByDisplayOrderAsc(aId).get(0).getId();
+        mvc.perform(post("/api/estimates/review/" + aId + "/items/" + aItemId + "/start")
             .with(user(so)).with(csrf())).andExpect(status().isOk());
 
         mvc.perform(get("/api/dashboard/summary").with(user(so)))
@@ -226,6 +239,39 @@ class DashboardControllerIntegrationTest {
             .andReturn();
         mvc.perform(get("/api/dashboard/summary").with(user(multiRole)))
             .andExpect(jsonPath("$.cards[?(@.key=='myActiveReviews')].count").value(0));
+    }
+
+    @Test
+    void summary_needsRevision_countsOwnRequestsWithRejectedItems() throws Exception {
+        AtomicCtx ctx = seedAtomicProductContext();
+        Long mine = createDraft(requester, "NeedsRevMine", ctx.product.getId());
+        Long theirs = createDraft(otherRequester, "NeedsRevTheirs", ctx.product.getId());
+
+        // Submit mine; submit and start review on theirs
+        mvc.perform(post("/api/estimates/my/" + mine + "/submit")
+            .with(user(requester)).with(csrf())).andExpect(status().isOk());
+        mvc.perform(post("/api/estimates/my/" + theirs + "/submit")
+            .with(user(otherRequester)).with(csrf())).andExpect(status().isOk());
+
+        // Requester starts with 0 needs-revision
+        mvc.perform(get("/api/dashboard/summary").with(user(requester)))
+            .andExpect(jsonPath("$.cards[?(@.key=='needsRevision')].count").value(0));
+
+        // Reject mine's item directly via the item repository (fast path — avoids
+        // needing an SO user with team membership in this test)
+        Long mineItemId = itemRepository
+            .findByEstimateRequestIdOrderByDisplayOrderAsc(mine).get(0).getId();
+        itemRepository.findById(mineItemId).ifPresent(item -> {
+            item.setStatus(EstimateStatus.REJECTED);
+            item.setRejectionReason("Not enough detail");
+            itemRepository.save(item);
+        });
+
+        // Now requester has 1 needs-revision; otherRequester's request is unaffected
+        mvc.perform(get("/api/dashboard/summary").with(user(requester)))
+            .andExpect(jsonPath("$.cards[?(@.key=='needsRevision')].count").value(1));
+        mvc.perform(get("/api/dashboard/summary").with(user(otherRequester)))
+            .andExpect(jsonPath("$.cards[?(@.key=='needsRevision')].count").value(0));
     }
 
     @Test
@@ -410,9 +456,10 @@ class DashboardControllerIntegrationTest {
     }
 
     private Long createDraft(AppUserDetails as, String title, Long productId) throws Exception {
-        var body = new java.util.HashMap<String, Object>();
-        body.put("title", title);
-        body.put("productId", productId);
+        var body = Map.of(
+            "title", title,
+            "items", List.of(Map.of("productId", productId))
+        );
         String responseBody = mvc.perform(post("/api/estimates/my")
                 .with(user(as)).with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)

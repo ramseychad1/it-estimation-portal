@@ -20,8 +20,10 @@ import com.acme.estimator.catalog.templates.EstimateTemplateRepository;
 import com.acme.estimator.common.ApiException;
 import com.acme.estimator.estimates.dto.AnswerInput;
 import com.acme.estimator.estimates.dto.CreateDraftRequest;
+import com.acme.estimator.estimates.dto.CreateItemRequest;
 import com.acme.estimator.estimates.dto.EstimateRequestAnswerView;
 import com.acme.estimator.estimates.dto.EstimateRequestDetail;
+import com.acme.estimator.estimates.dto.EstimateRequestItemDto;
 import com.acme.estimator.estimates.dto.EstimateRequestPhaseLineView;
 import com.acme.estimator.estimates.dto.SaveAnswersRequest;
 import com.acme.estimator.phases.SdlcPhase;
@@ -43,32 +45,30 @@ import org.springframework.security.crypto.password.PasswordEncoder;
  * Pins the snapshot semantics of {@link EstimateRequestService#submit}:
  *
  * <ul>
- *   <li>Template hour values are COPIED into the request's own
+ *   <li>Template hour values are COPIED into the request item's own
  *       {@code estimate_request_phase_lines} rows.</li>
  *   <li>SDLC phase name + display order are SNAPSHOTTED at submission
  *       time and don't change when the phase is renamed/reordered later.</li>
  *   <li>Question text is SNAPSHOTTED into answer rows.</li>
  *   <li>Submission flips status to {@code SUBMITTED}, sets
  *       {@code submittedAt}, and sets {@code templateId} as the snapshot
- *       reference.</li>
+ *       reference on the item.</li>
  *   <li>Subsequent template edits don't rewrite the snapshot.</li>
  * </ul>
  *
- * <p>This is the M1 close-out test for the snapshot contract — controller
- * and full happy/sad coverage land in M2's
- * {@code EstimateRequestControllerIntegrationTest}.
+ * <p>Phase 9a: requests are now multi-item. All assertions check
+ * {@code $.items[0]} — the first (and only) item in these single-product
+ * tests.
  *
  * <p><b>Test-cleanup convention for {@code com.acme.estimator.estimates}.</b>
  * Tests in this package clean up their own rows in {@code @AfterEach}
- * because {@code estimate_requests.product_id},
- * {@code .sub_feature_id}, and {@code .template_id} all use
- * {@code ON DELETE RESTRICT} FKs (production-correct — we don't want a
- * product hard-delete to silently destroy estimate history). Other test
- * classes' setUp() methods do {@code productRepository.deleteAll()}
- * unaware of the new tables; if estimate_request rows leak across the
- * shared @SpringBootTest H2 context, those deleteAll() calls trip the
- * RESTRICT constraint. Any new estimate-request test must follow this
- * convention or extract the cleanup into a shared base class.
+ * because {@code estimate_request_items.product_id} and similar columns use
+ * {@code ON DELETE RESTRICT} FKs. Other test classes' setUp() methods do
+ * {@code productRepository.deleteAll()} unaware of the new tables; if
+ * estimate_request rows leak across the shared @SpringBootTest H2 context,
+ * those deleteAll() calls trip the RESTRICT constraint. Any new
+ * estimate-request test must follow this convention or extract the cleanup
+ * into a shared base class.
  */
 @SpringBootTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
@@ -76,6 +76,7 @@ class EstimateRequestServiceSnapshotTest {
 
     @Autowired private EstimateRequestService service;
     @Autowired private EstimateRequestRepository requestRepository;
+    @Autowired private EstimateRequestItemRepository itemRepository;
     @Autowired private EstimateRequestPhaseLineRepository phaseLineRepository;
     @Autowired private EstimateRequestQuestionAnswerRepository answerRepository;
     @Autowired private ProductRepository productRepository;
@@ -96,24 +97,15 @@ class EstimateRequestServiceSnapshotTest {
         requester = ensureRequester();
     }
 
-    /**
-     * Spring Boot caches the @SpringBootTest application context across
-     * test classes, which means H2 (in-memory) survives between classes
-     * too. If this test left estimate_request rows behind, the next test
-     * class's {@code productRepository.deleteAll()} would trip the
-     * RESTRICT FK from {@code estimate_requests.product_id}. Tearing down
-     * in @AfterEach keeps the new tables invisible to tests that don't
-     * know about them.
-     */
     @AfterEach
     void tearDown() {
         cleanAll();
     }
 
     private void cleanAll() {
-        // Order matters for FKs.
         phaseLineRepository.deleteAll();
         answerRepository.deleteAll();
+        itemRepository.deleteAll();
         requestRepository.deleteAll();
         templateLineRepository.deleteAll();
         templateRepository.deleteAll();
@@ -121,9 +113,6 @@ class EstimateRequestServiceSnapshotTest {
         subFeatureRepository.deleteAll();
         productRepository.deleteAll();
         phaseRepository.deleteAll();
-        // The seeded Requester user persists across test classes too —
-        // UserControllerIntegrationTest counts users and gets a +1 if we
-        // leave it behind.
         userRepository.findByEmailIgnoreCase("requester-snapshot-test@local")
             .ifPresent(userRepository::delete);
     }
@@ -140,11 +129,14 @@ class EstimateRequestServiceSnapshotTest {
         seedTemplateLine(template.getId(), build.getId(),     40, 80, 120, 20, 40, 60);
 
         EstimateRequestDetail draft = service.createDraft(
-            new CreateDraftRequest("Member portal v2", product.getId(), null, "Background context"),
+            new CreateDraftRequest("Member portal v2", "Background context",
+                List.of(new CreateItemRequest(product.getId(), null, null))),
             requester
         );
-        service.saveDraftAnswers(
-            draft.id(),
+        // Use first item id for answer save
+        Long itemId = draft.items().get(0).id();
+        service.saveDraftItemAnswers(
+            draft.id(), itemId,
             new SaveAnswersRequest(List.of(
                 new AnswerInput(required.getId(), "About 50,000"),
                 new AnswerInput(optional.getId(), "")  // optional: blank → not persisted
@@ -154,17 +146,19 @@ class EstimateRequestServiceSnapshotTest {
 
         EstimateRequestDetail submitted = service.submit(draft.id(), requester);
 
-        // Status + snapshot reference are set.
-        assertThat(submitted.status()).isEqualTo(EstimateStatus.SUBMITTED);
-        assertThat(submitted.submittedAt()).isNotNull();
-        assertThat(submitted.templateId()).isEqualTo(template.getId());
-        assertThat(submitted.templateVersionNumber()).isEqualTo(3);
+        // Derived status + item snapshot reference are set.
+        assertThat(submitted.derivedStatus()).isEqualTo("SUBMITTED");
+        assertThat(submitted.items()).hasSize(1);
+        EstimateRequestItemDto item = submitted.items().get(0);
+        assertThat(item.status()).isEqualTo(EstimateStatus.SUBMITTED);
+        assertThat(item.submittedAt()).isNotNull();
+        assertThat(item.templateId()).isEqualTo(template.getId());
+        assertThat(item.templateVersionNumber()).isEqualTo(3);
 
-        // Phase-line snapshots cover both phases, ordered by snapshot
-        // display order, with hour values copied verbatim.
-        assertThat(submitted.phaseLines()).hasSize(2);
-        EstimateRequestPhaseLineView first = submitted.phaseLines().get(0);
-        EstimateRequestPhaseLineView second = submitted.phaseLines().get(1);
+        // Phase-line snapshots cover both phases, ordered by snapshot display order.
+        assertThat(item.phaseLines()).hasSize(2);
+        EstimateRequestPhaseLineView first = item.phaseLines().get(0);
+        EstimateRequestPhaseLineView second = item.phaseLines().get(1);
         assertThat(first.sdlcPhaseName()).isEqualTo("Discovery");
         assertThat(first.displayOrder()).isEqualTo(1);
         assertThat(first.onshoreLow()).isEqualByComparingTo("10");
@@ -175,33 +169,29 @@ class EstimateRequestServiceSnapshotTest {
         assertThat(second.onshoreLow()).isEqualByComparingTo("40");
         assertThat(second.onshoreHigh()).isEqualByComparingTo("120");
         assertThat(second.offshoreHigh()).isEqualByComparingTo("60");
-        // No reviewer overrides yet.
         assertThat(first.onshoreOverride()).isNull();
         assertThat(second.offshoreOverride()).isNull();
 
-        // Detail renders every live question for the parent — answered
-        // ones with their text, blank-optional ones with an empty answer.
-        assertThat(submitted.answers()).hasSize(2);
-        EstimateRequestAnswerView requiredView = submitted.answers().stream()
+        // Answers
+        assertThat(item.answers()).hasSize(2);
+        EstimateRequestAnswerView requiredView = item.answers().stream()
             .filter(a -> a.questionId().equals(required.getId())).findFirst().orElseThrow();
-        EstimateRequestAnswerView optionalView = submitted.answers().stream()
+        EstimateRequestAnswerView optionalView = item.answers().stream()
             .filter(a -> a.questionId().equals(optional.getId())).findFirst().orElseThrow();
         assertThat(requiredView.answerText()).isEqualTo("About 50,000");
         assertThat(requiredView.questionText()).isEqualTo("How many users?");
         assertThat(optionalView.answerText()).isEmpty();
         assertThat(optionalView.required()).isFalse();
 
-        // Now mutate the SDLC phase name and a template line in place.
-        // Re-reading the request must NOT pick up either change — the
-        // snapshot is the truth.
+        // Mutate the live phase — snapshot must NOT change.
         SdlcPhase liveDiscovery = phaseRepository.findById(discovery.getId()).orElseThrow();
         liveDiscovery.setName("Inception");
         liveDiscovery.setDisplayOrder(99);
         phaseRepository.save(liveDiscovery);
 
         EstimateRequestDetail rehydrated = service.getMyRequest(submitted.id(), requester);
-        assertThat(rehydrated.phaseLines().get(0).sdlcPhaseName()).isEqualTo("Discovery");
-        assertThat(rehydrated.phaseLines().get(0).displayOrder()).isEqualTo(1);
+        assertThat(rehydrated.items().get(0).phaseLines().get(0).sdlcPhaseName()).isEqualTo("Discovery");
+        assertThat(rehydrated.items().get(0).phaseLines().get(0).displayOrder()).isEqualTo(1);
     }
 
     @Test
@@ -213,10 +203,13 @@ class EstimateRequestServiceSnapshotTest {
         seedTemplateLine(template.getId(), phase.getId(), 1, 1, 1, 1, 1, 1);
 
         EstimateRequestDetail draft = service.createDraft(
-            new CreateDraftRequest("R", product.getId(), null, null), requester
+            new CreateDraftRequest("R", null,
+                List.of(new CreateItemRequest(product.getId(), null, null))),
+            requester
         );
-        service.saveDraftAnswers(
-            draft.id(),
+        Long itemId = draft.items().get(0).id();
+        service.saveDraftItemAnswers(
+            draft.id(), itemId,
             new SaveAnswersRequest(List.of(new AnswerInput(q.getId(), "Yes"))),
             requester
         );
@@ -229,19 +222,16 @@ class EstimateRequestServiceSnapshotTest {
 
         EstimateRequestDetail submitted = service.submit(draft.id(), requester);
 
-        // Snapshot picks up the LATEST text (the one the SO would expect
-        // to see when reviewing). Subsequent post-submit edits are
-        // separately tested for non-impact below.
-        assertThat(submitted.answers()).hasSize(1);
-        assertThat(submitted.answers().get(0).questionText()).isEqualTo("Refined wording?");
+        assertThat(submitted.items().get(0).answers()).hasSize(1);
+        assertThat(submitted.items().get(0).answers().get(0).questionText()).isEqualTo("Refined wording?");
 
-        // Now post-submit edit: should NOT propagate.
+        // Post-submit edit should NOT propagate.
         live = questionRepository.findById(q.getId()).orElseThrow();
         live.setQuestionText("Even later wording?");
         questionRepository.save(live);
 
         EstimateRequestDetail rehydrated = service.getMyRequest(submitted.id(), requester);
-        assertThat(rehydrated.answers().get(0).questionText()).isEqualTo("Refined wording?");
+        assertThat(rehydrated.items().get(0).answers().get(0).questionText()).isEqualTo("Refined wording?");
     }
 
     @Test
@@ -251,7 +241,9 @@ class EstimateRequestServiceSnapshotTest {
         // No template seeded.
 
         EstimateRequestDetail draft = service.createDraft(
-            new CreateDraftRequest("R", product.getId(), null, null), requester
+            new CreateDraftRequest("R", null,
+                List.of(new CreateItemRequest(product.getId(), null, null))),
+            requester
         );
 
         assertThatThrownBy(() -> service.submit(draft.id(), requester))
@@ -263,9 +255,10 @@ class EstimateRequestServiceSnapshotTest {
                 assertThat(api.getMessage()).contains("Eligibility API");
             });
 
-        // Status must still be DRAFT.
-        EstimateRequest stored = requestRepository.findById(draft.id()).orElseThrow();
-        assertThat(stored.getStatus()).isEqualTo(EstimateStatus.DRAFT);
+        // Status must still be DRAFT (no items submitted).
+        List<EstimateRequestItem> items = itemRepository
+            .findByEstimateRequestIdOrderByDisplayOrderAsc(draft.id());
+        assertThat(items.get(0).getStatus()).isEqualTo(EstimateStatus.DRAFT);
     }
 
     @Test
@@ -277,12 +270,14 @@ class EstimateRequestServiceSnapshotTest {
         seedTemplateLine(template.getId(), phase.getId(), 1, 1, 1, 1, 1, 1);
 
         EstimateRequestDetail draft = service.createDraft(
-            new CreateDraftRequest("R", product.getId(), null, null), requester
+            new CreateDraftRequest("R", null,
+                List.of(new CreateItemRequest(product.getId(), null, null))),
+            requester
         );
-        // Save a blank answer for the required question — the service
-        // drops blank answers, so this is equivalent to "no answer".
-        service.saveDraftAnswers(
-            draft.id(),
+        Long itemId = draft.items().get(0).id();
+        // Save a blank answer — service drops blanks, so equivalent to "no answer".
+        service.saveDraftItemAnswers(
+            draft.id(), itemId,
             new SaveAnswersRequest(List.of(new AnswerInput(req.getId(), ""))),
             requester
         );
@@ -306,13 +301,52 @@ class EstimateRequestServiceSnapshotTest {
         seedTemplateLine(subTemplate.getId(), phase.getId(), 7, 7, 7, 7, 7, 7);
 
         EstimateRequestDetail draft = service.createDraft(
-            new CreateDraftRequest("R", container.getId(), sub.getId(), null), requester
+            new CreateDraftRequest("R", null,
+                List.of(new CreateItemRequest(container.getId(), sub.getId(), null))),
+            requester
         );
         EstimateRequestDetail submitted = service.submit(draft.id(), requester);
 
-        assertThat(submitted.status()).isEqualTo(EstimateStatus.SUBMITTED);
-        assertThat(submitted.templateId()).isEqualTo(subTemplate.getId());
-        assertThat(submitted.phaseLines().get(0).onshoreLow()).isEqualByComparingTo("7");
+        assertThat(submitted.derivedStatus()).isEqualTo("SUBMITTED");
+        assertThat(submitted.items().get(0).templateId()).isEqualTo(subTemplate.getId());
+        assertThat(submitted.items().get(0).phaseLines().get(0).onshoreLow()).isEqualByComparingTo("7");
+    }
+
+    @Test
+    void submit_multipleItems_eachGetIndependentSnapshot() {
+        SdlcPhase phase = seedPhase("Discovery", 1);
+        Product product1 = seedAtomicProduct("Product Alpha");
+        Product product2 = seedAtomicProduct("Product Beta");
+        EstimateTemplate template1 = seedActiveTemplate(product1.getId(), null, 1);
+        EstimateTemplate template2 = seedActiveTemplate(product2.getId(), null, 2);
+        seedTemplateLine(template1.getId(), phase.getId(), 10, 20, 30, 5, 10, 15);
+        seedTemplateLine(template2.getId(), phase.getId(), 100, 200, 300, 50, 100, 150);
+
+        EstimateRequestDetail draft = service.createDraft(
+            new CreateDraftRequest("Multi-product", null,
+                List.of(
+                    new CreateItemRequest(product1.getId(), null, null),
+                    new CreateItemRequest(product2.getId(), null, null)
+                )),
+            requester
+        );
+        assertThat(draft.items()).hasSize(2);
+
+        EstimateRequestDetail submitted = service.submit(draft.id(), requester);
+
+        assertThat(submitted.derivedStatus()).isEqualTo("SUBMITTED");
+        assertThat(submitted.items()).hasSize(2);
+
+        // Each item has its own independent phase lines snapshot.
+        EstimateRequestItemDto item1 = submitted.items().get(0);
+        EstimateRequestItemDto item2 = submitted.items().get(1);
+        assertThat(item1.productId()).isEqualTo(product1.getId());
+        assertThat(item1.phaseLines()).hasSize(1);
+        assertThat(item1.phaseLines().get(0).onshoreLow()).isEqualByComparingTo("10");
+
+        assertThat(item2.productId()).isEqualTo(product2.getId());
+        assertThat(item2.phaseLines()).hasSize(1);
+        assertThat(item2.phaseLines().get(0).onshoreLow()).isEqualByComparingTo("100");
     }
 
     // ---- helpers --------------------------------------------------------
@@ -396,14 +430,8 @@ class EstimateRequestServiceSnapshotTest {
         templateLineRepository.save(l);
     }
 
-    /**
-     * Idempotent: returns the seeded Requester user (creating on first
-     * call). Reuses the email across runs of this class so per-test
-     * cleanup stays focused on estimate-request rows.
-     */
     private User ensureRequester() {
         return userRepository.findByEmailIgnoreCase("requester-snapshot-test@local").orElseGet(() -> {
-            // Role id 4 = Requester (seeded in V2).
             Role requesterRole = em.find(Role.class, (short) 4);
             if (requesterRole == null) {
                 throw new IllegalStateException("Requester role missing");

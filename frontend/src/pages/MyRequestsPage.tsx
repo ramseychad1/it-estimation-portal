@@ -19,7 +19,6 @@ import {
 } from "../lib/queries/estimates";
 import {
   type EstimateRequestListItem,
-  type EstimateStatus,
 } from "../lib/api/estimates";
 import { relativeTime } from "../lib/relativeTime";
 import { useDebouncedValue } from "../lib/useDebouncedValue";
@@ -34,7 +33,7 @@ const COLUMN_DEFS = [
 ];
 const REQUIRED_COLS = ["title"];
 
-type StatusFilter = "ALL" | EstimateStatus;
+type StatusFilter = "ALL" | "DRAFT" | "SUBMITTED" | "IN_REVIEW" | "APPROVED" | "REJECTED" | "PARTIALLY_APPROVED" | "NEEDS_REVISION";
 
 export function MyRequestsPage() {
   useEffect(() => {
@@ -48,7 +47,7 @@ export function MyRequestsPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>(() => {
     const param = searchParams.get("status")?.toUpperCase();
-    const valid: StatusFilter[] = ["ALL", "DRAFT", "SUBMITTED", "IN_REVIEW", "APPROVED", "REJECTED"];
+    const valid: StatusFilter[] = ["ALL", "DRAFT", "SUBMITTED", "IN_REVIEW", "APPROVED", "REJECTED", "PARTIALLY_APPROVED", "NEEDS_REVISION"];
     return (valid.includes(param as StatusFilter) ? param : "ALL") as StatusFilter;
   });
   const [page, setPage] = useState(0);
@@ -105,10 +104,10 @@ export function MyRequestsPage() {
       onSelect: () => undefined,
     };
 
-    switch (row.status) {
+    switch (row.derivedStatus) {
       case "DRAFT":
-        return [open, discard];
       case "REJECTED":
+      case "NEEDS_REVISION":
         return [open, discard];
       case "APPROVED":
         return [open, downloadSummary];
@@ -143,9 +142,10 @@ export function MyRequestsPage() {
             {r.title}
           </span>
           <span className="text-warm-gray-med" style={{ fontSize: 12 }}>
-            {r.subFeatureName
-              ? `${r.productName} · ${r.subFeatureName}`
-              : r.productName}
+            {r.productNames}
+            {r.itemCount > 1 && (
+              <span style={{ marginLeft: 4 }}>· {r.itemCount} products</span>
+            )}
           </span>
         </div>
       ),
@@ -155,7 +155,7 @@ export function MyRequestsPage() {
       header: "Status",
       width: 120,
       render: (r) => {
-        const { variant, label } = estimateStatusBadge(r.status);
+        const { variant, label } = estimateStatusBadge(r.derivedStatus);
         return <StatusBadge variant={variant}>{label}</StatusBadge>;
       },
     },
@@ -224,6 +224,8 @@ export function MyRequestsPage() {
               { value: "IN_REVIEW", label: "In review" },
               { value: "APPROVED", label: "Approved" },
               { value: "REJECTED", label: "Rejected" },
+              { value: "PARTIALLY_APPROVED", label: "Partially approved" },
+              { value: "NEEDS_REVISION", label: "Needs revision" },
             ]}
             onChange={(v) => setStatusFilter(v as StatusFilter)}
           />

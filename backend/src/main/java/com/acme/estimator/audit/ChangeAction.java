@@ -41,5 +41,27 @@ public enum ChangeAction {
     /** Admin sent an Approved or Rejected request back to Submitted —
      *  the safety valve for "we approved this in error." Notes carry
      *  the admin's reason. */
-    SENT_BACK
+    SENT_BACK,
+
+    // ---- Per-item review workflow (Phase 9b) --------------------------------
+    // Replaces the request-level REVIEW_STARTED/APPROVED/REJECTED/SENT_BACK
+    // actions for multi-product requests. Each action names the product so
+    // the audit description carries full context without a separate lookup.
+
+    /** SO claimed a specific item (product line) for review. */
+    ITEM_REVIEW_STARTED,
+    /** SO released a specific item back to the queue without a decision. */
+    ITEM_REVIEW_RELEASED,
+    /** SO approved a specific item. Notes carry complexity + blended-rate snapshot. */
+    ITEM_APPROVED,
+    /** SO rejected a specific item. Notes carry the first ~100 chars of the reason. */
+    ITEM_REJECTED,
+    /** Requester revised a rejected item (new answers and/or product swap). */
+    ITEM_REVISED,
+    /** Requester resubmitted a revised item; template re-snapshotted. */
+    ITEM_RESUBMITTED,
+    /** Requester removed a rejected item from the request entirely. */
+    ITEM_DROPPED,
+    /** Admin sent an approved item back to SUBMITTED (per-item safety valve). */
+    ITEM_SENT_BACK
 }

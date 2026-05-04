@@ -2,8 +2,6 @@ package com.acme.estimator.estimates;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -15,17 +13,18 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 /**
- * A Requester's estimate request against a Product (and optional
- * Sub-feature for CONTAINER products).
+ * A Requester's estimate request — the parent container for one or more
+ * {@link EstimateRequestItem} rows, each targeting a specific product.
  *
- * <p><b>Snapshot semantics on submission.</b> When status flips from
- * {@code DRAFT} → {@code SUBMITTED} the active estimate template's hour
- * rows are COPIED into {@link EstimateRequestPhaseLine} rows; the
- * questions' current text is COPIED into {@link
- * EstimateRequestQuestionAnswer#getQuestionTextSnapshot()}. The
- * {@link #templateId} on this row is the snapshot reference — it points
- * at the template version that existed at submission, not whatever is
- * "active now."
+ * <p>Phase 9a: all per-product state (productId, subFeatureId, templateId,
+ * complexity, status, reviewerId, justification, submittedAt, reviewedAt,
+ * approvedBlendedRateId) moved out into {@link EstimateRequestItem}. The
+ * parent request now carries only identity (id, title, description,
+ * requesterId) and timestamps.
+ *
+ * <p>The "derived status" of the request (DRAFT / SUBMITTED / IN_REVIEW /
+ * PARTIALLY_APPROVED / APPROVED / NEEDS_REVISION) is computed in the service
+ * from the collection of item statuses — it is NOT stored in the database.
  */
 @Entity
 @Table(name = "estimate_requests")
@@ -47,53 +46,9 @@ public class EstimateRequest {
     @Column(name = "description")
     private String description;
 
-    /** Locked once the Draft is created — see EstimateRequestService. */
-    @Column(name = "product_id", nullable = false, updatable = false)
-    private Long productId;
-
-    /** Set only when the chosen product is CONTAINER. Locked once set. */
-    @Column(name = "sub_feature_id", updatable = false)
-    private Long subFeatureId;
-
-    /** Snapshot reference: null while DRAFT, populated on submission. */
-    @Column(name = "template_id")
-    private Long templateId;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "complexity", length = 8)
-    private Complexity complexity;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "status", nullable = false, length = 16)
-    private EstimateStatus status = EstimateStatus.DRAFT;
-
-    /** Audit-FK relaxation pattern (no FK to users). */
+    /** Locked once the Draft is created. */
     @Column(name = "requester_id", nullable = false, updatable = false)
     private Long requesterId;
-
-    /** Set when an SO claims the request for review (Phase 6b). */
-    @Column(name = "reviewer_id")
-    private Long reviewerId;
-
-    /** Reviewer's free-form text (Phase 6b populates). */
-    @Column(name = "justification")
-    private String justification;
-
-    @Column(name = "submitted_at")
-    private OffsetDateTime submittedAt;
-
-    @Column(name = "reviewed_at")
-    private OffsetDateTime reviewedAt;
-
-    /**
-     * Snapshot of the blended-rate row that was effective at the moment
-     * the SO approved. Cost is computed client-side, but the snapshot
-     * keeps the cost banner accurate ("uses blended rates effective {date}")
-     * even after future rate updates. NULL until the IN_REVIEW → APPROVED
-     * transition; cleared again on Admin send-back.
-     */
-    @Column(name = "approved_blended_rate_id")
-    private Long approvedBlendedRateId;
 
     @Column(name = "created_at", nullable = false, updatable = false, insertable = false)
     private OffsetDateTime createdAt;

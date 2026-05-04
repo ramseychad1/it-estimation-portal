@@ -1,26 +1,34 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { AlertTriangle, FileText, Info, Pencil, Trash2 } from "lucide-react";
+import { AlertTriangle, ChevronDown, FileText, Info, Pencil, Trash2 } from "lucide-react";
 import { ConfirmModal } from "../components/ConfirmModal";
 import { EntityHeader } from "../components/EntityHeader";
 import { KebabMenu, type KebabMenuItem } from "../components/KebabMenu";
-import { SecondaryButton } from "../components/buttons";
+import { PrimaryButton, SecondaryButton } from "../components/buttons";
 import { StatusBadge, estimateStatusBadge } from "../components/StatusBadge";
 import { Timeline, TimelineItem } from "../components/Timeline";
 import { UserCell } from "../components/UserCell";
 import { useToast } from "../components/Toast";
 import { ApiError } from "../lib/api";
 import {
+  type AnswerInput,
   type EstimateRequestAnswerView,
   type EstimateRequestDetail,
   type EstimateRequestHistoryItem,
+  type EstimateRequestItemDto,
   type EstimateRequestPhaseLineView,
+  type ReviseAndResubmitRequest,
 } from "../lib/api/estimates";
+import type { ProductListItem } from "../lib/api/products";
 import {
   useDiscardDraftMutation,
+  useDropItemMutation,
   useMyRequestHistoryQuery,
   useMyRequestQuery,
+  useReviseAndResubmitMutation,
 } from "../lib/queries/estimates";
+import { useProductsQuery } from "../lib/queries/products";
+import { useSubFeaturesForProductQuery } from "../lib/queries/subFeatures";
 import { useRatesPageQuery } from "../lib/queries/rates";
 import { useUserDisplay } from "../lib/userDisplay";
 import { relativeTime } from "../lib/relativeTime";
@@ -67,21 +75,24 @@ export function EstimateDetailPage() {
   }
 
   const detail = detailQuery.data;
-  const { variant, label } = estimateStatusBadge(detail.status);
-  const isDraft = detail.status === "DRAFT";
-  const isRejected = detail.status === "REJECTED";
+  const item = detail.items?.[0]; // first-item bridge for single-item states
+  const { variant, label } = estimateStatusBadge(detail.derivedStatus);
+  const isDraft = detail.derivedStatus === "DRAFT";
+  const isRejected = detail.derivedStatus === "REJECTED";
+  const isNeedsRevision = detail.derivedStatus === "NEEDS_REVISION";
   const subtitle = (
     <span>
-      {detail.subFeatureName
-        ? `${detail.productName} · ${detail.subFeatureName}`
-        : detail.productName}
+      {item?.subFeatureName
+        ? `${item?.productName} · ${item?.subFeatureName}`
+        : item?.productName ?? ""}
+      {detail.items.length > 1 && ` (+${detail.items.length - 1} more)`}
       {" · "}
       <RequesterDisplay userId={detail.requesterId} />
     </span>
   );
 
   function buildKebab(): KebabMenuItem[] {
-    if (!isDraft && !isRejected) return [];
+    if (!isDraft && !isRejected && !isNeedsRevision) return [];
     return [
       {
         label: "Discard",
@@ -105,32 +116,86 @@ export function EstimateDetailPage() {
     });
   }
 
+  const header = (
+    <EntityHeader
+      breadcrumb={[
+        { label: "Workspace" },
+        { label: "Estimate requests", to: "/requests" },
+        { label: detail.title },
+      ]}
+      title={detail.title}
+      titleSuffix={<StatusBadge variant={variant}>{label}</StatusBadge>}
+      subtitle={subtitle}
+      actions={
+        kebabItems.length > 0 ? (
+          <KebabMenu items={kebabItems} ariaLabel="Request actions" />
+        ) : undefined
+      }
+    />
+  );
+
+  const discardModal = (
+    <ConfirmModal
+      open={discardOpen}
+      title={isDraft ? "Discard this draft?" : "Discard this request?"}
+      body={
+        <p className="text-body text-warm-gray-med m-0">
+          "{detail.title}" will be permanently deleted. This can't be undone.
+        </p>
+      }
+      confirmLabel="Discard"
+      cancelLabel="Cancel"
+      destructive
+      onCancel={() => setDiscardOpen(false)}
+      onConfirm={confirmDiscard}
+    />
+  );
+
+  // NEEDS_REVISION: show per-item revision cards instead of the single-item stack.
+  if (isNeedsRevision) {
+    return (
+      <>
+        {header}
+        <div className="flex flex-col" style={{ gap: 16, marginTop: 24 }}>
+          {detail.description && (
+            <Card title="Description">
+              <p className="m-0 text-near-black" style={{ fontSize: 14 }}>
+                {detail.description}
+              </p>
+            </Card>
+          )}
+          {detail.items.map((it) => (
+            <ItemRevisionCard
+              key={it.id}
+              item={it}
+              requestId={detail.id}
+              currentRate={ratesQuery.data?.current ?? null}
+              onDiscardRequested={() => setDiscardOpen(true)}
+            />
+          ))}
+          <ActivityCard
+            history={historyQuery.data ?? []}
+            loading={historyQuery.isLoading}
+          />
+        </div>
+        {discardModal}
+      </>
+    );
+  }
+
   return (
     <>
-      <EntityHeader
-        breadcrumb={[
-          { label: "Workspace" },
-          { label: "Estimate requests", to: "/requests" },
-          { label: detail.title },
-        ]}
-        title={detail.title}
-        titleSuffix={<StatusBadge variant={variant}>{label}</StatusBadge>}
-        subtitle={subtitle}
-        actions={
-          kebabItems.length > 0 ? (
-            <KebabMenu items={kebabItems} ariaLabel="Request actions" />
-          ) : undefined
-        }
-      />
+      {header}
 
       <div className="flex flex-col" style={{ gap: 16, marginTop: 24 }}>
-        <SummaryCard detail={detail} />
-        <QuestionsCard detail={detail} onEditAnswers={() =>
+        <SummaryCard detail={detail} item={item ?? null} />
+        <QuestionsCard detail={detail} item={item ?? null} onEditAnswers={() =>
           navigate(`/requests/new?step=2&id=${detail.id}`)
         } />
-        {detail.status !== "DRAFT" && (
+        {detail.derivedStatus !== "DRAFT" && (
           <EstimateCard
             detail={detail}
+            item={item ?? null}
             currentRate={ratesQuery.data?.current ?? null}
           />
         )}
@@ -140,20 +205,7 @@ export function EstimateDetailPage() {
         />
       </div>
 
-      <ConfirmModal
-        open={discardOpen}
-        title="Discard this draft?"
-        body={
-          <p className="text-body text-warm-gray-med m-0">
-            "{detail.title}" will be permanently deleted. This can't be undone.
-          </p>
-        }
-        confirmLabel="Discard"
-        cancelLabel="Keep draft"
-        destructive
-        onCancel={() => setDiscardOpen(false)}
-        onConfirm={confirmDiscard}
-      />
+      {discardModal}
     </>
   );
 }
@@ -191,7 +243,13 @@ function Card({
   );
 }
 
-function SummaryCard({ detail }: { detail: EstimateRequestDetail }) {
+function SummaryCard({
+  detail,
+  item,
+}: {
+  detail: EstimateRequestDetail;
+  item: import("../lib/api/estimates").EstimateRequestItemDto | null;
+}) {
   return (
     <Card title="Summary">
       <div className="flex flex-col" style={{ gap: 14 }}>
@@ -207,17 +265,17 @@ function SummaryCard({ detail }: { detail: EstimateRequestDetail }) {
         )}
         <div className="flex flex-wrap" style={{ gap: 24 }}>
           <KV label="Product">
-            {detail.productName}
-            {detail.subFeatureName && <> · {detail.subFeatureName}</>}
+            {item?.productName ?? ""}
+            {item?.subFeatureName && <> · {item.subFeatureName}</>}
           </KV>
-          {detail.teamName && (
-            <KV label="Team">{detail.teamName}</KV>
+          {item?.teamName && (
+            <KV label="Team">{item.teamName}</KV>
           )}
-          {detail.submittedAt && (
-            <KV label="Submitted">{relativeTime(detail.submittedAt)}</KV>
+          {item?.submittedAt && (
+            <KV label="Submitted">{relativeTime(item.submittedAt)}</KV>
           )}
-          {detail.templateVersionNumber != null && (
-            <KV label="Template version">v{detail.templateVersionNumber}</KV>
+          {item?.templateVersionNumber != null && (
+            <KV label="Template version">v{item.templateVersionNumber}</KV>
           )}
         </div>
       </div>
@@ -227,18 +285,21 @@ function SummaryCard({ detail }: { detail: EstimateRequestDetail }) {
 
 function QuestionsCard({
   detail,
+  item,
   onEditAnswers,
 }: {
   detail: EstimateRequestDetail;
+  item: import("../lib/api/estimates").EstimateRequestItemDto | null;
   onEditAnswers: () => void;
 }) {
-  const isDraft = detail.status === "DRAFT";
+  const isDraft = detail.derivedStatus === "DRAFT";
+  const answers = item?.answers ?? [];
   return (
     <Card
       title="Critical questions"
       headerRight={
         <span className="flex items-center" style={{ gap: 12 }}>
-          <CountPill count={detail.answers.length} />
+          <CountPill count={answers.length} />
           {isDraft && (
             <button
               type="button"
@@ -253,13 +314,13 @@ function QuestionsCard({
         </span>
       }
     >
-      {detail.answers.length === 0 ? (
+      {answers.length === 0 ? (
         <p className="m-0 text-warm-gray-med" style={{ fontSize: 13 }}>
-          No questions for this {detail.subFeatureId ? "sub-feature" : "product"}.
+          No questions for this {item?.subFeatureId ? "sub-feature" : "product"}.
         </p>
       ) : (
         <ul className="m-0 p-0 list-none flex flex-col" style={{ gap: 16 }}>
-          {detail.answers.map((a) => (
+          {answers.map((a) => (
             <AnswerRow key={a.questionId} answer={a} />
           ))}
         </ul>
@@ -294,13 +355,17 @@ function AnswerRow({ answer }: { answer: EstimateRequestAnswerView }) {
 
 function EstimateCard({
   detail,
+  item,
   currentRate,
 }: {
   detail: EstimateRequestDetail;
+  item: import("../lib/api/estimates").EstimateRequestItemDto | null;
   currentRate: { onshoreRate: string; offshoreRate: string; effectiveDate: string } | null;
 }) {
+  const derivedStatus = detail.derivedStatus;
   const isAwaitingReview =
-    detail.status === "SUBMITTED" || detail.status === "IN_REVIEW";
+    derivedStatus === "SUBMITTED" || derivedStatus === "IN_REVIEW";
+  const itemStatus = item?.status ?? derivedStatus;
   return (
     <Card title="Estimate">
       {isAwaitingReview && (
@@ -319,26 +384,26 @@ function EstimateCard({
         </div>
       )}
 
-      {detail.status === "APPROVED" && (
-        <ApprovedBanner reviewerName={detail.reviewerName} reviewedAt={detail.reviewedAt} />
+      {itemStatus === "APPROVED" && (
+        <ApprovedBanner reviewerName={item?.reviewerName ?? null} reviewedAt={item?.reviewedAt ?? null} />
       )}
-      {detail.status === "REJECTED" && (
-        <RejectedBanner reviewerName={detail.reviewerName} reviewedAt={detail.reviewedAt} />
+      {itemStatus === "REJECTED" && (
+        <RejectedBanner reviewerName={item?.reviewerName ?? null} reviewedAt={item?.reviewedAt ?? null} />
       )}
 
-      {detail.status === "APPROVED" && detail.complexity && (
+      {itemStatus === "APPROVED" && item?.complexity && (
         <div className="mb-4">
           <SectionLabel>Complexity</SectionLabel>
           <div className="mt-1">
-            <StatusBadge variant="approved">{complexityLabel(detail.complexity)}</StatusBadge>
+            <StatusBadge variant="approved">{complexityLabel(item.complexity)}</StatusBadge>
           </div>
         </div>
       )}
 
-      {detail.justification && (
+      {item?.justification && (
         <div className="mb-4">
           <SectionLabel>
-            {detail.status === "REJECTED" ? "Rejection reason" : "Reviewer's justification"}
+            {itemStatus === "REJECTED" ? "Rejection reason" : "Reviewer's justification"}
           </SectionLabel>
           <blockquote
             className="m-0 mt-1"
@@ -350,21 +415,21 @@ function EstimateCard({
               color: "var(--fg-1)",
             }}
           >
-            {detail.justification}
+            {item.justification}
           </blockquote>
         </div>
       )}
 
       <PhaseLineTable
-        lines={detail.phaseLines}
-        complexity={detail.complexity}
+        lines={item?.phaseLines ?? []}
+        complexity={item?.complexity ?? null}
         currentRate={currentRate}
       />
 
-      {detail.status === "APPROVED" && detail.complexity && currentRate == null && (
+      {itemStatus === "APPROVED" && item?.complexity && currentRate == null && (
         <CostSummary
-          lines={detail.phaseLines}
-          complexity={detail.complexity}
+          lines={item.phaseLines}
+          complexity={item.complexity}
           currentRate={currentRate}
         />
       )}
@@ -442,7 +507,7 @@ function CostSummary({
   currentRate,
 }: {
   lines: EstimateRequestPhaseLineView[];
-  complexity: EstimateRequestDetail["complexity"];
+  complexity: import("../lib/api/estimates").Complexity | null;
   currentRate: { onshoreRate: string; offshoreRate: string; effectiveDate: string } | null;
 }) {
   const onsHrs = onshoreHoursForLines(lines, complexity);
@@ -509,7 +574,7 @@ function PhaseLineTable({
   currentRate,
 }: {
   lines: EstimateRequestPhaseLineView[];
-  complexity: EstimateRequestDetail["complexity"];
+  complexity: import("../lib/api/estimates").Complexity | null;
   currentRate: { onshoreRate: string; offshoreRate: string } | null;
 }) {
   if (lines.length === 0) return null;
@@ -804,6 +869,486 @@ function TimelineAvatar({ userId }: { userId: number | null }) {
     >
       {data?.initials ?? "?"}
     </span>
+  );
+}
+
+// ---- Per-item revision UI (Phase 9b NEEDS_REVISION state) -------------
+
+interface ItemRevisionCardProps {
+  item: EstimateRequestItemDto;
+  requestId: number;
+  currentRate: { onshoreRate: string; offshoreRate: string; effectiveDate: string } | null;
+  onDiscardRequested: () => void;
+}
+
+function ItemRevisionCard({ item, requestId, currentRate, onDiscardRequested }: ItemRevisionCardProps) {
+  const toast = useToast();
+  const reviseMutation = useReviseAndResubmitMutation();
+  const dropMutation = useDropItemMutation();
+
+  const [editMode, setEditMode] = useState(false);
+  const [localAnswers, setLocalAnswers] = useState<Map<number, string>>(() =>
+    new Map(item.answers.map((a) => [a.questionId, a.answerText])),
+  );
+  const [changeProductOpen, setChangeProductOpen] = useState(false);
+  const [selectedProductId, setSelectedProductId] = useState<number>(item.productId);
+  const [selectedSubFeatureId, setSelectedSubFeatureId] = useState<number | null>(item.subFeatureId);
+  const [dropConfirmOpen, setDropConfirmOpen] = useState(false);
+  const [lastItemError, setLastItemError] = useState(false);
+
+  // Re-sync local state if the item itself refreshes (e.g. after a failed revise).
+  useEffect(() => {
+    if (!editMode) {
+      setLocalAnswers(new Map(item.answers.map((a) => [a.questionId, a.answerText])));
+      setSelectedProductId(item.productId);
+      setSelectedSubFeatureId(item.subFeatureId);
+    }
+  }, [item.id, item.status, editMode]);
+
+  const isRejected = item.status === "REJECTED";
+  const { variant: statusVariant, label: statusLabel } = estimateStatusBadge(item.status);
+
+  const itemTitle = item.subFeatureName
+    ? `${item.productName} · ${item.subFeatureName}`
+    : item.productName;
+
+  function enterEditMode() {
+    setLocalAnswers(new Map(item.answers.map((a) => [a.questionId, a.answerText])));
+    setSelectedProductId(item.productId);
+    setSelectedSubFeatureId(item.subFeatureId);
+    setEditMode(true);
+  }
+
+  function cancelEdit() {
+    setEditMode(false);
+  }
+
+  function submitRevision() {
+    const answers: AnswerInput[] = item.answers.map((a) => ({
+      questionId: a.questionId,
+      answerText: localAnswers.get(a.questionId) ?? "",
+    }));
+    const body: ReviseAndResubmitRequest = {
+      ...(selectedProductId !== item.productId && { productId: selectedProductId }),
+      ...(selectedSubFeatureId !== item.subFeatureId && { subFeatureId: selectedSubFeatureId }),
+      answers,
+    };
+    reviseMutation.mutate(
+      { id: requestId, itemId: item.id, body },
+      {
+        onSuccess: () => {
+          setEditMode(false);
+          toast.success("Revision submitted.");
+        },
+        onError: () => toast.error("Could not submit revision."),
+      },
+    );
+  }
+
+  function confirmDrop() {
+    dropMutation.mutate(
+      { id: requestId, itemId: item.id },
+      {
+        onSuccess: () => {
+          setDropConfirmOpen(false);
+          toast.success("Item dropped.");
+        },
+        onError: (err) => {
+          if (err instanceof ApiError && err.status === 409) {
+            setLastItemError(true);
+          } else {
+            toast.error("Could not drop that item.");
+            setDropConfirmOpen(false);
+          }
+        },
+      },
+    );
+  }
+
+  const kebabItems: KebabMenuItem[] = [
+    {
+      label: "Drop item",
+      icon: <Trash2 className="w-3.5 h-3.5" strokeWidth={1.5} />,
+      destructive: true,
+      onSelect: () => {
+        setLastItemError(false);
+        setDropConfirmOpen(true);
+      },
+    },
+  ];
+
+  return (
+    <Card
+      title={itemTitle}
+      headerRight={<StatusBadge variant={statusVariant}>{statusLabel}</StatusBadge>}
+    >
+      {/* Rejection banner */}
+      {isRejected && !editMode && (
+        <div
+          className="rounded-md mb-4"
+          style={{
+            background: "rgba(247, 228, 173, 0.4)",
+            border: "1px solid rgba(212, 167, 44, 0.3)",
+            padding: "10px 12px",
+            fontSize: 13,
+            color: "var(--fg-1)",
+            display: "flex",
+            alignItems: "flex-start",
+            gap: 8,
+          }}
+        >
+          <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" strokeWidth={1.5} />
+          <div>
+            <span>
+              Rejected by <strong>{item.reviewerName ?? "the reviewer"}</strong>.{" "}
+            </span>
+            {item.rejectionReason && (
+              <span className="italic">{item.rejectionReason}</span>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Approved read-only banner */}
+      {item.status === "APPROVED" && (
+        <div
+          className="rounded-md mb-4"
+          style={{
+            background: "var(--color-light-blue-soft)",
+            border: "1px solid rgba(187,221,230,0.7)",
+            padding: "10px 12px",
+            fontSize: 13,
+            color: "var(--fg-1)",
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+          }}
+        >
+          <Info className="w-3.5 h-3.5" strokeWidth={1.5} />
+          <span>
+            Approved by <strong>{item.reviewerName ?? "the reviewer"}</strong>.
+          </span>
+        </div>
+      )}
+
+      {/* Answers list — read or edit */}
+      {!editMode ? (
+        <ItemAnswerList answers={item.answers} />
+      ) : (
+        <ItemAnswerEditor
+          answers={item.answers}
+          localAnswers={localAnswers}
+          onChange={(qid, text) =>
+            setLocalAnswers((prev) => new Map(prev).set(qid, text))
+          }
+        />
+      )}
+
+      {/* Action bar */}
+      {isRejected && !editMode && (
+        <div className="flex items-center mt-4" style={{ gap: 8 }}>
+          <PrimaryButton onClick={enterEditMode}>Revise & resubmit</PrimaryButton>
+          <KebabMenu items={kebabItems} ariaLabel="Item actions" />
+        </div>
+      )}
+
+      {editMode && (
+        <div className="flex items-center mt-4" style={{ gap: 8 }}>
+          <PrimaryButton
+            onClick={submitRevision}
+            disabled={reviseMutation.isPending}
+          >
+            {reviseMutation.isPending ? "Submitting…" : "Submit revision"}
+          </PrimaryButton>
+          <SecondaryButton
+            onClick={() => setChangeProductOpen(true)}
+          >
+            Change product
+          </SecondaryButton>
+          <SecondaryButton onClick={cancelEdit} disabled={reviseMutation.isPending}>
+            Cancel
+          </SecondaryButton>
+        </div>
+      )}
+
+      {/* Phase lines for APPROVED items */}
+      {item.status === "APPROVED" && item.complexity && (
+        <div className="mt-4">
+          <PhaseLineTable
+            lines={item.phaseLines}
+            complexity={item.complexity}
+            currentRate={currentRate}
+          />
+        </div>
+      )}
+
+      {/* Product picker modal */}
+      <ProductPickerModal
+        open={changeProductOpen}
+        currentProductId={selectedProductId}
+        currentSubFeatureId={selectedSubFeatureId}
+        onConfirm={(productId, subFeatureId) => {
+          setSelectedProductId(productId);
+          setSelectedSubFeatureId(subFeatureId);
+          setChangeProductOpen(false);
+        }}
+        onCancel={() => setChangeProductOpen(false)}
+      />
+
+      {/* Drop confirmation */}
+      <ConfirmModal
+        open={dropConfirmOpen}
+        title={lastItemError ? "Cannot drop last item" : "Drop this item?"}
+        body={
+          <p className="m-0 text-warm-gray-med" style={{ fontSize: 13 }}>
+            {lastItemError
+              ? "This is the only remaining item. Discard the entire request instead?"
+              : "This item will be permanently removed from the request. This can't be undone."}
+          </p>
+        }
+        confirmLabel={lastItemError ? "Discard request" : "Drop item"}
+        cancelLabel={lastItemError ? "Keep item" : "Cancel"}
+        destructive
+        onCancel={() => { setDropConfirmOpen(false); setLastItemError(false); }}
+        onConfirm={
+          lastItemError
+            ? () => { setDropConfirmOpen(false); setLastItemError(false); onDiscardRequested(); }
+            : confirmDrop
+        }
+        width={440}
+      />
+    </Card>
+  );
+}
+
+function ItemAnswerList({ answers }: { answers: EstimateRequestAnswerView[] }) {
+  if (answers.length === 0) {
+    return (
+      <p className="m-0 text-warm-gray-med" style={{ fontSize: 13 }}>
+        No questions for this item.
+      </p>
+    );
+  }
+  return (
+    <ul className="m-0 p-0 list-none flex flex-col" style={{ gap: 14 }}>
+      {answers.map((a) => (
+        <li key={a.questionId}>
+          <div className="flex items-baseline" style={{ gap: 8 }}>
+            <span className="text-near-black font-semibold" style={{ fontSize: 13 }}>
+              {a.questionText}
+            </span>
+            {a.required && <RequiredPill />}
+          </div>
+          <p
+            className="m-0 mt-1"
+            style={{
+              fontSize: 13,
+              color: a.answerText ? "var(--fg-1)" : "var(--color-warm-gray-med)",
+              fontStyle: a.answerText ? undefined : "italic",
+              whiteSpace: "pre-wrap",
+            }}
+          >
+            {a.answerText || "Not answered"}
+          </p>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function ItemAnswerEditor({
+  answers,
+  localAnswers,
+  onChange,
+}: {
+  answers: EstimateRequestAnswerView[];
+  localAnswers: Map<number, string>;
+  onChange: (questionId: number, text: string) => void;
+}) {
+  if (answers.length === 0) {
+    return (
+      <p className="m-0 text-warm-gray-med" style={{ fontSize: 13 }}>
+        No questions for this item.
+      </p>
+    );
+  }
+  return (
+    <div className="flex flex-col" style={{ gap: 14 }}>
+      {answers.map((a) => (
+        <div key={a.questionId}>
+          <label
+            htmlFor={`answer-${a.questionId}`}
+            className="flex items-baseline text-near-black font-semibold"
+            style={{ fontSize: 13, gap: 8 }}
+          >
+            {a.questionText}
+            {a.required && <RequiredPill />}
+          </label>
+          <textarea
+            id={`answer-${a.questionId}`}
+            value={localAnswers.get(a.questionId) ?? ""}
+            onChange={(e) => onChange(a.questionId, e.target.value)}
+            rows={3}
+            className="w-full mt-1 rounded-md text-near-black focus:outline-none focus:ring-2 focus:ring-light-blue resize-y"
+            style={{
+              fontSize: 13,
+              padding: "8px 10px",
+              border: "1px solid var(--color-border-strong)",
+              lineHeight: 1.5,
+            }}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ProductPickerModal({
+  open,
+  currentProductId,
+  currentSubFeatureId,
+  onConfirm,
+  onCancel,
+}: {
+  open: boolean;
+  currentProductId: number;
+  currentSubFeatureId: number | null;
+  onConfirm: (productId: number, subFeatureId: number | null) => void;
+  onCancel: () => void;
+}) {
+  const productsQuery = useProductsQuery({ status: "ACTIVE", size: 200 });
+  const products: ProductListItem[] = productsQuery.data?.items ?? [];
+
+  const [pickedProductId, setPickedProductId] = useState<number>(currentProductId);
+  const [pickedSubFeatureId, setPickedSubFeatureId] = useState<number | null>(currentSubFeatureId);
+
+  const pickedProduct = products.find((p) => p.id === pickedProductId) ?? null;
+  const isContainer = pickedProduct?.mode === "CONTAINER";
+
+  const subFeaturesQuery = useSubFeaturesForProductQuery(isContainer ? pickedProductId : null);
+  const subFeatures = subFeaturesQuery.data ?? [];
+
+  useEffect(() => {
+    if (open) {
+      setPickedProductId(currentProductId);
+      setPickedSubFeatureId(currentSubFeatureId);
+    }
+  }, [open, currentProductId, currentSubFeatureId]);
+
+  useEffect(() => {
+    // Clear sub-feature selection when product changes.
+    setPickedSubFeatureId(null);
+  }, [pickedProductId]);
+
+  const canConfirm = !isContainer || pickedSubFeatureId != null;
+
+  if (!open) return null;
+
+  return (
+    <>
+      <div
+        onClick={onCancel}
+        className="fixed inset-0 z-40"
+        style={{ background: "rgba(39,37,31,0.40)" }}
+      />
+      <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Change product"
+          className="bg-white rounded-lg overflow-hidden flex flex-col pointer-events-auto"
+          style={{ width: 440, boxShadow: "var(--shadow-modal)" }}
+        >
+          <header style={{ padding: "20px 24px 12px" }}>
+            <div className="font-semibold text-near-black" style={{ fontSize: 18, letterSpacing: "-0.005em" }}>
+              Change product
+            </div>
+          </header>
+
+          <div style={{ padding: "0 24px 20px", fontSize: 14 }}>
+            <label className="flex flex-col" style={{ gap: 6 }}>
+              <span className="text-warm-gray-med uppercase font-medium" style={{ fontSize: 11, letterSpacing: "0.04em" }}>
+                Product
+              </span>
+              <div className="relative">
+                <select
+                  value={pickedProductId}
+                  onChange={(e) => setPickedProductId(Number(e.target.value))}
+                  className="w-full h-9 rounded-md text-near-black appearance-none focus:outline-none focus:ring-2 focus:ring-light-blue"
+                  style={{
+                    fontSize: 13,
+                    padding: "0 32px 0 10px",
+                    border: "1px solid var(--color-border-strong)",
+                    background: "white",
+                  }}
+                >
+                  {products.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}{p.mode === "CONTAINER" ? " (container)" : ""}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-warm-gray-med pointer-events-none"
+                  style={{ width: 14, height: 14 }}
+                  strokeWidth={1.5}
+                />
+              </div>
+            </label>
+
+            {isContainer && (
+              <label className="flex flex-col mt-4" style={{ gap: 6 }}>
+                <span className="text-warm-gray-med uppercase font-medium" style={{ fontSize: 11, letterSpacing: "0.04em" }}>
+                  Sub-feature
+                </span>
+                <div className="relative">
+                  <select
+                    value={pickedSubFeatureId ?? ""}
+                    onChange={(e) => setPickedSubFeatureId(e.target.value ? Number(e.target.value) : null)}
+                    className="w-full h-9 rounded-md text-near-black appearance-none focus:outline-none focus:ring-2 focus:ring-light-blue"
+                    style={{
+                      fontSize: 13,
+                      padding: "0 32px 0 10px",
+                      border: "1px solid var(--color-border-strong)",
+                      background: "white",
+                    }}
+                  >
+                    <option value="">Select a sub-feature…</option>
+                    {subFeatures.map((sf) => (
+                      <option key={sf.id} value={sf.id}>
+                        {sf.name}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-warm-gray-med pointer-events-none"
+                    style={{ width: 14, height: 14 }}
+                    strokeWidth={1.5}
+                  />
+                </div>
+              </label>
+            )}
+          </div>
+
+          <footer
+            className="flex items-center justify-end gap-2"
+            style={{
+              padding: "14px 24px",
+              borderTop: "1px solid var(--color-warm-gray-light)",
+              background: "#FBFBFA",
+            }}
+          >
+            <SecondaryButton onClick={onCancel}>Cancel</SecondaryButton>
+            <PrimaryButton
+              disabled={!canConfirm}
+              onClick={() => onConfirm(pickedProductId, isContainer ? pickedSubFeatureId : null)}
+            >
+              Confirm
+            </PrimaryButton>
+          </footer>
+        </div>
+      </div>
+    </>
   );
 }
 

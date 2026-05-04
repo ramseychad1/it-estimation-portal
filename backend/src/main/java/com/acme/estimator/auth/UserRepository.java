@@ -54,4 +54,11 @@ public interface UserRepository
         "SELECT DISTINCT u FROM User u JOIN FETCH u.teams t WHERE t.id = :teamId ORDER BY u.lastName, u.firstName"
     )
     java.util.List<User> findByTeamId(@org.springframework.data.repository.query.Param("teamId") Long teamId);
+
+    /** Phase 9b: returns the team IDs the given user belongs to. Used for team-scoping review. */
+    @org.springframework.data.jpa.repository.Query(
+        "SELECT t.id FROM User u JOIN u.teams t WHERE u.id = :userId"
+    )
+    java.util.Set<Long> findTeamIdsByUserId(
+        @org.springframework.data.repository.query.Param("userId") Long userId);
 }

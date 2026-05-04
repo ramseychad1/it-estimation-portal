@@ -86,6 +86,7 @@ class EstimateRequestControllerIntegrationTest {
     @Autowired private MockMvc mvc;
     @Autowired private ObjectMapper json;
     @Autowired private EstimateRequestRepository requestRepository;
+    @Autowired private EstimateRequestItemRepository itemRepository;
     @Autowired private EstimateRequestPhaseLineRepository phaseLineRepository;
     @Autowired private EstimateRequestQuestionAnswerRepository answerRepository;
     @Autowired private ProductRepository productRepository;
@@ -136,6 +137,7 @@ class EstimateRequestControllerIntegrationTest {
     private void cleanAll() {
         phaseLineRepository.deleteAll();
         answerRepository.deleteAll();
+        itemRepository.deleteAll();
         requestRepository.deleteAll();
         templateLineRepository.deleteAll();
         templateRepository.deleteAll();
@@ -182,13 +184,13 @@ class EstimateRequestControllerIntegrationTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(json.writeValueAsString(Map.of(
                     "title", "Member Portal v2",
-                    "productId", product.getId()
+                    "items", List.of(Map.of("productId", product.getId()))
                 ))))
             .andExpect(status().isCreated())
-            .andExpect(jsonPath("$.status").value("DRAFT"))
-            .andExpect(jsonPath("$.templateId").doesNotExist())
-            .andExpect(jsonPath("$.phaseLines").isArray())
-            .andExpect(jsonPath("$.phaseLines.length()").value(0));
+            .andExpect(jsonPath("$.items[0].status").value("DRAFT"))
+            .andExpect(jsonPath("$.items[0].templateId").doesNotExist())
+            .andExpect(jsonPath("$.items[0].phaseLines").isArray())
+            .andExpect(jsonPath("$.items[0].phaseLines.length()").value(0));
     }
 
     @Test
@@ -198,7 +200,8 @@ class EstimateRequestControllerIntegrationTest {
         mvc.perform(asRequester(post("/api/estimates/my"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(json.writeValueAsString(Map.of(
-                    "title", "R", "productId", container.getId()
+                    "title", "R",
+                    "items", List.of(Map.of("productId", container.getId()))
                 ))))
             .andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.message")
@@ -214,7 +217,8 @@ class EstimateRequestControllerIntegrationTest {
         mvc.perform(asRequester(post("/api/estimates/my"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(json.writeValueAsString(Map.of(
-                    "title", "R", "productId", atomic.getId(), "subFeatureId", sub.getId()
+                    "title", "R",
+                    "items", List.of(Map.of("productId", atomic.getId(), "subFeatureId", sub.getId()))
                 ))))
             .andExpect(status().isBadRequest());
     }
@@ -228,7 +232,8 @@ class EstimateRequestControllerIntegrationTest {
         mvc.perform(asRequester(post("/api/estimates/my"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(json.writeValueAsString(Map.of(
-                    "title", "R", "productId", inactive.getId()
+                    "title", "R",
+                    "items", List.of(Map.of("productId", inactive.getId()))
                 ))))
             .andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.message")
@@ -320,7 +325,9 @@ class EstimateRequestControllerIntegrationTest {
                     "answers", List.of(Map.of("questionId", q1.getId(), "answerText", "First answer"))
                 ))))
             .andExpect(status().isOk());
-        assertThat(answerRepository.findAllByEstimateRequestId(draftId)).hasSize(1);
+        Long firstItemId = itemRepository
+            .findByEstimateRequestIdOrderByDisplayOrderAsc(draftId).get(0).getId();
+        assertThat(answerRepository.findAllByItemId(firstItemId)).hasSize(1);
 
         // Second save: answer q2 only — q1's row should be gone.
         mvc.perform(asRequester(put("/api/estimates/my/" + draftId + "/answers"))
@@ -330,7 +337,7 @@ class EstimateRequestControllerIntegrationTest {
                 ))))
             .andExpect(status().isOk());
         List<EstimateRequestQuestionAnswer> rows =
-            answerRepository.findAllByEstimateRequestId(draftId);
+            answerRepository.findAllByItemId(firstItemId);
         assertThat(rows).hasSize(1);
         assertThat(rows.get(0).getCriticalQuestionId()).isEqualTo(q2.getId());
         assertThat(rows.get(0).getAnswerText()).isEqualTo("Second answer");
@@ -362,13 +369,14 @@ class EstimateRequestControllerIntegrationTest {
 
         mvc.perform(asRequester(post("/api/estimates/my/" + draftId + "/submit")))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.status").value("SUBMITTED"))
-            .andExpect(jsonPath("$.templateId").value(template.getId()))
-            .andExpect(jsonPath("$.templateVersionNumber").value(2))
-            .andExpect(jsonPath("$.phaseLines.length()").value(1))
-            .andExpect(jsonPath("$.phaseLines[0].sdlcPhaseName").value("Discovery"))
-            .andExpect(jsonPath("$.phaseLines[0].onshoreLow").value(5))
-            .andExpect(jsonPath("$.submittedAt").exists());
+            .andExpect(jsonPath("$.derivedStatus").value("SUBMITTED"))
+            .andExpect(jsonPath("$.items[0].status").value("SUBMITTED"))
+            .andExpect(jsonPath("$.items[0].templateId").value(template.getId()))
+            .andExpect(jsonPath("$.items[0].templateVersionNumber").value(2))
+            .andExpect(jsonPath("$.items[0].phaseLines.length()").value(1))
+            .andExpect(jsonPath("$.items[0].phaseLines[0].sdlcPhaseName").value("Discovery"))
+            .andExpect(jsonPath("$.items[0].phaseLines[0].onshoreLow").value(5))
+            .andExpect(jsonPath("$.items[0].submittedAt").exists());
     }
 
     @Test
@@ -419,7 +427,7 @@ class EstimateRequestControllerIntegrationTest {
 
         mvc.perform(asRequester(post("/api/estimates/my/" + draftId + "/submit")))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.status").value("SUBMITTED"));
+            .andExpect(jsonPath("$.derivedStatus").value("SUBMITTED"));
     }
 
     // ---- list / detail / privacy ------------------------------------------
@@ -479,9 +487,9 @@ class EstimateRequestControllerIntegrationTest {
         // request's snapshot rows must remain intact.
 
         mvc.perform(asRequester(get("/api/estimates/my/" + draftId)))
-            .andExpect(jsonPath("$.phaseLines[0].sdlcPhaseName").value("Discovery"))
-            .andExpect(jsonPath("$.phaseLines[0].displayOrder").value(1))
-            .andExpect(jsonPath("$.phaseLines[0].onshoreLow").value(5));
+            .andExpect(jsonPath("$.items[0].phaseLines[0].sdlcPhaseName").value("Discovery"))
+            .andExpect(jsonPath("$.items[0].phaseLines[0].displayOrder").value(1))
+            .andExpect(jsonPath("$.items[0].phaseLines[0].onshoreLow").value(5));
     }
 
     // ---- helpers -----------------------------------------------------------
@@ -506,14 +514,14 @@ class EstimateRequestControllerIntegrationTest {
     private Long createDraftJsonAs(
         AppUserDetails actor, String title, Long productId, Long subFeatureId
     ) throws Exception {
-        var body = new java.util.HashMap<String, Object>();
-        body.put("title", title);
-        body.put("productId", productId);
-        if (subFeatureId != null) body.put("subFeatureId", subFeatureId);
-        String json = this.json.writeValueAsString(body);
+        var item = new java.util.HashMap<String, Object>();
+        item.put("productId", productId);
+        if (subFeatureId != null) item.put("subFeatureId", subFeatureId);
+        var body = Map.of("title", title, "items", List.of(item));
+        String jsonBody = this.json.writeValueAsString(body);
         String responseBody = mvc.perform(post("/api/estimates/my").with(user(actor)).with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(json))
+                .content(jsonBody))
             .andExpect(status().isCreated())
             .andReturn().getResponse().getContentAsString();
         return ((Number) this.json.readValue(responseBody, Map.class).get("id")).longValue();

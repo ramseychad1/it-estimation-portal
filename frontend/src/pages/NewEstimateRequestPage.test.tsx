@@ -27,29 +27,26 @@ interface MockQuestion {
   subFeatureId: number | null;
   active: boolean;
 }
-interface MockTemplate {
-  id: number;
-  versionNumber: number;
-  productId: number | null;
+
+interface MockDraftItem {
+  productId: number;
   subFeatureId: number | null;
-  displayName: string;
+  answers: { questionId: number; answerText: string }[];
 }
+
 interface MockDraft {
   id: number;
   title: string;
   description: string | null;
-  productId: number;
-  subFeatureId: number | null;
   status: "DRAFT" | "SUBMITTED";
-  answers: { questionId: number; questionText: string; required: boolean; answerText: string }[];
+  items: MockDraftItem[];
 }
 
 let products: MockProduct[];
 let subFeatures: MockSubFeature[];
 let questions: MockQuestion[];
-let templates: MockTemplate[];
 let drafts: MockDraft[];
-let savedAnswers: { id: number; answers: { questionId: number; answerText: string }[] }[];
+let savedAnswers: { id: number; itemId: number; answers: { questionId: number; answerText: string }[] }[];
 let submittedIds: number[];
 let nextDraftId: number;
 
@@ -61,29 +58,48 @@ function jsonResponse(body: unknown, status = 200) {
 }
 
 function makeDraftDetail(d: MockDraft) {
-  const product = products.find((p) => p.id === d.productId);
-  const sub = subFeatures.find((s) => s.id === d.subFeatureId);
   return {
     id: d.id,
     title: d.title,
     description: d.description,
-    productId: d.productId,
-    productName: product?.name ?? "",
-    subFeatureId: d.subFeatureId,
-    subFeatureName: sub?.name ?? null,
-    templateId: null,
-    templateVersionNumber: null,
-    complexity: null,
-    status: d.status,
     requesterId: 1,
-    reviewerId: null,
-    justification: null,
-    submittedAt: d.status === "SUBMITTED" ? new Date().toISOString() : null,
-    reviewedAt: null,
+    derivedStatus: d.status,
     createdAt: "2026-04-01T00:00:00Z",
     updatedAt: "2026-04-01T00:00:00Z",
-    phaseLines: [],
-    answers: d.answers,
+    items: d.items.map((it, idx) => {
+      const p = products.find((pp) => pp.id === it.productId);
+      const s = it.subFeatureId ? subFeatures.find((ss) => ss.id === it.subFeatureId) : null;
+      return {
+        id: d.id * 100 + idx + 1,
+        productId: it.productId,
+        productName: p?.name ?? "",
+        subFeatureId: it.subFeatureId ?? null,
+        subFeatureName: s?.name ?? null,
+        teamName: null,
+        templateId: null,
+        templateVersionNumber: null,
+        status: d.status,
+        complexity: null,
+        reviewerId: null,
+        reviewerName: null,
+        reviewerStatus: "unclaimed",
+        justification: null,
+        submittedAt: d.status === "SUBMITTED" ? new Date().toISOString() : null,
+        reviewedAt: null,
+        approvedBlendedRateId: null,
+        displayOrder: idx,
+        phaseLines: [],
+        answers: it.answers.map((a) => {
+          const q = questions.find((qq) => qq.id === a.questionId);
+          return {
+            questionId: a.questionId,
+            questionText: q?.questionText ?? "",
+            required: q?.required ?? false,
+            answerText: a.answerText,
+          };
+        }),
+      };
+    }),
   };
 }
 
@@ -91,7 +107,6 @@ function installRouter() {
   products = [];
   subFeatures = [];
   questions = [];
-  templates = [];
   drafts = [];
   savedAnswers = [];
   submittedIds = [];
@@ -128,19 +143,6 @@ function installRouter() {
       ));
     }
 
-    const productTemplateMatch = path.match(/^\/api\/catalog\/products\/(\d+)\/template$/);
-    if (productTemplateMatch && method === "GET") {
-      const pid = Number(productTemplateMatch[1]);
-      const t = templates.find((tt) => tt.productId === pid);
-      return Promise.resolve(jsonResponse(t ?? null));
-    }
-    const subTemplateMatch = path.match(/^\/api\/catalog\/sub-features\/(\d+)\/template$/);
-    if (subTemplateMatch && method === "GET") {
-      const sid = Number(subTemplateMatch[1]);
-      const t = templates.find((tt) => tt.subFeatureId === sid);
-      return Promise.resolve(jsonResponse(t ?? null));
-    }
-
     const productQuestionsMatch = path.match(/^\/api\/catalog\/products\/(\d+)\/questions$/);
     if (productQuestionsMatch && method === "GET") {
       const pid = Number(productQuestionsMatch[1]);
@@ -162,10 +164,12 @@ function installRouter() {
         id: nextDraftId++,
         title: body.title,
         description: body.description ?? null,
-        productId: body.productId,
-        subFeatureId: body.subFeatureId ?? null,
         status: "DRAFT",
-        answers: [],
+        items: (body.items ?? []).map((it: { productId: number; subFeatureId?: number | null }) => ({
+          productId: it.productId,
+          subFeatureId: it.subFeatureId ?? null,
+          answers: [],
+        })),
       };
       drafts.push(created);
       return Promise.resolve(jsonResponse(makeDraftDetail(created), 201));
@@ -187,22 +191,33 @@ function installRouter() {
       return Promise.resolve(jsonResponse(makeDraftDetail(found)));
     }
 
+    // Per-item answers endpoint (Phase 9a)
+    const itemAnswersMatch = path.match(/^\/api\/estimates\/my\/(\d+)\/items\/(\d+)\/answers$/);
+    if (itemAnswersMatch && method === "PUT") {
+      const id = Number(itemAnswersMatch[1]);
+      const itemId = Number(itemAnswersMatch[2]);
+      const body = JSON.parse(init?.body as string);
+      savedAnswers.push({ id, itemId, answers: body.answers });
+      const found = drafts.find((d) => d.id === id);
+      if (found) {
+        // itemId = draftId * 100 + idx + 1 → idx = itemId - (draftId*100 + 1)
+        const idx = itemId - (id * 100 + 1);
+        if (found.items[idx]) {
+          found.items[idx].answers = body.answers;
+        }
+      }
+      return Promise.resolve(jsonResponse(found ? makeDraftDetail(found) : {}));
+    }
+
+    // Backward-compat: old answers endpoint maps to items[0]
     const answersMatch = path.match(/^\/api\/estimates\/my\/(\d+)\/answers$/);
     if (answersMatch && method === "PUT") {
       const id = Number(answersMatch[1]);
       const body = JSON.parse(init?.body as string);
-      savedAnswers.push({ id, answers: body.answers });
       const found = drafts.find((d) => d.id === id);
-      if (found) {
-        found.answers = body.answers.map((a: { questionId: number; answerText: string }) => {
-          const q = questions.find((qq) => qq.id === a.questionId);
-          return {
-            questionId: a.questionId,
-            questionText: q?.questionText ?? "",
-            required: q?.required ?? false,
-            answerText: a.answerText,
-          };
-        });
+      if (found && found.items[0]) {
+        found.items[0].answers = body.answers;
+        savedAnswers.push({ id, itemId: id * 100 + 1, answers: body.answers });
       }
       return Promise.resolve(jsonResponse(found ? makeDraftDetail(found) : {}));
     }
@@ -270,38 +285,16 @@ describe("<NewEstimateRequestPage>", () => {
     await user.type(screen.getByLabelText(/What should this estimate be called\?/i), "My req");
 
     await user.selectOptions(
-      screen.getByLabelText(/Product/i),
+      screen.getByRole("combobox", { name: /Product/i }),
       "1",
     );
-    // The sub-feature picker materialises after the product becomes a Container.
+    // Sub-feature picker materialises for container products
     expect(await screen.findByLabelText(/Sub-feature/i)).toBeInTheDocument();
     expect(screen.getByRole("option", { name: /Variant A/i })).toBeInTheDocument();
   });
 
-  it("Step 1: 'no template' warning blocks the flow", async () => {
-    products = [{ id: 1, name: "Atomic", mode: "ATOMIC" }];
-    // No template seeded → backend returns null.
-
-    renderAt("/requests/new");
-    const user = userEvent.setup();
-
-    await user.type(
-      await screen.findByLabelText(/What should this estimate be called\?/i),
-      "My req",
-    );
-    await user.selectOptions(screen.getByLabelText(/Product/i), "1");
-
-    expect(
-      await screen.findByText(/doesn't have an active estimate template/i),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: /Continue to questions/i }),
-    ).toBeDisabled();
-  });
-
   it("Save as draft persists across step navigation", async () => {
     products = [{ id: 1, name: "Atomic", mode: "ATOMIC" }];
-    templates = [{ id: 50, versionNumber: 1, productId: 1, subFeatureId: null, displayName: "Atomic" }];
     questions = [
       { id: 100, productId: 1, subFeatureId: null, questionText: "Q1?", required: true, active: true },
     ];
@@ -313,11 +306,13 @@ describe("<NewEstimateRequestPage>", () => {
       await screen.findByLabelText(/What should this estimate be called\?/i),
       "Persist test",
     );
-    await user.selectOptions(screen.getByLabelText(/Product/i), "1");
 
-    // Wait for template preview to materialise so Save isn't disabled
-    // by the no-template guard.
-    await screen.findByText(/question to answer/i);
+    // Select product and add it to the list
+    await user.selectOptions(screen.getByRole("combobox", { name: /Product/i }), "1");
+    await user.click(screen.getByRole("button", { name: /^Add$/i }));
+
+    // Product appears in selected list
+    await screen.findByText("Atomic");
 
     await user.click(screen.getByRole("button", { name: /Save as draft/i }));
 
@@ -329,24 +324,24 @@ describe("<NewEstimateRequestPage>", () => {
 
     // Continue to step 2 — the URL should now carry both step + id.
     await user.click(screen.getByRole("button", { name: /Continue to questions/i }));
-    await screen.findByText("Q1?");
+    await screen.findByText("Atomic");
   });
 
   it("Step 2: required question without answer disables Continue", async () => {
     products = [{ id: 1, name: "Atomic", mode: "ATOMIC" }];
-    templates = [{ id: 50, versionNumber: 1, productId: 1, subFeatureId: null, displayName: "Atomic" }];
     questions = [
       { id: 200, productId: 1, subFeatureId: null, questionText: "Required Q?", required: true, active: true },
     ];
     // Pre-seed a Draft and land directly on step 2 via the URL.
     drafts.push({
-      id: 500, title: "Pre-seeded", description: null, productId: 1,
-      subFeatureId: null, status: "DRAFT", answers: [],
+      id: 500, title: "Pre-seeded", description: null, status: "DRAFT",
+      items: [{ productId: 1, subFeatureId: null, answers: [] }],
     });
 
     renderAt("/requests/new?step=2&id=500");
     const user = userEvent.setup();
 
+    // First accordion item is open by default; question should be visible
     await screen.findByText("Required Q?");
     expect(screen.getByRole("button", { name: /Continue to review/i })).toBeDisabled();
 
@@ -358,14 +353,12 @@ describe("<NewEstimateRequestPage>", () => {
 
   it("Step 3: Submit confirmation modal fires POST submit and navigates to detail", async () => {
     products = [{ id: 1, name: "Atomic", mode: "ATOMIC" }];
-    templates = [{ id: 50, versionNumber: 2, productId: 1, subFeatureId: null, displayName: "Atomic" }];
     questions = [
       { id: 300, productId: 1, subFeatureId: null, questionText: "Q?", required: true, active: true },
     ];
     drafts.push({
-      id: 700, title: "To submit", description: null, productId: 1,
-      subFeatureId: null, status: "DRAFT",
-      answers: [{ questionId: 300, questionText: "Q?", required: true, answerText: "Yes" }],
+      id: 700, title: "To submit", description: null, status: "DRAFT",
+      items: [{ productId: 1, subFeatureId: null, answers: [{ questionId: 300, answerText: "Yes" }] }],
     });
 
     renderAt("/requests/new?step=3&id=700");

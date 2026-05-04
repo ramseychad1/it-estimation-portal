@@ -97,12 +97,11 @@ public class ActivityFeedSpecifications {
 
         // Requester scope: own request events + own actions.
         // We resolve the requester's request ids up front (small, bounded
-        // by user activity); a JPA subquery would also work but a Java
-        // pre-fetch keeps the predicate simple and readable.
+        // by user activity); fetched via a Specification on requesterId.
         Long actorId = actor.getId();
-        List<Long> ownRequestIds = requestRepository
-            .findByRequesterIdOrderByCreatedAtDesc(actorId,
-                org.springframework.data.domain.Pageable.unpaged())
+        var requesterSpec = (org.springframework.data.jpa.domain.Specification<EstimateRequest>)
+            (root, query, cb) -> cb.equal(root.get("requesterId"), actorId);
+        List<Long> ownRequestIds = requestRepository.findAll(requesterSpec)
             .stream()
             .map(EstimateRequest::getId)
             .toList();

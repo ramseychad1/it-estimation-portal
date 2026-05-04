@@ -19,7 +19,6 @@ interface MockRow {
 
 interface State {
   rows: MockRow[];
-  starts: number[];
 }
 let state: State;
 let currentSoId = 1;
@@ -36,11 +35,9 @@ function listResponse(items: MockRow[]) {
     items: items.map((r) => ({
       id: r.id,
       title: r.title,
-      productId: 1,
-      productName: r.productName,
-      subFeatureId: null,
-      subFeatureName: null,
-      status: r.status,
+      derivedStatus: r.status,
+      itemCount: 1,
+      productNames: r.productName,
       submittedAt: r.submittedAt,
       updatedAt: r.submittedAt,
       createdAt: r.submittedAt,
@@ -53,7 +50,7 @@ function listResponse(items: MockRow[]) {
 }
 
 function installRouter() {
-  state = { rows: [], starts: [] };
+  state = { rows: [] };
   fetchMock.mockImplementation((url: string, init?: RequestInit) => {
     const u = new URL(url, "http://localhost");
     const path = u.pathname;
@@ -73,6 +70,12 @@ function installRouter() {
       }));
     }
 
+    if (path === "/api/admin/teams" && method === "GET") {
+      return Promise.resolve(jsonResponse({
+        items: [], page: 0, size: 100, totalElements: 0, totalPages: 0,
+      }));
+    }
+
     if (path === "/api/estimates/review" && method === "GET") {
       const status = u.searchParams.get("status");
       const search = (u.searchParams.get("search") ?? "").toLowerCase();
@@ -82,18 +85,6 @@ function installRouter() {
         .filter((r) => !search || r.title.toLowerCase().includes(search))
         .filter((r) => !mine || r.reviewerId === currentSoId);
       return Promise.resolve(listResponse(filtered));
-    }
-
-    const startMatch = path.match(/^\/api\/estimates\/review\/(\d+)\/start$/);
-    if (startMatch && method === "POST") {
-      const id = Number(startMatch[1]);
-      state.starts.push(id);
-      const row = state.rows.find((r) => r.id === id);
-      if (row) {
-        row.status = "IN_REVIEW";
-        row.reviewerId = currentSoId;
-      }
-      return Promise.resolve(jsonResponse({ id, status: "IN_REVIEW" }));
     }
 
     return Promise.resolve(new Response(null, { status: 404 }));
@@ -186,7 +177,7 @@ describe("<ReviewQueuePage>", () => {
     });
   });
 
-  it("kebab on Submitted row fires Start review and navigates to detail", async () => {
+  it("kebab on Submitted row navigates to detail without calling start", async () => {
     state.rows = [
       {
         id: 7, title: "Pickable", status: "SUBMITTED",
@@ -199,16 +190,20 @@ describe("<ReviewQueuePage>", () => {
 
     await screen.findByText("Pickable");
     await user.click(screen.getByRole("button", { name: /Row actions/i }));
-    await user.click(await screen.findByRole("menuitem", { name: /Start review/i }));
+    // Per-item review: the queue kebab says "Review" and navigates directly;
+    // per-item start happens on the detail page.
+    await user.click(await screen.findByRole("menuitem", { name: /^Review$/i }));
 
-    await waitFor(() => {
-      expect(state.starts).toContain(7);
-    });
     expect(await screen.findByTestId("review-detail-stub")).toBeInTheDocument();
+    // Confirm no POST /start was fired
+    const postCalls = (fetchMock.mock.calls as [string, RequestInit | undefined][]).filter(
+      ([, init]) => (init?.method ?? "GET").toUpperCase() === "POST",
+    );
+    expect(postCalls).toHaveLength(0);
   });
 
-  it("renders the Day-1 empty state when the queue is empty", async () => {
+  it("renders the team-scoped empty state when the queue is empty", async () => {
     renderQueue();
-    await screen.findByText(/No requests in the queue yet/i);
+    await screen.findByText(/No requests need your review/i);
   });
 });

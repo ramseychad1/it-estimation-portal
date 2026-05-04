@@ -7,9 +7,9 @@ import org.springframework.transaction.annotation.Transactional;
 public interface EstimateRequestQuestionAnswerRepository
     extends JpaRepository<EstimateRequestQuestionAnswer, Long> {
 
-    List<EstimateRequestQuestionAnswer> findAllByEstimateRequestId(Long estimateRequestId);
+    List<EstimateRequestQuestionAnswer> findAllByItemId(Long itemId);
 
     /** Used by saveDraftAnswers — replace-all pattern. */
     @Transactional
-    void deleteAllByEstimateRequestId(Long estimateRequestId);
+    void deleteAllByItemId(Long itemId);
 }

@@ -17,12 +17,10 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Admin-only safety valve for the estimate-request workflow.
+ * Admin-only safety valve for the per-item review workflow.
  *
- * <p>Today's only endpoint: send an Approved or Rejected request back
- * to Submitted so a different SO can re-review it. Lives on its own
- * controller (separate from {@link EstimateReviewController}'s
- * SOLUTION_OWNER gate) so the role check is unambiguous.
+ * <p>Phase 9b M3: send-back is now per-item. Only APPROVED items can be sent back
+ * to SUBMITTED; REJECTED items are handled by the requester via revise-and-resubmit or drop.
  */
 @RestController
 @RequestMapping("/api/estimates/admin")
@@ -33,13 +31,14 @@ public class EstimateAdminController {
     private final EstimateRequestService service;
     private final UserRepository userRepository;
 
-    @PostMapping("/{id}/send-back")
-    public EstimateRequestDetail sendBack(
-        @PathVariable Long id,
+    @PostMapping("/{requestId}/items/{itemId}/send-back")
+    public EstimateRequestDetail sendBackItem(
+        @PathVariable Long requestId,
+        @PathVariable Long itemId,
         @Valid @RequestBody SendBackRequest body,
         @AuthenticationPrincipal AppUserDetails principal
     ) {
-        return service.sendBack(id, body, currentUser(principal));
+        return service.sendBackItem(requestId, itemId, body, currentUser(principal));
     }
 
     private User currentUser(AppUserDetails principal) {

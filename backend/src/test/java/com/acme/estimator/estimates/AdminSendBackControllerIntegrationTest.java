@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -65,6 +64,7 @@ class AdminSendBackControllerIntegrationTest {
     @Autowired private MockMvc mvc;
     @Autowired private ObjectMapper json;
     @Autowired private EstimateRequestRepository requestRepository;
+    @Autowired private EstimateRequestItemRepository itemRepository;
     @Autowired private EstimateRequestPhaseLineRepository phaseLineRepository;
     @Autowired private EstimateRequestQuestionAnswerRepository answerRepository;
     @Autowired private ProductRepository productRepository;
@@ -113,6 +113,7 @@ class AdminSendBackControllerIntegrationTest {
     private void cleanAll() {
         phaseLineRepository.deleteAll();
         answerRepository.deleteAll();
+        itemRepository.deleteAll();
         requestRepository.deleteAll();
         templateLineRepository.deleteAll();
         templateRepository.deleteAll();
@@ -124,58 +125,65 @@ class AdminSendBackControllerIntegrationTest {
     }
 
     @Test
-    void adminSendBack_onApproved_returnsToSubmittedAndClearsReviewState() throws Exception {
+    void adminSendBackItem_onApproved_returnsToSubmittedAndClearsReviewState() throws Exception {
         Long approvedId = seedApprovedRequest();
-        // Confirm pre-state.
-        var pre = requestRepository.findById(approvedId).orElseThrow();
-        assertThat(pre.getStatus()).isEqualTo(EstimateStatus.APPROVED);
-        assertThat(pre.getComplexity()).isNotNull();
-        assertThat(pre.getJustification()).isNotBlank();
-        assertThat(pre.getApprovedBlendedRateId()).isNotNull();
+        Long itemId = firstItemId(approvedId);
 
-        // Also stamp an override to confirm send-back clears it.
+        EstimateRequestItem preItem = itemRepository.findById(itemId).orElseThrow();
+        assertThat(preItem.getStatus()).isEqualTo(EstimateStatus.APPROVED);
+        assertThat(preItem.getComplexity()).isNotNull();
+        assertThat(preItem.getJustification()).isNotBlank();
+        assertThat(preItem.getApprovedBlendedRateId()).isNotNull();
+
+        // Stamp an override to confirm send-back clears it.
         var lines = phaseLineRepository
-            .findAllByEstimateRequestIdOrderBySdlcPhaseDisplayOrderSnapshotAsc(approvedId);
+            .findAllByItemIdOrderBySdlcPhaseDisplayOrderSnapshotAsc(itemId);
         lines.get(0).setOnshoreOverride(new BigDecimal("99.00"));
         phaseLineRepository.saveAll(lines);
 
-        mvc.perform(asAdmin(post("/api/estimates/admin/" + approvedId + "/send-back"))
+        mvc.perform(asAdmin(post("/api/estimates/admin/" + approvedId
+                    + "/items/" + itemId + "/send-back"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(json.writeValueAsString(Map.of("reason", "Approved in error — needs re-look"))))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.status").value("SUBMITTED"))
-            .andExpect(jsonPath("$.reviewerId").doesNotExist())
-            .andExpect(jsonPath("$.complexity").doesNotExist())
-            .andExpect(jsonPath("$.justification").doesNotExist())
-            .andExpect(jsonPath("$.approvedBlendedRateId").doesNotExist());
+            .andExpect(jsonPath("$.items[0].status").value("SUBMITTED"))
+            .andExpect(jsonPath("$.items[0].reviewerId").doesNotExist())
+            .andExpect(jsonPath("$.items[0].complexity").doesNotExist())
+            .andExpect(jsonPath("$.items[0].justification").doesNotExist())
+            .andExpect(jsonPath("$.items[0].approvedBlendedRateId").doesNotExist());
 
-        // Override cleared too — the snapshot vs review-state distinction.
+        // Override cleared too.
         var afterLines = phaseLineRepository
-            .findAllByEstimateRequestIdOrderBySdlcPhaseDisplayOrderSnapshotAsc(approvedId);
+            .findAllByItemIdOrderBySdlcPhaseDisplayOrderSnapshotAsc(itemId);
         assertThat(afterLines.get(0).getOnshoreOverride()).isNull();
 
         long sentBackRows = changeLogRepository.findByEntityTypeAndEntityIdOrderByChangedAtDesc(
             EstimateRequest.ENTITY_TYPE, approvedId
-        ).stream().filter(r -> r.getAction() == ChangeAction.SENT_BACK).count();
+        ).stream().filter(r -> r.getAction() == ChangeAction.ITEM_SENT_BACK).count();
         assertThat(sentBackRows).isEqualTo(1);
     }
 
     @Test
-    void adminSendBack_onRejected_returnsToSubmitted() throws Exception {
+    void adminSendBackItem_onRejected_returns409() throws Exception {
         Long rejectedId = seedRejectedRequest();
+        Long itemId = firstItemId(rejectedId);
 
-        mvc.perform(asAdmin(post("/api/estimates/admin/" + rejectedId + "/send-back"))
+        // Phase 9b: only APPROVED items can be sent back; REJECTED items are for the requester to handle.
+        mvc.perform(asAdmin(post("/api/estimates/admin/" + rejectedId
+                    + "/items/" + itemId + "/send-back"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(json.writeValueAsString(Map.of("reason", "Reconsider"))))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.status").value("SUBMITTED"));
+            .andExpect(status().isConflict())
+            .andExpect(jsonPath("$.error").value("INVALID_STATE"));
     }
 
     @Test
-    void adminSendBack_onSubmitted_returns409() throws Exception {
+    void adminSendBackItem_onSubmitted_returns409() throws Exception {
         Long submittedId = seedSubmittedRequest();
+        Long itemId = firstItemId(submittedId);
 
-        mvc.perform(asAdmin(post("/api/estimates/admin/" + submittedId + "/send-back"))
+        mvc.perform(asAdmin(post("/api/estimates/admin/" + submittedId
+                    + "/items/" + itemId + "/send-back"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(json.writeValueAsString(Map.of("reason", "Whoops"))))
             .andExpect(status().isConflict())
@@ -183,9 +191,11 @@ class AdminSendBackControllerIntegrationTest {
     }
 
     @Test
-    void soCallingSendBack_returns403() throws Exception {
+    void soCallingSendBackItem_returns403() throws Exception {
         Long approvedId = seedApprovedRequest();
-        mvc.perform(post("/api/estimates/admin/" + approvedId + "/send-back")
+        Long itemId = firstItemId(approvedId);
+        mvc.perform(post("/api/estimates/admin/" + approvedId
+                    + "/items/" + itemId + "/send-back")
                 .with(user(so)).with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(json.writeValueAsString(Map.of("reason", "Should be denied"))))
@@ -193,9 +203,11 @@ class AdminSendBackControllerIntegrationTest {
     }
 
     @Test
-    void sendBackWithoutReason_returns400() throws Exception {
+    void sendBackItemWithoutReason_returns400() throws Exception {
         Long approvedId = seedApprovedRequest();
-        mvc.perform(asAdmin(post("/api/estimates/admin/" + approvedId + "/send-back"))
+        Long itemId = firstItemId(approvedId);
+        mvc.perform(asAdmin(post("/api/estimates/admin/" + approvedId
+                    + "/items/" + itemId + "/send-back"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(json.writeValueAsString(Map.of("reason", ""))))
             .andExpect(status().isBadRequest());
@@ -217,10 +229,11 @@ class AdminSendBackControllerIntegrationTest {
 
     private Long seedApprovedRequest() throws Exception {
         Long submittedId = seedSubmittedRequest();
-        mvc.perform(post("/api/estimates/review/" + submittedId + "/start")
+        Long itemId = firstItemId(submittedId);
+        mvc.perform(post("/api/estimates/review/" + submittedId + "/items/" + itemId + "/start")
                 .with(user(so)).with(csrf()))
             .andExpect(status().isOk());
-        mvc.perform(put("/api/estimates/review/" + submittedId + "/state")
+        mvc.perform(post("/api/estimates/review/" + submittedId + "/items/" + itemId + "/approve")
                 .with(user(so)).with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(json.writeValueAsString(Map.of(
@@ -228,27 +241,33 @@ class AdminSendBackControllerIntegrationTest {
                     "justification", "Looks reasonable"
                 ))))
             .andExpect(status().isOk());
-        mvc.perform(post("/api/estimates/review/" + submittedId + "/approve")
-                .with(user(so)).with(csrf()))
-            .andExpect(status().isOk());
         return submittedId;
     }
 
     private Long seedRejectedRequest() throws Exception {
         Long submittedId = seedSubmittedRequest();
-        mvc.perform(post("/api/estimates/review/" + submittedId + "/start")
+        Long itemId = firstItemId(submittedId);
+        mvc.perform(post("/api/estimates/review/" + submittedId + "/items/" + itemId + "/start")
                 .with(user(so)).with(csrf()))
             .andExpect(status().isOk());
-        mvc.perform(post("/api/estimates/review/" + submittedId + "/reject")
+        mvc.perform(post("/api/estimates/review/" + submittedId + "/items/" + itemId + "/reject")
                 .with(user(so)).with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(json.writeValueAsString(Map.of("justification", "Insufficient detail"))))
+                .content(json.writeValueAsString(Map.of("rejectionReason", "Insufficient detail"))))
             .andExpect(status().isOk());
         return submittedId;
     }
 
+    private Long firstItemId(Long requestId) {
+        return itemRepository
+            .findByEstimateRequestIdOrderByDisplayOrderAsc(requestId)
+            .get(0).getId();
+    }
+
     private Long createDraft(String title, Long productId) throws Exception {
-        String body = json.writeValueAsString(Map.of("title", title, "productId", productId));
+        String body = json.writeValueAsString(
+            Map.of("title", title, "items", List.of(Map.of("productId", productId)))
+        );
         String resp = mvc.perform(post("/api/estimates/my")
                 .with(user(requester)).with(csrf())
                 .contentType(MediaType.APPLICATION_JSON).content(body))

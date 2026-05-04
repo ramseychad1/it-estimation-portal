@@ -1,6 +1,7 @@
 import { api } from "../api";
 import type { PageResponse } from "./users";
 
+// Item-level stored status (on each estimate_request_item)
 export type EstimateStatus =
   | "DRAFT"
   | "SUBMITTED"
@@ -10,14 +11,15 @@ export type EstimateStatus =
 
 export type Complexity = "LOW" | "MED" | "HIGH";
 
+// Updated: replaces old flat fields with derived multi-product fields
 export interface EstimateRequestListItem {
   id: number;
   title: string;
-  productId: number;
-  productName: string;
-  subFeatureId: number | null;
-  subFeatureName: string | null;
-  status: EstimateStatus;
+  /** Derived from items: DRAFT / SUBMITTED / IN_REVIEW / PARTIALLY_APPROVED / APPROVED / NEEDS_REVISION */
+  derivedStatus: string;
+  itemCount: number;
+  /** Comma-joined display string, e.g. "Member Portal, Provider · Login" */
+  productNames: string;
   submittedAt: string | null;
   updatedAt: string | null;
   createdAt: string | null;
@@ -33,9 +35,7 @@ export interface EstimateRequestPhaseLineView {
   offshoreLow: number;
   offshoreMed: number;
   offshoreHigh: number;
-  /** Phase 6b — null in 6a. */
   onshoreOverride: number | null;
-  /** Phase 6b — null in 6a. */
   offshoreOverride: number | null;
 }
 
@@ -48,41 +48,59 @@ export interface EstimateRequestAnswerView {
 
 export type ReviewerStatus = "you" | "other-so" | "unclaimed";
 
-export interface EstimateRequestDetail {
+// New: per-item DTO
+export interface EstimateRequestItemDto {
   id: number;
-  title: string;
-  description: string | null;
   productId: number;
   productName: string;
-  teamName: string | null;
   subFeatureId: number | null;
   subFeatureName: string | null;
+  teamName: string | null;
   templateId: number | null;
   templateVersionNumber: number | null;
-  complexity: Complexity | null;
   status: EstimateStatus;
-  requesterId: number;
+  complexity: Complexity | null;
   reviewerId: number | null;
-  /** Display name of the reviewer; null when unclaimed. */
   reviewerName: string | null;
-  /** Per-actor relationship to the current reviewer — see backend DTO. */
   reviewerStatus: ReviewerStatus;
   justification: string | null;
   submittedAt: string | null;
   reviewedAt: string | null;
-  /** Snapshot of the blended-rate id at approval time (Phase 6b). */
   approvedBlendedRateId: number | null;
-  createdAt: string | null;
-  updatedAt: string | null;
+  displayOrder: number;
   phaseLines: EstimateRequestPhaseLineView[];
   answers: EstimateRequestAnswerView[];
+  rejectionReason: string | null;
+  revisionCount: number;
+  originalProductId: number | null;
+  originalProductName: string | null;
+  isReviewable: boolean;
 }
 
-export interface CreateDraftRequest {
+// Updated: parent-level detail with items[]
+export interface EstimateRequestDetail {
+  id: number;
   title: string;
+  description: string | null;
+  requesterId: number;
+  /** Derived from items: DRAFT / SUBMITTED / IN_REVIEW / PARTIALLY_APPROVED / APPROVED / NEEDS_REVISION */
+  derivedStatus: string;
+  createdAt: string | null;
+  updatedAt: string | null;
+  items: EstimateRequestItemDto[];
+}
+
+// For creating a new item in the draft
+export interface CreateItemRequest {
   productId: number;
   subFeatureId?: number | null;
+}
+
+// Updated: items array instead of flat productId/subFeatureId
+export interface CreateDraftRequest {
+  title: string;
   description?: string | null;
+  items: CreateItemRequest[];
 }
 
 export interface UpdateDraftRequest {
@@ -100,7 +118,7 @@ export interface SaveAnswersRequest {
 }
 
 export interface ListMyRequestsParams {
-  status?: EstimateStatus;
+  status?: string;
   search?: string;
   page?: number;
   size?: number;
@@ -141,11 +159,21 @@ export function discardDraft(id: number): Promise<void> {
   return api(`/estimates/my/${id}`, { method: "DELETE" });
 }
 
+// Backward-compat: saves to items[0]. Use saveDraftItemAnswers for per-item control.
 export function saveDraftAnswers(
   id: number,
   body: SaveAnswersRequest,
 ): Promise<EstimateRequestDetail> {
   return api(`/estimates/my/${id}/answers`, { method: "PUT", body });
+}
+
+// Per-item answer save (Phase 9a).
+export function saveDraftItemAnswers(
+  id: number,
+  itemId: number,
+  body: SaveAnswersRequest,
+): Promise<EstimateRequestDetail> {
+  return api(`/estimates/my/${id}/items/${itemId}/answers`, { method: "PUT", body });
 }
 
 export function submitRequest(id: number): Promise<EstimateRequestDetail> {
@@ -165,4 +193,24 @@ export interface EstimateRequestHistoryItem {
 
 export function listMyRequestHistory(id: number): Promise<EstimateRequestHistoryItem[]> {
   return api(`/estimates/my/${id}/history`);
+}
+
+// ---- Per-item requester revision actions (Phase 9b) ------------------
+
+export interface ReviseAndResubmitRequest {
+  productId?: number | null;
+  subFeatureId?: number | null;
+  answers?: AnswerInput[];
+}
+
+export function reviseAndResubmitItem(
+  id: number,
+  itemId: number,
+  body: ReviseAndResubmitRequest,
+): Promise<EstimateRequestDetail> {
+  return api(`/estimates/my/${id}/items/${itemId}/revise-and-resubmit`, { method: "POST", body });
+}
+
+export function dropItem(id: number, itemId: number): Promise<void> {
+  return api(`/estimates/my/${id}/items/${itemId}`, { method: "DELETE" });
 }

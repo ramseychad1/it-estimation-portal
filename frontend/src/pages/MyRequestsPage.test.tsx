@@ -10,7 +10,7 @@ vi.stubGlobal("fetch", fetchMock);
 interface MockRequest {
   id: number;
   title: string;
-  status: "DRAFT" | "SUBMITTED" | "IN_REVIEW" | "APPROVED" | "REJECTED";
+  status: "DRAFT" | "SUBMITTED" | "IN_REVIEW" | "APPROVED" | "REJECTED" | "NEEDS_REVISION" | "PARTIALLY_APPROVED";
   productName: string;
   subFeatureName: string | null;
   submittedAt: string | null;
@@ -36,11 +36,11 @@ function listResponse(items: MockRequest[]) {
   const mapped = items.map((r) => ({
     id: r.id,
     title: r.title,
-    productId: 1,
-    productName: r.productName,
-    subFeatureId: r.subFeatureName ? 1 : null,
-    subFeatureName: r.subFeatureName,
-    status: r.status,
+    derivedStatus: r.status,
+    itemCount: 1,
+    productNames: r.subFeatureName
+      ? `${r.productName} · ${r.subFeatureName}`
+      : r.productName,
     submittedAt: r.submittedAt,
     updatedAt: r.updatedAt,
     createdAt: r.createdAt,
@@ -147,6 +147,24 @@ describe("<MyRequestsPage>", () => {
     // EstimateDetailPage isn't mounted here — we just assert the row is
     // clickable (a true navigation test lives in the smoke test).
     expect(state.discarded).toEqual([]);
+  });
+
+  it("NEEDS_REVISION row kebab shows Discard (requester can discard to start over)", async () => {
+    state.requests = [
+      {
+        id: 15, title: "Rejected Item Request", status: "NEEDS_REVISION", productName: "P",
+        subFeatureName: null, submittedAt: "2026-04-20T00:00:00Z",
+        updatedAt: "2026-04-25T00:00:00Z", createdAt: "2026-04-18T00:00:00Z",
+      },
+    ];
+    renderWithProviders(<MyRequestsPage />);
+    const user = userEvent.setup();
+
+    await screen.findByText("Rejected Item Request");
+    await user.click(screen.getByRole("button", { name: /Row actions/i }));
+
+    // Discard should be present for NEEDS_REVISION.
+    expect(await screen.findByRole("menuitem", { name: /Discard/i })).toBeInTheDocument();
   });
 
   it("kebab → Discard on a Draft fires DELETE after confirmation", async () => {

@@ -26,7 +26,9 @@ export type StatusBadgeVariant =
   // Cardinal Red, none of which the original variants give us.
   | "in-review"
   | "approved"
-  | "rejected";
+  | "rejected"
+  | "partially-approved"
+  | "needs-revision";
 
 interface StatusBadgeProps {
   variant: StatusBadgeVariant;
@@ -98,6 +100,16 @@ const VARIANT_STYLES: Record<StatusBadgeVariant, React.CSSProperties> = {
     color: "var(--color-cardinal-red)",
     borderColor: "var(--color-cardinal-red)",
   },
+  "partially-approved": {
+    background: "var(--color-warm-gray-light)",
+    color: "var(--color-warning)",
+    borderColor: "var(--color-border-strong)",
+  },
+  "needs-revision": {
+    background: "rgba(228, 31, 53, 0.05)",
+    color: "var(--color-cardinal-red)",
+    borderColor: "rgba(228, 31, 53, 0.3)",
+  },
 };
 
 /**
@@ -113,9 +125,11 @@ export function estimateStatusBadge(status: string): {
     case "DRAFT":     return { variant: "neutral",   label: "Draft" };
     case "SUBMITTED": return { variant: "active",    label: "Submitted" };
     case "IN_REVIEW": return { variant: "in-review", label: "In review" };
-    case "APPROVED":  return { variant: "approved",  label: "Approved" };
-    case "REJECTED":  return { variant: "rejected",  label: "Rejected" };
-    default:          return { variant: "neutral",   label: status };
+    case "APPROVED":           return { variant: "approved",           label: "Approved" };
+    case "REJECTED":           return { variant: "rejected",           label: "Rejected" };
+    case "PARTIALLY_APPROVED": return { variant: "partially-approved", label: "Partially approved" };
+    case "NEEDS_REVISION":     return { variant: "needs-revision",     label: "Needs revision" };
+    default:                   return { variant: "neutral",            label: status };
   }
 }
 

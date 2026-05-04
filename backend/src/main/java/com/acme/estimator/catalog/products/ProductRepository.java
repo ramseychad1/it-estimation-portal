@@ -21,4 +21,12 @@ public interface ProductRepository
     /** Reporting: active products owned by a specific team. */
     @Query("SELECT p FROM Product p WHERE p.team.id = :teamId AND p.active = true ORDER BY p.name")
     List<Product> findActiveByTeamId(@Param("teamId") Long teamId);
+
+    /** Review queue team-scoping: product IDs whose team is in the given set. */
+    @Query("SELECT p.id FROM Product p WHERE p.team.id IN :teamIds")
+    java.util.Set<Long> findIdsByTeamIdIn(@Param("teamIds") java.util.Set<Long> teamIds);
+
+    /** Review queue team-scoping: product IDs with no assigned team (permissive — any SO can review). */
+    @Query("SELECT p.id FROM Product p WHERE p.team IS NULL")
+    java.util.Set<Long> findIdsWithNullTeam();
 }

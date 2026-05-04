@@ -1,19 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  approveReview,
+  approveItem,
   getReviewDetail,
   listReviewQueue,
-  rejectReview,
-  releaseReview,
-  saveReviewState,
-  sendBack,
-  startReview,
+  rejectItem,
+  releaseItemReview,
+  sendBackItem,
+  startItemReview,
+  type ApproveItemRequest,
   type ListReviewQueueParams,
-  type RejectRequest,
-  type SaveReviewStateRequest,
+  type RejectItemRequest,
   type SendBackRequest,
 } from "../api/reviews";
-import type { EstimateRequestDetail } from "../api/estimates";
 
 const REVIEWS_KEY = ["reviews"] as const;
 const ESTIMATES_KEY = ["estimates"] as const;
@@ -56,84 +54,70 @@ function invalidateAfterTransition(
   qc.invalidateQueries({ queryKey: detailKey(id) });
 }
 
-export function useStartReviewMutation() {
+// ---- Per-item mutations (Phase 9b) ------------------------------------
+
+export function useStartItemReviewMutation() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: number) => startReview(id),
-    onSuccess: (_data, id) => invalidateAfterTransition(qc, id),
+    mutationFn: ({ requestId, itemId }: { requestId: number; itemId: number }) =>
+      startItemReview(requestId, itemId),
+    onSuccess: (_data, { requestId }) => invalidateAfterTransition(qc, requestId),
   });
 }
 
-export function useReleaseReviewMutation() {
+export function useReleaseItemReviewMutation() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: number) => releaseReview(id),
-    onSuccess: (_data, id) => invalidateAfterTransition(qc, id),
+    mutationFn: ({ requestId, itemId }: { requestId: number; itemId: number }) =>
+      releaseItemReview(requestId, itemId),
+    onSuccess: (_data, { requestId }) => invalidateAfterTransition(qc, requestId),
   });
 }
 
-/**
- * Autosave mutation with optimistic cache updates. The page debounces
- * inputs upstream (1s); this hook just fires the PUT and rolls back on
- * error so the form stays consistent with what the server accepted.
- */
-export function useSaveReviewStateMutation() {
+export function useApproveItemMutation() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, body }: { id: number; body: SaveReviewStateRequest }) =>
-      saveReviewState(id, body),
-    onMutate: async ({ id, body }) => {
-      // Snapshot for rollback. Optimistically merge the new fields into
-      // the cached detail so the UI stays in sync without waiting for
-      // the response. Per-line overrides aren't merged optimistically —
-      // computing the resulting line state here duplicates server logic
-      // and the autosave round-trip is fast enough that a brief lag is
-      // acceptable. Top-level fields are simple property writes.
-      await qc.cancelQueries({ queryKey: detailKey(id) });
-      const prev = qc.getQueryData<EstimateRequestDetail>(detailKey(id));
-      if (prev) {
-        qc.setQueryData<EstimateRequestDetail>(detailKey(id), {
-          ...prev,
-          complexity: body.complexity !== undefined ? body.complexity : prev.complexity,
-          justification:
-            body.justification !== undefined ? body.justification : prev.justification,
-        });
-      }
-      return { prev };
-    },
-    onError: (_err, { id }, ctx) => {
-      if (ctx?.prev) qc.setQueryData(detailKey(id), ctx.prev);
-    },
-    onSettled: (_data, _err, { id }) => {
-      // Final reconciliation with server state. No broad estimates
-      // invalidation — autosaves don't change list-shape data.
-      qc.invalidateQueries({ queryKey: detailKey(id) });
-    },
+    mutationFn: ({
+      requestId,
+      itemId,
+      body,
+    }: {
+      requestId: number;
+      itemId: number;
+      body: ApproveItemRequest;
+    }) => approveItem(requestId, itemId, body),
+    onSuccess: (_data, { requestId }) => invalidateAfterTransition(qc, requestId),
   });
 }
 
-export function useApproveReviewMutation() {
+export function useRejectItemMutation() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: number) => approveReview(id),
-    onSuccess: (_data, id) => invalidateAfterTransition(qc, id),
+    mutationFn: ({
+      requestId,
+      itemId,
+      body,
+    }: {
+      requestId: number;
+      itemId: number;
+      body: RejectItemRequest;
+    }) => rejectItem(requestId, itemId, body),
+    onSuccess: (_data, { requestId }) => invalidateAfterTransition(qc, requestId),
   });
 }
 
-export function useRejectReviewMutation() {
+export function useSendBackItemMutation() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, body }: { id: number; body: RejectRequest }) =>
-      rejectReview(id, body),
-    onSuccess: (_data, { id }) => invalidateAfterTransition(qc, id),
-  });
-}
-
-export function useSendBackMutation() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, body }: { id: number; body: SendBackRequest }) =>
-      sendBack(id, body),
-    onSuccess: (_data, { id }) => invalidateAfterTransition(qc, id),
+    mutationFn: ({
+      requestId,
+      itemId,
+      body,
+    }: {
+      requestId: number;
+      itemId: number;
+      body: SendBackRequest;
+    }) => sendBackItem(requestId, itemId, body),
+    onSuccess: (_data, { requestId }) => invalidateAfterTransition(qc, requestId),
   });
 }

@@ -5,7 +5,6 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -49,13 +48,11 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
 /**
- * Cases pinned by the Phase 6b prompt for the Reviewer surface
- * ({@code /api/estimates/review/*}). Admin send-back lives in
- * {@link AdminSendBackControllerIntegrationTest}.
+ * Phase 9b per-item review endpoints ({@code /api/estimates/review/*}).
  *
- * <p>Test-cleanup convention: see {@link EstimateRequestServiceSnapshotTest}
- * — RESTRICT FKs from {@code estimate_requests} mean we tear down our own
- * rows in {@code @AfterEach}. Same pattern as the other 6a/6b tests.
+ * <p>Actions are now scoped to {@code /{requestId}/items/{itemId}/action}.
+ * The old request-level action endpoints (/{id}/start etc.) are removed.
+ * Admin send-back lives in {@link AdminSendBackControllerIntegrationTest}.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -65,6 +62,7 @@ class EstimateReviewControllerIntegrationTest {
     @Autowired private MockMvc mvc;
     @Autowired private ObjectMapper json;
     @Autowired private EstimateRequestRepository requestRepository;
+    @Autowired private EstimateRequestItemRepository itemRepository;
     @Autowired private EstimateRequestPhaseLineRepository phaseLineRepository;
     @Autowired private EstimateRequestQuestionAnswerRepository answerRepository;
     @Autowired private ProductRepository productRepository;
@@ -79,11 +77,11 @@ class EstimateReviewControllerIntegrationTest {
     @Autowired private PasswordEncoder passwordEncoder;
     @PersistenceContext private EntityManager em;
 
-    private AppUserDetails so1;       // primary SO who claims requests
-    private AppUserDetails so2;       // second SO for race-condition cases
-    private AppUserDetails requester; // creates Drafts, has no SO role
-    private AppUserDetails admin;     // Phase 7.5: now SO-equivalent via implication
-    private AppUserDetails requesterOnly; // the new "no access to /review" fixture
+    private AppUserDetails so1;
+    private AppUserDetails so2;
+    private AppUserDetails requester;
+    private AppUserDetails admin;
+    private AppUserDetails requesterOnly;
 
     private Long seededRateId;
 
@@ -96,8 +94,6 @@ class EstimateReviewControllerIntegrationTest {
         admin = new AppUserDetails(userRepository.findByEmailIgnoreCase("admin@local").orElseThrow());
         requesterOnly = new AppUserDetails(ensureUserWithRoles("requester-only-review-test@local", "Req", "Only", "Requester"));
 
-        // A blended-rate row so approve() can snapshot one. The dev seed
-        // doesn't set one in tests; create our own.
         BlendedRate rate = new BlendedRate();
         rate.setOnshoreRate(new BigDecimal("125.00"));
         rate.setOffshoreRate(new BigDecimal("45.00"));
@@ -123,6 +119,7 @@ class EstimateReviewControllerIntegrationTest {
     private void cleanAll() {
         phaseLineRepository.deleteAll();
         answerRepository.deleteAll();
+        itemRepository.deleteAll();
         requestRepository.deleteAll();
         templateLineRepository.deleteAll();
         templateRepository.deleteAll();
@@ -142,10 +139,6 @@ class EstimateReviewControllerIntegrationTest {
 
     @Test
     void nonSO_nonAdmin_returns403() throws Exception {
-        // Phase 7.5: the /review endpoints now allow ADMIN OR SO. The 403
-        // path is a Requester-only user (no Admin, no SO). Admin without
-        // SO can hit the queue via the implication — see {@link
-        // adminOnly_canListReviewQueue}.
         mvc.perform(get("/api/estimates/review").with(user(requesterOnly)))
             .andExpect(status().isForbidden());
     }
@@ -160,50 +153,41 @@ class EstimateReviewControllerIntegrationTest {
 
     @Test
     void queue_listsSubmittedAndInReview_excludesDraftsAndApproved() throws Exception {
-        // Three requests in different states.
         var ctx = seedSubmittedRequest("Q1");
-        // ctx.requestId is Submitted. Create another and leave Draft.
         Long draftId = createDraft("Drafted", ctx.product.getId(), null);
-        // Create a third, submit it, then start + approve to land Approved.
+
+        // Create, submit, and fully approve a third request
         Long approvedId = createDraft("Approved", ctx.product.getId(), null);
         mvc.perform(asRequester(post("/api/estimates/my/" + approvedId + "/submit")))
             .andExpect(status().isOk());
-        mvc.perform(asSO1(post("/api/estimates/review/" + approvedId + "/start")))
+        Long approvedItemId = firstItemId(approvedId);
+        mvc.perform(asSO1(post("/api/estimates/review/" + approvedId + "/items/" + approvedItemId + "/start")))
             .andExpect(status().isOk());
-        // Set complexity + justification then approve.
-        mvc.perform(asSO1(put("/api/estimates/review/" + approvedId + "/state"))
+        mvc.perform(asSO1(post("/api/estimates/review/" + approvedId + "/items/" + approvedItemId + "/approve"))
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(json.writeValueAsString(Map.of(
-                    "complexity", "MED",
-                    "justification", "Looks good"
-                ))))
-            .andExpect(status().isOk());
-        mvc.perform(asSO1(post("/api/estimates/review/" + approvedId + "/approve")))
+                .content(json.writeValueAsString(Map.of("complexity", "MED", "justification", "OK"))))
             .andExpect(status().isOk());
 
-        // Queue should show Q1 (Submitted) + the approvedId (now NOT in scope) — wait, approved should be excluded.
-        // After the dance above: ctx.requestId is SUBMITTED, approvedId is APPROVED, draftId is DRAFT.
+        // Queue: Q1 (Submitted). Draft and Approved are excluded.
         mvc.perform(asSO1(get("/api/estimates/review")))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.totalElements").value(1))
             .andExpect(jsonPath("$.items[0].id").value(ctx.requestId));
 
-        // draftId never escapes the requester surface — defensive sanity check.
-        assertThat(requestRepository.findById(draftId).orElseThrow().getStatus())
-            .isEqualTo(EstimateStatus.DRAFT);
+        EstimateRequestItem draftItem = itemRepository
+            .findByEstimateRequestIdOrderByDisplayOrderAsc(draftId).get(0);
+        assertThat(draftItem.getStatus()).isEqualTo(EstimateStatus.DRAFT);
     }
 
     @Test
     void queue_mineOnly_returnsOnlyClaimedByCaller() throws Exception {
-        // Seed catalog context once; create two requests against it.
-        // seedPhase enforces unique phase names, so we can't call
-        // seedSubmittedRequest twice (each call would re-seed Discovery).
         AtomicCtx ctx = seedAtomicProductContext();
         Long aId = submitDraft(ctx, "Mine");
         Long bId = submitDraft(ctx, "Theirs");
-        mvc.perform(asSO1(post("/api/estimates/review/" + aId + "/start")))
+
+        mvc.perform(asSO1(post("/api/estimates/review/" + aId + "/items/" + firstItemId(aId) + "/start")))
             .andExpect(status().isOk());
-        mvc.perform(asSO2(post("/api/estimates/review/" + bId + "/start")))
+        mvc.perform(asSO2(post("/api/estimates/review/" + bId + "/items/" + firstItemId(bId) + "/start")))
             .andExpect(status().isOk());
 
         mvc.perform(asSO1(get("/api/estimates/review").param("mineOnly", "true")))
@@ -237,39 +221,39 @@ class EstimateReviewControllerIntegrationTest {
         var ctx = seedSubmittedRequest("Ready");
         mvc.perform(asSO1(get("/api/estimates/review/" + ctx.requestId)))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.status").value("SUBMITTED"))
-            .andExpect(jsonPath("$.phaseLines.length()").value(1))
-            .andExpect(jsonPath("$.reviewerStatus").value("unclaimed"));
+            .andExpect(jsonPath("$.items[0].status").value("SUBMITTED"))
+            .andExpect(jsonPath("$.items[0].phaseLines.length()").value(1))
+            .andExpect(jsonPath("$.items[0].reviewerStatus").value("unclaimed"));
     }
 
-    // ---- startReview -------------------------------------------------------
+    // ---- startItemReview ---------------------------------------------------
 
     @Test
-    void startReview_onSubmitted_succeedsAndWritesAuditRow() throws Exception {
+    void startItemReview_onSubmitted_succeedsAndWritesAuditRow() throws Exception {
         var ctx = seedSubmittedRequest("Claim Test");
 
-        mvc.perform(asSO1(post("/api/estimates/review/" + ctx.requestId + "/start")))
+        mvc.perform(asSO1(post("/api/estimates/review/" + ctx.requestId + "/items/" + ctx.itemId + "/start")))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.status").value("IN_REVIEW"))
-            .andExpect(jsonPath("$.reviewerId").value(so1.getUserId()))
-            .andExpect(jsonPath("$.reviewerStatus").value("you"));
+            .andExpect(jsonPath("$.items[0].status").value("IN_REVIEW"))
+            .andExpect(jsonPath("$.items[0].reviewerId").value(so1.getUserId()))
+            .andExpect(jsonPath("$.items[0].reviewerStatus").value("you"));
 
         long startedRows = changeLogRepository
             .findByEntityTypeAndEntityIdOrderByChangedAtDesc(
                 EstimateRequest.ENTITY_TYPE, ctx.requestId
             ).stream()
-            .filter(r -> r.getAction() == ChangeAction.REVIEW_STARTED)
+            .filter(r -> r.getAction() == ChangeAction.ITEM_REVIEW_STARTED)
             .count();
         assertThat(startedRows).isEqualTo(1);
     }
 
     @Test
-    void startReview_byOtherSO_returns409WithReviewerName() throws Exception {
+    void startItemReview_byOtherSO_returns409WithReviewerName() throws Exception {
         var ctx = seedSubmittedRequest("Race");
-        mvc.perform(asSO1(post("/api/estimates/review/" + ctx.requestId + "/start")))
+        mvc.perform(asSO1(post("/api/estimates/review/" + ctx.requestId + "/items/" + ctx.itemId + "/start")))
             .andExpect(status().isOk());
 
-        mvc.perform(asSO2(post("/api/estimates/review/" + ctx.requestId + "/start")))
+        mvc.perform(asSO2(post("/api/estimates/review/" + ctx.requestId + "/items/" + ctx.itemId + "/start")))
             .andExpect(status().isConflict())
             .andExpect(jsonPath("$.error").value("ALREADY_IN_REVIEW"))
             .andExpect(jsonPath("$.message")
@@ -277,158 +261,125 @@ class EstimateReviewControllerIntegrationTest {
     }
 
     @Test
-    void startReview_bySameSO_isIdempotent() throws Exception {
+    void startItemReview_bySameSO_isIdempotent() throws Exception {
         var ctx = seedSubmittedRequest("Idempotent");
-        mvc.perform(asSO1(post("/api/estimates/review/" + ctx.requestId + "/start")))
+        mvc.perform(asSO1(post("/api/estimates/review/" + ctx.requestId + "/items/" + ctx.itemId + "/start")))
             .andExpect(status().isOk());
-        // Second call by SO1 returns 200 with no new audit row.
+
         long beforeRows = changeLogRepository
             .findByEntityTypeAndEntityIdOrderByChangedAtDesc(
                 EstimateRequest.ENTITY_TYPE, ctx.requestId
             ).stream()
-            .filter(r -> r.getAction() == ChangeAction.REVIEW_STARTED)
+            .filter(r -> r.getAction() == ChangeAction.ITEM_REVIEW_STARTED)
             .count();
-        mvc.perform(asSO1(post("/api/estimates/review/" + ctx.requestId + "/start")))
+
+        mvc.perform(asSO1(post("/api/estimates/review/" + ctx.requestId + "/items/" + ctx.itemId + "/start")))
             .andExpect(status().isOk());
+
         long afterRows = changeLogRepository
             .findByEntityTypeAndEntityIdOrderByChangedAtDesc(
                 EstimateRequest.ENTITY_TYPE, ctx.requestId
             ).stream()
-            .filter(r -> r.getAction() == ChangeAction.REVIEW_STARTED)
+            .filter(r -> r.getAction() == ChangeAction.ITEM_REVIEW_STARTED)
             .count();
         assertThat(afterRows).isEqualTo(beforeRows);
     }
 
-    // ---- releaseReview -----------------------------------------------------
+    // ---- releaseItemReview -------------------------------------------------
 
     @Test
-    void releaseReview_byReviewer_succeedsAndClearsClaim() throws Exception {
+    void releaseItemReview_byReviewer_succeedsAndClearsClaim() throws Exception {
         var ctx = seedInReviewRequest("Release", so1);
-        mvc.perform(asSO1(post("/api/estimates/review/" + ctx.requestId + "/release")))
+        mvc.perform(asSO1(post("/api/estimates/review/" + ctx.requestId + "/items/" + ctx.itemId + "/release")))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.status").value("SUBMITTED"))
-            .andExpect(jsonPath("$.reviewerId").doesNotExist());
+            .andExpect(jsonPath("$.items[0].status").value("SUBMITTED"))
+            .andExpect(jsonPath("$.items[0].reviewerId").doesNotExist());
     }
 
     @Test
-    void releaseReview_byOtherSO_returns403NotTheReviewer() throws Exception {
+    void releaseItemReview_byOtherSO_returns403NotTheReviewer() throws Exception {
         var ctx = seedInReviewRequest("WrongSO", so1);
-        mvc.perform(asSO2(post("/api/estimates/review/" + ctx.requestId + "/release")))
+        mvc.perform(asSO2(post("/api/estimates/review/" + ctx.requestId + "/items/" + ctx.itemId + "/release")))
             .andExpect(status().isForbidden())
             .andExpect(jsonPath("$.error").value("NOT_THE_REVIEWER"));
     }
 
-    // ---- saveReviewState ---------------------------------------------------
+    // ---- approveItem -------------------------------------------------------
 
     @Test
-    void saveReviewState_byReviewer_persistsAndWritesNoAuditRow() throws Exception {
-        var ctx = seedInReviewRequest("State", so1);
-        long beforeAudit = changeLogRepository.findByEntityTypeAndEntityIdOrderByChangedAtDesc(
-            EstimateRequest.ENTITY_TYPE, ctx.requestId
-        ).size();
+    void approveItem_happyPath_setsBlendedRateSnapshotAndReviewedAt() throws Exception {
+        var ctx = seedInReviewRequest("Happy", so1);
 
-        mvc.perform(asSO1(put("/api/estimates/review/" + ctx.requestId + "/state"))
+        mvc.perform(asSO1(post("/api/estimates/review/" + ctx.requestId + "/items/" + ctx.itemId + "/approve"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(json.writeValueAsString(Map.of(
                     "complexity", "MED",
-                    "justification", "Reviewing"
+                    "justification", "Validated answers; mid-complexity is correct"
                 ))))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.complexity").value("MED"))
-            .andExpect(jsonPath("$.justification").value("Reviewing"));
+            .andExpect(jsonPath("$.items[0].status").value("APPROVED"))
+            .andExpect(jsonPath("$.items[0].complexity").value("MED"))
+            .andExpect(jsonPath("$.items[0].approvedBlendedRateId").value(seededRateId))
+            .andExpect(jsonPath("$.items[0].reviewedAt").exists());
 
-        long afterAudit = changeLogRepository.findByEntityTypeAndEntityIdOrderByChangedAtDesc(
+        long approvedRows = changeLogRepository.findByEntityTypeAndEntityIdOrderByChangedAtDesc(
             EstimateRequest.ENTITY_TYPE, ctx.requestId
-        ).size();
-        assertThat(afterAudit).isEqualTo(beforeAudit);
+        ).stream().filter(r -> r.getAction() == ChangeAction.ITEM_APPROVED).count();
+        assertThat(approvedRows).isEqualTo(1);
     }
 
     @Test
-    void saveReviewState_onSubmitted_returns409() throws Exception {
+    void approveItem_withoutComplexity_returns400() throws Exception {
+        var ctx = seedInReviewRequest("NoComplexity", so1);
+        mvc.perform(asSO1(post("/api/estimates/review/" + ctx.requestId + "/items/" + ctx.itemId + "/approve"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{}"))
+            .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void approveItem_onSubmittedItem_returns409() throws Exception {
         var ctx = seedSubmittedRequest("State on submitted");
-        mvc.perform(asSO1(put("/api/estimates/review/" + ctx.requestId + "/state"))
+        mvc.perform(asSO1(post("/api/estimates/review/" + ctx.requestId + "/items/" + ctx.itemId + "/approve"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(json.writeValueAsString(Map.of("complexity", "MED"))))
             .andExpect(status().isConflict())
             .andExpect(jsonPath("$.error").value("INVALID_STATE"));
     }
 
-    // ---- approve -----------------------------------------------------------
+    // ---- rejectItem --------------------------------------------------------
 
     @Test
-    void approve_withoutComplexity_returns400() throws Exception {
-        var ctx = seedInReviewRequest("NoComplexity", so1);
-        // Set justification only.
-        mvc.perform(asSO1(put("/api/estimates/review/" + ctx.requestId + "/state"))
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(json.writeValueAsString(Map.of("justification", "OK"))))
-            .andExpect(status().isOk());
-        mvc.perform(asSO1(post("/api/estimates/review/" + ctx.requestId + "/approve")))
-            .andExpect(status().isBadRequest())
-            .andExpect(jsonPath("$.error").value("MISSING_COMPLEXITY"));
-    }
-
-    @Test
-    void approve_withoutJustification_returns400() throws Exception {
-        var ctx = seedInReviewRequest("NoJustification", so1);
-        mvc.perform(asSO1(put("/api/estimates/review/" + ctx.requestId + "/state"))
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(json.writeValueAsString(Map.of("complexity", "HIGH"))))
-            .andExpect(status().isOk());
-        mvc.perform(asSO1(post("/api/estimates/review/" + ctx.requestId + "/approve")))
-            .andExpect(status().isBadRequest())
-            .andExpect(jsonPath("$.error").value("MISSING_JUSTIFICATION"));
-    }
-
-    @Test
-    void approve_happyPath_setsBlendedRateSnapshotAndReviewedAt() throws Exception {
-        var ctx = seedInReviewRequest("Happy", so1);
-        mvc.perform(asSO1(put("/api/estimates/review/" + ctx.requestId + "/state"))
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(json.writeValueAsString(Map.of(
-                    "complexity", "MED",
-                    "justification", "Validated answers; mid-complexity is correct"
-                ))))
-            .andExpect(status().isOk());
-
-        mvc.perform(asSO1(post("/api/estimates/review/" + ctx.requestId + "/approve")))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.status").value("APPROVED"))
-            .andExpect(jsonPath("$.approvedBlendedRateId").value(seededRateId))
-            .andExpect(jsonPath("$.reviewedAt").exists());
-
-        long approvedRows = changeLogRepository.findByEntityTypeAndEntityIdOrderByChangedAtDesc(
-            EstimateRequest.ENTITY_TYPE, ctx.requestId
-        ).stream().filter(r -> r.getAction() == ChangeAction.APPROVED).count();
-        assertThat(approvedRows).isEqualTo(1);
-    }
-
-    // ---- reject ------------------------------------------------------------
-
-    @Test
-    void reject_happyPath_capturesJustification() throws Exception {
+    void rejectItem_happyPath_capturesRejectionReason() throws Exception {
         var ctx = seedInReviewRequest("RejectMe", so1);
-        mvc.perform(asSO1(post("/api/estimates/review/" + ctx.requestId + "/reject"))
+        mvc.perform(asSO1(post("/api/estimates/review/" + ctx.requestId + "/items/" + ctx.itemId + "/reject"))
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(json.writeValueAsString(Map.of("justification", "Question 1 answer is incomplete"))))
+                .content(json.writeValueAsString(Map.of("rejectionReason", "Question 1 answer is incomplete"))))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.status").value("REJECTED"))
-            .andExpect(jsonPath("$.justification").value("Question 1 answer is incomplete"));
+            .andExpect(jsonPath("$.items[0].status").value("REJECTED"))
+            .andExpect(jsonPath("$.items[0].rejectionReason").value("Question 1 answer is incomplete"))
+            .andExpect(jsonPath("$.items[0].complexity").doesNotExist());
     }
 
     @Test
-    void reject_withoutJustification_returns400() throws Exception {
+    void rejectItem_withoutReason_returns400() throws Exception {
         var ctx = seedInReviewRequest("RejectNoReason", so1);
-        mvc.perform(asSO1(post("/api/estimates/review/" + ctx.requestId + "/reject"))
+        mvc.perform(asSO1(post("/api/estimates/review/" + ctx.requestId + "/items/" + ctx.itemId + "/reject"))
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(json.writeValueAsString(Map.of("justification", ""))))
+                .content(json.writeValueAsString(Map.of("rejectionReason", ""))))
             .andExpect(status().isBadRequest());
     }
 
     // ---- helpers -----------------------------------------------------------
 
     private record AtomicCtx(Product product, SdlcPhase phase) {}
-    private record RequestCtx(Long requestId, Product product, SdlcPhase phase) {}
+    private record RequestCtx(Long requestId, Long itemId, Product product, SdlcPhase phase) {}
+
+    private Long firstItemId(Long requestId) {
+        return itemRepository
+            .findByEstimateRequestIdOrderByDisplayOrderAsc(requestId)
+            .get(0).getId();
+    }
 
     private AtomicCtx seedAtomicProductContext() {
         SdlcPhase phase = seedPhase("Discovery", 1);
@@ -440,16 +391,11 @@ class EstimateReviewControllerIntegrationTest {
 
     private RequestCtx seedSubmittedRequest(String title) throws Exception {
         AtomicCtx ctx = seedAtomicProductContext();
-        Long draftId = submitDraft(ctx, title);
-        return new RequestCtx(draftId, ctx.product, ctx.phase);
+        Long requestId = submitDraft(ctx, title);
+        Long itemId = firstItemId(requestId);
+        return new RequestCtx(requestId, itemId, ctx.product, ctx.phase);
     }
 
-    /**
-     * Submit a Draft against an existing context. Used by tests that
-     * need multiple Submitted requests on the same product+phase
-     * (seedPhase enforces unique phase names — can't call
-     * seedSubmittedRequest twice in one test).
-     */
     private Long submitDraft(AtomicCtx ctx, String title) throws Exception {
         Long draftId = createDraft(title, ctx.product.getId(), null);
         mvc.perform(asRequester(post("/api/estimates/my/" + draftId + "/submit")))
@@ -458,18 +404,18 @@ class EstimateReviewControllerIntegrationTest {
     }
 
     private RequestCtx seedInReviewRequest(String title, AppUserDetails reviewer) throws Exception {
-        RequestCtx submitted = seedSubmittedRequest(title);
-        var post = post("/api/estimates/review/" + submitted.requestId + "/start")
-            .with(user(reviewer)).with(csrf());
-        mvc.perform(post).andExpect(status().isOk());
-        return submitted;
+        RequestCtx ctx = seedSubmittedRequest(title);
+        mvc.perform(post("/api/estimates/review/" + ctx.requestId + "/items/" + ctx.itemId + "/start")
+            .with(user(reviewer)).with(csrf()))
+            .andExpect(status().isOk());
+        return ctx;
     }
 
     private Long createDraft(String title, Long productId, Long subFeatureId) throws Exception {
-        var body = new java.util.HashMap<String, Object>();
-        body.put("title", title);
-        body.put("productId", productId);
-        if (subFeatureId != null) body.put("subFeatureId", subFeatureId);
+        var item = new java.util.HashMap<String, Object>();
+        item.put("productId", productId);
+        if (subFeatureId != null) item.put("subFeatureId", subFeatureId);
+        var body = Map.of("title", title, "items", List.of(item));
         String responseBody = mvc.perform(post("/api/estimates/my")
                 .with(user(requester)).with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)

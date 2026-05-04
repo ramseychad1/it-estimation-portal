@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Route, Routes } from "react-router-dom";
 import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { EstimateDetailPage } from "./EstimateDetailPage";
 import { renderWithProviders } from "../test/utils";
 
@@ -15,7 +16,8 @@ interface MockDetail {
   subFeatureName: string | null;
   templateId: number | null;
   templateVersionNumber: number | null;
-  status: "DRAFT" | "SUBMITTED" | "IN_REVIEW" | "APPROVED" | "REJECTED";
+  /** Used as both request derivedStatus and the single item's status (unless overridden). */
+  status: "DRAFT" | "SUBMITTED" | "IN_REVIEW" | "APPROVED" | "REJECTED" | "NEEDS_REVISION";
   requesterId: number;
   submittedAt: string | null;
   createdAt: string;
@@ -26,6 +28,8 @@ interface MockDetail {
   reviewerName?: string | null;
   reviewedAt?: string | null;
   approvedBlendedRateId?: number | null;
+  // Phase 9b: per-item rejection fields.
+  rejectionReason?: string | null;
   phaseLines: Array<{
     sdlcPhaseId: number;
     sdlcPhaseName: string;
@@ -66,42 +70,64 @@ function jsonResponse(body: unknown, status = 200) {
 }
 
 function detailResponse(d: MockDetail) {
+  // NEEDS_REVISION: request-level status is NEEDS_REVISION, item-level is REJECTED.
+  const itemStatus = d.status === "NEEDS_REVISION" ? "REJECTED" : d.status;
   return jsonResponse({
     id: d.id,
     title: d.title,
     description: d.description,
-    productId: 1,
-    productName: d.productName,
-    subFeatureId: d.subFeatureName ? 1 : null,
-    subFeatureName: d.subFeatureName,
-    templateId: d.templateId,
-    templateVersionNumber: d.templateVersionNumber,
-    complexity: d.complexity ?? null,
-    status: d.status,
     requesterId: d.requesterId,
-    reviewerId: d.reviewerName ? 50 : null,
-    reviewerName: d.reviewerName ?? null,
-    reviewerStatus: d.reviewerName ? "other-so" : "unclaimed",
-    justification: d.justification ?? null,
-    submittedAt: d.submittedAt,
-    reviewedAt: d.reviewedAt ?? null,
-    approvedBlendedRateId: d.approvedBlendedRateId ?? null,
+    derivedStatus: d.status,
     createdAt: d.createdAt,
     updatedAt: d.updatedAt,
-    phaseLines: d.phaseLines,
-    answers: d.answers,
+    items: [
+      {
+        id: 1,
+        productId: 1,
+        productName: d.productName,
+        subFeatureId: d.subFeatureName ? 1 : null,
+        subFeatureName: d.subFeatureName,
+        teamName: null,
+        templateId: d.templateId,
+        templateVersionNumber: d.templateVersionNumber,
+        status: itemStatus,
+        complexity: d.complexity ?? null,
+        reviewerId: d.reviewerName ? 50 : null,
+        reviewerName: d.reviewerName ?? null,
+        reviewerStatus: d.reviewerName ? "other-so" : "unclaimed",
+        justification: d.justification ?? null,
+        rejectionReason: d.rejectionReason ?? null,
+        revisionCount: 0,
+        originalProductId: null,
+        originalProductName: null,
+        isReviewable: false,
+        submittedAt: d.submittedAt,
+        reviewedAt: d.reviewedAt ?? null,
+        approvedBlendedRateId: d.approvedBlendedRateId ?? null,
+        displayOrder: 0,
+        phaseLines: d.phaseLines,
+        answers: d.answers,
+      },
+    ],
   });
 }
 
 let detail: MockDetail | null;
 let history: MockHistoryEntry[];
 
+// Mutable handlers for Phase 9b per-item mutations.
+let reviseHandler: ((url: string, init: RequestInit | undefined) => Response) | null = null;
+let dropHandler: ((url: string, init: RequestInit | undefined) => Response) | null = null;
+
 function installRouter() {
   detail = null;
   history = [];
-  fetchMock.mockImplementation((url: string) => {
+  reviseHandler = null;
+  dropHandler = null;
+  fetchMock.mockImplementation((url: string, init?: RequestInit) => {
     const u = new URL(url, "http://localhost");
     const path = u.pathname;
+    const method = (init?.method ?? "GET").toUpperCase();
 
     if (path === "/api/auth/me") {
       return Promise.resolve(jsonResponse({
@@ -112,8 +138,6 @@ function installRouter() {
     if (path === "/api/health") return Promise.resolve(jsonResponse({ status: "ok" }));
 
     if (path === "/api/admin/rates") {
-      // Current blended rates — the Approved view's cost section pulls
-      // these. Test fixture: $125/$45 onshore/offshore effective Apr 1.
       return Promise.resolve(jsonResponse({
         current: {
           id: 1, onshoreRate: "125.00", offshoreRate: "45.00",
@@ -124,11 +148,31 @@ function installRouter() {
       }));
     }
 
+    // Products — needed when NEEDS_REVISION renders the ProductPickerModal.
+    if (path === "/api/catalog/products" && method === "GET") {
+      return Promise.resolve(jsonResponse({
+        items: [], page: 0, size: 200, totalElements: 0, totalPages: 0,
+      }));
+    }
+
     const detailMatch = path.match(/^\/api\/estimates\/my\/(\d+)$/);
-    if (detailMatch) {
+    if (detailMatch && method === "GET") {
       if (!detail) return Promise.resolve(new Response(null, { status: 404 }));
       return Promise.resolve(detailResponse(detail));
     }
+
+    const reviseMatch = path.match(/^\/api\/estimates\/my\/(\d+)\/items\/(\d+)\/revise-and-resubmit$/);
+    if (reviseMatch && method === "POST") {
+      if (reviseHandler) return Promise.resolve(reviseHandler(url, init));
+      return Promise.resolve(new Response(null, { status: 404 }));
+    }
+
+    const dropMatch = path.match(/^\/api\/estimates\/my\/(\d+)\/items\/(\d+)$/);
+    if (dropMatch && method === "DELETE") {
+      if (dropHandler) return Promise.resolve(dropHandler(url, init));
+      return Promise.resolve(new Response(null, { status: 404 }));
+    }
+
     const historyMatch = path.match(/^\/api\/estimates\/my\/(\d+)\/history$/);
     if (historyMatch) {
       return Promise.resolve(jsonResponse(history));
@@ -370,6 +414,201 @@ describe("<EstimateDetailPage>", () => {
     expect(screen.getByText(/Question 2 needs more detail/i)).toBeInTheDocument();
     // Cost section is approval-only — should NOT appear on Rejected.
     expect(screen.queryByText(/Estimated total/i)).not.toBeInTheDocument();
+  });
+
+  // ---- Phase 9b additions: NEEDS_REVISION per-item revision flow --------
+
+  it("NEEDS_REVISION renders rejection banner with reason and 'Revise & resubmit' button", async () => {
+    detail = {
+      id: 20,
+      title: "Needs Revision Request",
+      description: null,
+      productName: "Member Portal",
+      subFeatureName: null,
+      templateId: null,
+      templateVersionNumber: null,
+      status: "NEEDS_REVISION",
+      rejectionReason: "Please provide more detail in question 1.",
+      reviewerName: "SO Clark",
+      reviewedAt: "2026-04-25T00:00:00Z",
+      requesterId: 1,
+      submittedAt: "2026-04-20T00:00:00Z",
+      createdAt: "2026-04-18T00:00:00Z",
+      updatedAt: "2026-04-25T00:00:00Z",
+      phaseLines: [],
+      answers: [
+        { questionId: 1, questionText: "What is the scope?", required: true, answerText: "TBD" },
+      ],
+    };
+
+    renderAt("20");
+
+    expect(await screen.findByRole("heading", { name: "Needs Revision Request", level: 1 })).toBeInTheDocument();
+    // Rejection banner.
+    expect(await screen.findByText(/Rejected by/i)).toBeInTheDocument();
+    expect(screen.getByText("SO Clark")).toBeInTheDocument();
+    expect(screen.getByText(/Please provide more detail in question 1\./i)).toBeInTheDocument();
+    // Action button.
+    expect(screen.getByRole("button", { name: /Revise & resubmit/i })).toBeInTheDocument();
+    // Answers listed.
+    expect(screen.getByText("What is the scope?")).toBeInTheDocument();
+    expect(screen.getByText("TBD")).toBeInTheDocument();
+  });
+
+  it("Revise & resubmit enters edit mode with editable textareas", async () => {
+    detail = {
+      id: 21,
+      title: "Revision Edit Mode",
+      description: null,
+      productName: "Provider Portal",
+      subFeatureName: null,
+      templateId: null,
+      templateVersionNumber: null,
+      status: "NEEDS_REVISION",
+      rejectionReason: "Answer is too vague.",
+      reviewerName: "SO Davis",
+      reviewedAt: "2026-04-26T00:00:00Z",
+      requesterId: 1,
+      submittedAt: "2026-04-22T00:00:00Z",
+      createdAt: "2026-04-20T00:00:00Z",
+      updatedAt: "2026-04-26T00:00:00Z",
+      phaseLines: [],
+      answers: [
+        { questionId: 5, questionText: "Describe the business need.", required: true, answerText: "Need help." },
+      ],
+    };
+
+    renderAt("21");
+    const user = userEvent.setup();
+
+    // Enter edit mode.
+    await user.click(await screen.findByRole("button", { name: /Revise & resubmit/i }));
+
+    // Edit mode shows a textarea for the question.
+    const textarea = screen.getByRole("textbox");
+    expect(textarea).toBeInTheDocument();
+    expect((textarea as HTMLTextAreaElement).value).toBe("Need help.");
+
+    // "Submit revision" and "Cancel" buttons appear; "Revise & resubmit" disappears.
+    expect(screen.getByRole("button", { name: /Submit revision/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Cancel/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Revise & resubmit/i })).not.toBeInTheDocument();
+  });
+
+  it("Submit revision calls the revise-and-resubmit endpoint with updated answers", async () => {
+    let capturedBody: unknown = null;
+    reviseHandler = (_url, init) => {
+      capturedBody = JSON.parse(init?.body as string);
+      // Return updated detail (now SUBMITTED after revision)
+      return jsonResponse({
+        id: 22,
+        title: "Post-Revision",
+        description: null,
+        requesterId: 1,
+        derivedStatus: "SUBMITTED",
+        createdAt: "2026-04-18T00:00:00Z",
+        updatedAt: "2026-04-27T00:00:00Z",
+        items: [
+          {
+            id: 1, productId: 1, productName: "Analytics", subFeatureId: null, subFeatureName: null,
+            teamName: null, templateId: null, templateVersionNumber: null,
+            status: "SUBMITTED", complexity: null, reviewerId: null, reviewerName: null,
+            reviewerStatus: "unclaimed", justification: null, rejectionReason: null,
+            revisionCount: 1, originalProductId: null, originalProductName: null, isReviewable: false,
+            submittedAt: "2026-04-27T00:00:00Z", reviewedAt: null, approvedBlendedRateId: null,
+            displayOrder: 0, phaseLines: [], answers: [
+              { questionId: 7, questionText: "Business need?", required: true, answerText: "Updated answer." },
+            ],
+          },
+        ],
+      });
+    };
+
+    detail = {
+      id: 22,
+      title: "Pre-Revision",
+      description: null,
+      productName: "Analytics",
+      subFeatureName: null,
+      templateId: null,
+      templateVersionNumber: null,
+      status: "NEEDS_REVISION",
+      rejectionReason: "More context needed.",
+      reviewerName: "SO Evans",
+      reviewedAt: "2026-04-26T00:00:00Z",
+      requesterId: 1,
+      submittedAt: "2026-04-22T00:00:00Z",
+      createdAt: "2026-04-20T00:00:00Z",
+      updatedAt: "2026-04-26T00:00:00Z",
+      phaseLines: [],
+      answers: [
+        { questionId: 7, questionText: "Business need?", required: true, answerText: "Original answer." },
+      ],
+    };
+
+    renderAt("22");
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole("button", { name: /Revise & resubmit/i }));
+
+    // Edit the answer.
+    const textarea = screen.getByRole("textbox");
+    await user.clear(textarea);
+    await user.type(textarea, "Updated answer.");
+
+    await user.click(screen.getByRole("button", { name: /Submit revision/i }));
+
+    await waitFor(() => {
+      expect(capturedBody).toMatchObject({
+        answers: [{ questionId: 7, answerText: "Updated answer." }],
+      });
+    });
+  });
+
+  it("Drop item shows confirmation; 409 shows 'Cannot drop last item' message", async () => {
+    dropHandler = () => new Response(null, { status: 409 });
+
+    detail = {
+      id: 23,
+      title: "Last Item Request",
+      description: null,
+      productName: "Portal",
+      subFeatureName: null,
+      templateId: null,
+      templateVersionNumber: null,
+      status: "NEEDS_REVISION",
+      rejectionReason: "Try a different product.",
+      reviewerName: "SO Fox",
+      reviewedAt: "2026-04-27T00:00:00Z",
+      requesterId: 1,
+      submittedAt: "2026-04-24T00:00:00Z",
+      createdAt: "2026-04-22T00:00:00Z",
+      updatedAt: "2026-04-27T00:00:00Z",
+      phaseLines: [],
+      answers: [],
+    };
+
+    renderAt("23");
+    const user = userEvent.setup();
+
+    // Open item kebab menu.
+    await screen.findByRole("button", { name: /Revise & resubmit/i });
+    await user.click(screen.getByRole("button", { name: /Item actions/i }));
+    await user.click(await screen.findByRole("menuitem", { name: /Drop item/i }));
+
+    // Confirmation dialog should open.
+    expect(await screen.findByText(/Drop this item\?/i)).toBeInTheDocument();
+
+    // Confirm the drop — triggers 409.
+    await user.click(screen.getByRole("button", { name: /^Drop item$/i }));
+
+    // 409 guard: modal switches to "Cannot drop last item".
+    await waitFor(() => {
+      expect(screen.getByText(/Cannot drop last item/i)).toBeInTheDocument();
+      expect(screen.getByText(/Discard the entire request instead/i)).toBeInTheDocument();
+    });
+    // "Discard request" confirm button should be present.
+    expect(screen.getByRole("button", { name: /Discard request/i })).toBeInTheDocument();
   });
 
   it("Override values display with the 'Override' tag and contribute to row total", async () => {

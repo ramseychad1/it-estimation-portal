@@ -10,6 +10,7 @@ import java.util.List;
 import com.acme.estimator.estimates.dto.CreateDraftRequest;
 import com.acme.estimator.estimates.dto.EstimateRequestDetail;
 import com.acme.estimator.estimates.dto.EstimateRequestListItem;
+import com.acme.estimator.estimates.dto.ReviseAndResubmitRequest;
 import com.acme.estimator.estimates.dto.SaveAnswersRequest;
 import com.acme.estimator.estimates.dto.UpdateDraftRequest;
 import jakarta.validation.Valid;
@@ -36,14 +37,11 @@ import org.springframework.web.bind.annotation.RestController;
  *
  * <p>Phase 7.5 broadens the role gate from {@code hasRole('REQUESTER')}
  * to {@code hasAnyRole('ADMIN','REQUESTER')}: Admins inherit Requester
- * authority and can hit these endpoints. Within the service, individual
- * GETs are scoped to "owner OR admin" via {@code loadVisibleRequest};
- * mutations on Drafts (PATCH / submit / discard / saveDraftAnswers) stay
- * strictly owner-only — Admin can VIEW everything but cannot
- * EDIT-AS-USER.
+ * authority.
  *
- * <p>The Reviewer surface (Phase 6b) lives at a separate route prefix
- * with its own role check.
+ * <p>Phase 9a: the list endpoint's {@code status} parameter is now a
+ * {@code String} to support derived statuses (PARTIALLY_APPROVED,
+ * NEEDS_REVISION) that don't exist in {@link EstimateStatus}.
  */
 @RestController
 @RequestMapping("/api/estimates/my")
@@ -56,14 +54,12 @@ public class EstimateRequestController {
 
     @GetMapping
     public PageResponse<EstimateRequestListItem> list(
-        @RequestParam(required = false) EstimateStatus status,
+        @RequestParam(required = false) String status,
         @RequestParam(required = false) String search,
         @RequestParam(defaultValue = "0") int page,
         @RequestParam(defaultValue = "25") int size,
         @AuthenticationPrincipal AppUserDetails principal
     ) {
-        // Sort by createdAt DESC at the controller level so the
-        // service-layer Specification stays sort-agnostic.
         org.springframework.data.domain.Sort sort =
             org.springframework.data.domain.Sort.by("createdAt").descending();
         Page<EstimateRequestListItem> result = service.myRequests(
@@ -105,6 +101,10 @@ public class EstimateRequestController {
         return ResponseEntity.noContent().build();
     }
 
+    /**
+     * Backward-compatible: saves answers for the first item of a Draft.
+     * Phase 9a: use PUT /{id}/items/{itemId}/answers for per-item control.
+     */
     @PutMapping("/{id}/answers")
     public EstimateRequestDetail saveAnswers(
         @PathVariable Long id,
@@ -114,11 +114,45 @@ public class EstimateRequestController {
         return service.saveDraftAnswers(id, body, currentUser(principal));
     }
 
+    /**
+     * Per-item answer save. Phase 9a new endpoint.
+     */
+    @PutMapping("/{id}/items/{itemId}/answers")
+    public EstimateRequestDetail saveItemAnswers(
+        @PathVariable Long id,
+        @PathVariable Long itemId,
+        @Valid @RequestBody SaveAnswersRequest body,
+        @AuthenticationPrincipal AppUserDetails principal
+    ) {
+        return service.saveDraftItemAnswers(id, itemId, body, currentUser(principal));
+    }
+
     @PostMapping("/{id}/submit")
     public EstimateRequestDetail submit(
         @PathVariable Long id, @AuthenticationPrincipal AppUserDetails principal
     ) {
         return service.submit(id, currentUser(principal));
+    }
+
+    /** Combined revise + resubmit for a single REJECTED item. */
+    @PostMapping("/{id}/items/{itemId}/revise-and-resubmit")
+    public EstimateRequestDetail reviseAndResubmit(
+        @PathVariable Long id,
+        @PathVariable Long itemId,
+        @Valid @RequestBody ReviseAndResubmitRequest body,
+        @AuthenticationPrincipal AppUserDetails principal
+    ) {
+        return service.reviseAndResubmitItem(id, itemId, body, currentUser(principal));
+    }
+
+    /** Drop a single REJECTED item from the request. Returns the updated request. */
+    @DeleteMapping("/{id}/items/{itemId}")
+    public EstimateRequestDetail dropItem(
+        @PathVariable Long id,
+        @PathVariable Long itemId,
+        @AuthenticationPrincipal AppUserDetails principal
+    ) {
+        return service.dropItem(id, itemId, currentUser(principal));
     }
 
     @GetMapping("/{id}/history")

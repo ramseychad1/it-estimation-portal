@@ -228,6 +228,25 @@ describe("<DashboardPage>", () => {
     expect(screen.getByText(/No activity yet/i)).toBeInTheDocument();
   });
 
+  it("'Needs revision' stat card links to /requests?status=NEEDS_REVISION", async () => {
+    // Seed a needsRevision card that the backend sends for Requesters.
+    state.summaryAll = [
+      ...state.summaryAll,
+      { key: "needsRevision", label: "Needs revision", count: 2, description: "Your requests with at least one rejected item" },
+    ];
+    renderWithProviders(<DashboardPage />);
+
+    // Wait for cards to render.
+    await waitFor(() => expect(screen.getAllByTestId("stat-card").length).toBeGreaterThan(0));
+    const card = screen.getByText("Needs revision").closest("[data-testid='stat-card']")!;
+    expect(card).toHaveTextContent("2");
+
+    // The card should be wrapped in a Link pointing to the correct URL.
+    const link = card.closest("a");
+    expect(link).not.toBeNull();
+    expect(link!.getAttribute("href")).toBe("/requests?status=NEEDS_REVISION");
+  });
+
   it("renders a time-of-day greeting using the user's first name", async () => {
     renderWithProviders(<DashboardPage />);
     await waitFor(() =>

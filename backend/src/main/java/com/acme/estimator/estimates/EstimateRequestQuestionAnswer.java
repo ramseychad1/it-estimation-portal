@@ -33,8 +33,8 @@ public class EstimateRequestQuestionAnswer {
     @Column(name = "id", updatable = false, nullable = false)
     private Long id;
 
-    @Column(name = "estimate_request_id", nullable = false, updatable = false)
-    private Long estimateRequestId;
+    @Column(name = "estimate_request_item_id", nullable = false, updatable = false)
+    private Long itemId;
 
     @Column(name = "critical_question_id", nullable = false, updatable = false)
     private Long criticalQuestionId;

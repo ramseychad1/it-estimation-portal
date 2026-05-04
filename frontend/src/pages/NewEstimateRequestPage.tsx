@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { ArrowLeft, ArrowRight, Plus } from "lucide-react";
+import { ArrowLeft, ArrowRight, Minus, Plus, X } from "lucide-react";
 import { ConfirmModal } from "../components/ConfirmModal";
 import { PageHeader } from "../components/PageHeader";
 import { Stepper } from "../components/Stepper";
@@ -19,22 +19,21 @@ import {
   useSubFeatureQuestionsQuery,
 } from "../lib/queries/questions";
 import {
-  useProductTemplateQuery,
-  useSubFeatureTemplateQuery,
-} from "../lib/queries/templates";
-import {
   useCreateDraftMutation,
   useDiscardDraftMutation,
   useMyRequestQuery,
-  useSaveDraftAnswersMutation,
+  useSaveDraftItemAnswersMutation,
   useSubmitRequestMutation,
   useUpdateDraftMutation,
 } from "../lib/queries/estimates";
 import type { ProductDetail, ProductMode } from "../lib/api/products";
 import type { QuestionListItem } from "../lib/api/questions";
-import type { TemplateView } from "../lib/api/templates";
 
-const STEPS = ["Choose product", "Answer questions", "Review & submit"];
+// Silence unused imports that are referenced transitively or kept for future use
+void useProductQuestionsQuery;
+void useSubFeatureQuestionsQuery;
+
+const STEPS = ["Choose products", "Answer questions", "Review & submit"];
 
 type Step = 1 | 2 | 3;
 
@@ -45,6 +44,15 @@ function clampStep(raw: string | null): Step {
   return 1;
 }
 
+type LocalItem = {
+  productId: number;
+  productName: string;
+  subFeatureId: number | null;
+  subFeatureName: string | null;
+  itemId: number | null;
+  answers: Record<number, string>;
+};
+
 export function NewEstimateRequestPage() {
   const navigate = useNavigate();
   const toast = useToast();
@@ -53,42 +61,42 @@ export function NewEstimateRequestPage() {
   const urlStep = clampStep(params.get("step"));
   const urlId = params.get("id") ? Number(params.get("id")) : null;
 
-  // Hydrate from existing Draft when ?id= is present (resume from
-  // EstimateDetailPage's "Edit answers" link, or browser refresh).
   const existingQuery = useMyRequestQuery(urlId);
 
-  // Local form state. Initial values mirror the Draft once loaded; Step 1
-  // edits stay local until "Save as draft" / "Continue".
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [productId, setProductId] = useState<number | null>(null);
-  const [subFeatureId, setSubFeatureId] = useState<number | null>(null);
-  const [answers, setAnswers] = useState<Record<number, string>>({});
+  const [localItems, setLocalItems] = useState<LocalItem[]>([]);
+  const [pendingProductId, setPendingProductId] = useState<number | null>(null);
+  const [pendingSubFeatureId, setPendingSubFeatureId] = useState<number | null>(null);
   const [dirty, setDirty] = useState(false);
   const [draftId, setDraftId] = useState<number | null>(urlId);
   const [savedFlash, setSavedFlash] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [submitOpen, setSubmitOpen] = useState(false);
+  const [itemsReady, setItemsReady] = useState<boolean[]>([]);
 
-  // The product is locked once the Draft exists — once chosen, switching
-  // would invalidate the answers. The picker disables when draftId is set.
-  const productLocked = draftId != null;
+  const itemsLocked = draftId != null;
 
-  // Sync local state from server-loaded Draft once on first hydration.
+  // Sync from loaded draft
   useEffect(() => {
     if (!urlId || !existingQuery.data) return;
     const d = existingQuery.data;
     setTitle(d.title);
     setDescription(d.description ?? "");
-    setProductId(d.productId);
-    setSubFeatureId(d.subFeatureId ?? null);
-    const next: Record<number, string> = {};
-    for (const a of d.answers) next[a.questionId] = a.answerText ?? "";
-    setAnswers(next);
+    const hydrated = d.items.map((item) => ({
+      productId: item.productId,
+      productName: item.productName,
+      subFeatureId: item.subFeatureId,
+      subFeatureName: item.subFeatureName,
+      itemId: item.id,
+      answers: item.answers.reduce(
+        (acc, a) => ({ ...acc, [a.questionId]: a.answerText }),
+        {} as Record<number, string>,
+      ),
+    }));
+    setLocalItems(hydrated);
     setDirty(false);
     setDraftId(d.id);
-    // Intentionally only depends on the loaded shape — the form is the
-    // edit surface from here on, no further hydration.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [existingQuery.data?.id]);
 
@@ -96,59 +104,26 @@ export function NewEstimateRequestPage() {
     document.title = "New estimate request — Estimator";
   }, []);
 
-  // SPA-side: block tab close / refresh when the form is dirty. SPA
-  // navigation guard is the same gap documented on Phase 5b.
   useUnsavedChangesGuard(dirty);
 
-  // Active products only.
   const productsQuery = useProductsQuery({ status: "ACTIVE", size: 100 });
   const products = productsQuery.data?.items ?? [];
-  const selectedProduct = products.find((p) => p.id === productId) ?? null;
-  const isContainer = selectedProduct?.mode === "CONTAINER";
 
-  // Sub-features for container products.
+  const pendingProduct = products.find((p) => p.id === pendingProductId) ?? null;
+  const pendingIsContainer = pendingProduct?.mode === "CONTAINER";
   const subFeaturesQuery = useSubFeaturesForProductQuery(
-    isContainer ? productId : null,
+    pendingIsContainer ? pendingProductId : null,
   );
-  const subFeatures = subFeaturesQuery.data ?? [];
-  const activeSubFeatures = subFeatures.filter((s) => s.active);
+  const pendingSubFeatures = (subFeaturesQuery.data ?? []).filter((s) => s.active);
 
-  // Active template + questions resolve from product OR sub-feature.
-  const templateProductQuery = useProductTemplateQuery(
-    selectedProduct && !isContainer ? productId : null,
-  );
-  const templateSubFeatureQuery = useSubFeatureTemplateQuery(
-    isContainer && subFeatureId ? subFeatureId : null,
-  );
-  const template: TemplateView | null =
-    (isContainer
-      ? templateSubFeatureQuery.data
-      : templateProductQuery.data) ?? null;
-
-  const productQuestionsQuery = useProductQuestionsQuery(
-    selectedProduct && !isContainer ? productId : null,
-  );
-  const subFeatureQuestionsQuery = useSubFeatureQuestionsQuery(
-    isContainer && subFeatureId ? subFeatureId : null,
-  );
-  const questions: QuestionListItem[] = useMemo(() => {
-    const raw = isContainer
-      ? subFeatureQuestionsQuery.data
-      : productQuestionsQuery.data;
-    return (raw ?? []).filter((q) => q.active);
-  }, [isContainer, productQuestionsQuery.data, subFeatureQuestionsQuery.data]);
-
-  // Mutations.
   const createMutation = useCreateDraftMutation();
   const updateMutation = useUpdateDraftMutation();
-  const saveAnswersMutation = useSaveDraftAnswersMutation();
+  const saveItemAnswersMutation = useSaveDraftItemAnswersMutation();
   const submitMutation = useSubmitRequestMutation();
   const discardMutation = useDiscardDraftMutation();
 
   const step: Step = urlStep;
-  // If urlId is set but step=1 was requested AND the Draft has no
-  // answers, allow it — the user explicitly came back to edit Step 1.
-  // If urlId is absent and step > 1, redirect to step 1 (no Draft to edit).
+
   useEffect(() => {
     if (!urlId && urlStep > 1) {
       setParams((p) => {
@@ -174,13 +149,34 @@ export function NewEstimateRequestPage() {
     setTimeout(() => setSavedFlash(false), 1500);
   }
 
+  function addPendingItem() {
+    if (!pendingProductId || !pendingProduct) return;
+    if (pendingIsContainer && !pendingSubFeatureId) return;
+    const subFeature = pendingIsContainer
+      ? pendingSubFeatures.find((s) => s.id === pendingSubFeatureId) ?? null
+      : null;
+    const newItem: LocalItem = {
+      productId: pendingProductId,
+      productName: pendingProduct.name,
+      subFeatureId: pendingIsContainer ? pendingSubFeatureId : null,
+      subFeatureName: subFeature?.name ?? null,
+      itemId: null,
+      answers: {},
+    };
+    setLocalItems((prev) => [...prev, newItem]);
+    setPendingProductId(null);
+    setPendingSubFeatureId(null);
+    setDirty(true);
+  }
+
+  function removeItem(index: number) {
+    setLocalItems((prev) => prev.filter((_, i) => i !== index));
+    setDirty(true);
+  }
+
   async function ensureDraftThen(advanceTo?: Step) {
-    if (!productId) {
-      toast.error("Pick a product first.");
-      return;
-    }
-    if (isContainer && !subFeatureId) {
-      toast.error("Container products need a sub-feature.");
+    if (localItems.length === 0) {
+      toast.error("Add at least one product first.");
       return;
     }
     try {
@@ -188,12 +184,17 @@ export function NewEstimateRequestPage() {
       if (id == null) {
         const created = await createMutation.mutateAsync({
           title: title.trim(),
-          productId,
-          subFeatureId: isContainer ? subFeatureId : null,
           description: description.trim() || null,
+          items: localItems.map((item) => ({
+            productId: item.productId,
+            subFeatureId: item.subFeatureId ?? null,
+          })),
         });
         id = created.id;
         setDraftId(id);
+        setLocalItems((prev) =>
+          prev.map((item, i) => ({ ...item, itemId: created.items[i]?.id ?? null }))
+        );
       } else {
         await updateMutation.mutateAsync({
           id,
@@ -211,24 +212,23 @@ export function NewEstimateRequestPage() {
     }
   }
 
-  async function persistAnswers(advanceTo?: Step) {
+  async function persistAllAnswers(advanceTo?: Step) {
     if (draftId == null) {
       toast.error("Save the draft first.");
       return;
     }
     try {
-      await saveAnswersMutation.mutateAsync({
-        id: draftId,
-        body: {
-          answers: Object.entries(answers)
-            .map(([qid, text]) => ({
-              questionId: Number(qid),
-              answerText: text,
-            }))
-            // Drop blank answers — the backend ignores them anyway.
-            .filter((a) => a.answerText.trim() !== ""),
-        },
-      });
+      for (const item of localItems) {
+        if (item.itemId == null) continue;
+        const answersToSave = Object.entries(item.answers)
+          .map(([qid, text]) => ({ questionId: Number(qid), answerText: text }))
+          .filter((a) => a.answerText.trim() !== "");
+        await saveItemAnswersMutation.mutateAsync({
+          id: draftId,
+          itemId: item.itemId,
+          body: { answers: answersToSave },
+        });
+      }
       setDirty(false);
       if (advanceTo) setStep(advanceTo);
       else flashSaved();
@@ -240,19 +240,7 @@ export function NewEstimateRequestPage() {
   async function performSubmit() {
     if (draftId == null) return;
     try {
-      // Defensive: re-PUT answers in case the user edited Step 2 then
-      // jumped to Step 3 without explicitly saving.
-      await saveAnswersMutation.mutateAsync({
-        id: draftId,
-        body: {
-          answers: Object.entries(answers)
-            .map(([qid, text]) => ({
-              questionId: Number(qid),
-              answerText: text,
-            }))
-            .filter((a) => a.answerText.trim() !== ""),
-        },
-      });
+      await persistAllAnswers();
       const submitted = await submitMutation.mutateAsync(draftId);
       toast.success("Request submitted. The Solution Owner team will review your request.");
       navigate(`/requests/${submitted.id}`);
@@ -280,19 +268,26 @@ export function NewEstimateRequestPage() {
     navigate("/requests");
   }
 
-  // Required-question coverage for Step 2's Continue button.
-  const requiredQuestionIds = questions.filter((q) => q.required).map((q) => q.id);
-  const allRequiredAnswered = requiredQuestionIds.every(
-    (qid) => (answers[qid] ?? "").trim() !== "",
-  );
+  const handleItemReadyChange = useCallback((index: number, ready: boolean) => {
+    setItemsReady((prev) => {
+      const next = [...prev];
+      next[index] = ready;
+      return next;
+    });
+  }, []);
 
-  // Show "no template" warning + lock the flow at step 1.
-  // The product picker is loaded; the template fetch returned null →
-  // there's no active template, so submission would 409 with NO_ACTIVE_TEMPLATE.
-  const templateLoaded = isContainer
-    ? subFeatureId != null && !templateSubFeatureQuery.isLoading
-    : selectedProduct != null && !isContainer && !templateProductQuery.isLoading;
-  const noTemplate = templateLoaded && template == null;
+  const handleItemAnswerChange = useCallback((itemIndex: number, qid: number, value: string) => {
+    setLocalItems((prev) => {
+      const next = [...prev];
+      next[itemIndex] = { ...next[itemIndex], answers: { ...next[itemIndex].answers, [qid]: value } };
+      return next;
+    });
+    setDirty(true);
+  }, []);
+
+  const allItemsReady = itemsReady.length === localItems.length &&
+    localItems.length > 0 &&
+    itemsReady.every(Boolean);
 
   return (
     <>
@@ -303,7 +298,7 @@ export function NewEstimateRequestPage() {
           { label: "New" },
         ]}
         title="New estimate request"
-        subtitle="Three steps. Pick a product, answer the critical questions, review and submit."
+        subtitle="Three steps. Pick your products, answer the critical questions, review and submit."
       />
 
       <div style={{ marginTop: 24, marginBottom: 24 }}>
@@ -314,54 +309,47 @@ export function NewEstimateRequestPage() {
         <Step1
           title={title}
           description={description}
-          productId={productId}
-          subFeatureId={subFeatureId}
+          localItems={localItems}
+          pendingProductId={pendingProductId}
+          pendingSubFeatureId={pendingSubFeatureId}
           products={products}
-          selectedProduct={selectedProduct}
-          activeSubFeatures={activeSubFeatures}
-          template={template}
-          questions={questions}
-          noTemplate={noTemplate}
-          productLocked={productLocked}
-          onTitleChange={(v) => { setTitle(v); setDirty(true); }}
-          onDescriptionChange={(v) => { setDescription(v); setDirty(true); }}
-          onProductChange={(id) => {
-            setProductId(id);
-            setSubFeatureId(null);
-            setDirty(true);
-          }}
-          onSubFeatureChange={(id) => {
-            setSubFeatureId(id);
-            setDirty(true);
-          }}
+          pendingProduct={pendingProduct}
+          pendingSubFeatures={pendingSubFeatures}
+          itemsLocked={itemsLocked}
           savedFlash={savedFlash}
           saving={createMutation.isPending || updateMutation.isPending}
+          onTitleChange={(v) => { setTitle(v); setDirty(true); }}
+          onDescriptionChange={(v) => { setDescription(v); setDirty(true); }}
+          onPendingProductChange={(id) => {
+            setPendingProductId(id);
+            setPendingSubFeatureId(null);
+          }}
+          onPendingSubFeatureChange={setPendingSubFeatureId}
+          onAddItem={addPendingItem}
+          onRemoveItem={removeItem}
           onCancel={handleCancel}
           onSaveDraft={() => void ensureDraftThen()}
           onContinue={() => void ensureDraftThen(2)}
           continueDisabled={
             title.trim() === "" ||
-            productId == null ||
-            (isContainer && subFeatureId == null) ||
-            noTemplate
+            localItems.length === 0
           }
         />
       )}
 
       {step === 2 && (
         <Step2
-          questions={questions}
-          answers={answers}
-          onAnswerChange={(qid, value) => {
-            setAnswers((prev) => ({ ...prev, [qid]: value }));
-            setDirty(true);
-          }}
-          allRequiredAnswered={allRequiredAnswered}
+          localItems={localItems}
+          products={products}
+          draftId={draftId}
           savedFlash={savedFlash}
-          saving={saveAnswersMutation.isPending}
+          saving={saveItemAnswersMutation.isPending}
+          allItemsReady={allItemsReady}
+          onItemAnswerChange={handleItemAnswerChange}
+          onItemReadyChange={handleItemReadyChange}
           onBack={() => setStep(1)}
-          onSaveDraft={() => void persistAnswers()}
-          onContinue={() => void persistAnswers(3)}
+          onSaveDraft={() => void persistAllAnswers()}
+          onContinue={() => void persistAllAnswers(3)}
         />
       )}
 
@@ -369,18 +357,11 @@ export function NewEstimateRequestPage() {
         <Step3
           title={title}
           description={description}
-          productName={selectedProduct?.name ?? ""}
-          subFeatureName={
-            isContainer
-              ? activeSubFeatures.find((s) => s.id === subFeatureId)?.name ?? ""
-              : null
-          }
-          template={template}
-          questions={questions}
-          answers={answers}
-          submitting={submitMutation.isPending || saveAnswersMutation.isPending}
+          localItems={localItems}
+          products={products}
+          submitting={submitMutation.isPending || saveItemAnswersMutation.isPending}
           onBack={() => setStep(2)}
-          onSaveDraft={() => void persistAnswers()}
+          onSaveDraft={() => void persistAllAnswers()}
           onSubmit={() => setSubmitOpen(true)}
         />
       )}
@@ -411,10 +392,6 @@ export function NewEstimateRequestPage() {
             Owner sending it back.
           </p>
         }
-        // Modal confirm reads as a confirmation of the action, not a
-        // re-statement of the trigger button. Distinct label also keeps
-        // the page tests' `getByRole("button", { name: ... })` queries
-        // unambiguous.
         confirmLabel="Submit"
         cancelLabel="Keep editing"
         onCancel={() => setSubmitOpen(false)}
@@ -425,27 +402,27 @@ export function NewEstimateRequestPage() {
 }
 
 // =====================================================================
-// Step 1 — Choose product
+// Step 1 — Choose products
 // =====================================================================
 
 interface Step1Props {
   title: string;
   description: string;
-  productId: number | null;
-  subFeatureId: number | null;
+  localItems: LocalItem[];
+  pendingProductId: number | null;
+  pendingSubFeatureId: number | null;
   products: ProductDetail[];
-  selectedProduct: ProductDetail | null;
-  activeSubFeatures: { id: number; name: string }[];
-  template: TemplateView | null;
-  questions: QuestionListItem[];
-  noTemplate: boolean;
-  productLocked: boolean;
-  onTitleChange: (v: string) => void;
-  onDescriptionChange: (v: string) => void;
-  onProductChange: (id: number | null) => void;
-  onSubFeatureChange: (id: number | null) => void;
+  pendingProduct: ProductDetail | null;
+  pendingSubFeatures: { id: number; name: string }[];
+  itemsLocked: boolean;
   savedFlash: boolean;
   saving: boolean;
+  onTitleChange: (v: string) => void;
+  onDescriptionChange: (v: string) => void;
+  onPendingProductChange: (id: number | null) => void;
+  onPendingSubFeatureChange: (id: number | null) => void;
+  onAddItem: () => void;
+  onRemoveItem: (index: number) => void;
   onCancel: () => void;
   onSaveDraft: () => void;
   onContinue: () => void;
@@ -455,27 +432,31 @@ interface Step1Props {
 function Step1({
   title,
   description,
-  productId,
-  subFeatureId,
+  localItems,
+  pendingProductId,
+  pendingSubFeatureId,
   products,
-  selectedProduct,
-  activeSubFeatures,
-  template,
-  questions,
-  noTemplate,
-  productLocked,
-  onTitleChange,
-  onDescriptionChange,
-  onProductChange,
-  onSubFeatureChange,
+  pendingProduct,
+  pendingSubFeatures,
+  itemsLocked,
   savedFlash,
   saving,
+  onTitleChange,
+  onDescriptionChange,
+  onPendingProductChange,
+  onPendingSubFeatureChange,
+  onAddItem,
+  onRemoveItem,
   onCancel,
   onSaveDraft,
   onContinue,
   continueDisabled,
 }: Step1Props) {
-  const isContainer = selectedProduct?.mode === "CONTAINER";
+  const pendingIsContainer = pendingProduct?.mode === "CONTAINER";
+  const addDisabled =
+    itemsLocked ||
+    pendingProductId == null ||
+    (pendingIsContainer && pendingSubFeatureId == null);
 
   return (
     <Card>
@@ -498,97 +479,133 @@ function Step1({
           onChange={(e) => onDescriptionChange(e.currentTarget.value)}
           maxLength={4000}
         />
-        <div>
-          <label
-            htmlFor="product-picker"
-            className="block text-near-black font-medium"
-            style={{ fontSize: 13, marginBottom: 6 }}
-          >
-            Product <span className="text-cardinal-red">*</span>
-          </label>
-          {/*
-            Native <select> is a deliberate temporary choice. The Phase 6a
-            prompt called for a "combobox (search-as-you-type)", but we
-            don't have a generic Combobox component yet and building one
-            well costs ~half a milestone. Native typeahead-on-select
-            handles the small catalog sizes Phase 6a ships with.
 
-            UPGRADE TRIGGER: when the active product list grows past ~50
-            entries (or when sub-feature lists for any container product
-            do), swap for a real Combobox component. Same swap on
-            <select id="subfeature-picker"> below — both pickers should
-            move together so the surface stays consistent.
-          */}
-          <select
-            id="product-picker"
-            value={productId ?? ""}
-            disabled={productLocked}
-            onChange={(e) =>
-              onProductChange(e.currentTarget.value ? Number(e.currentTarget.value) : null)
-            }
-            className="w-full rounded-md border border-border bg-white text-body text-near-black h-8 px-2 disabled:bg-warm-gray-light disabled:text-warm-gray-med"
-          >
-            <option value="">Select a product…</option>
-            {products.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name} ({modeLabel(p.mode)})
-              </option>
-            ))}
-          </select>
-          {productLocked && (
-            <p className="m-0 mt-1 text-warm-gray-med" style={{ fontSize: 12 }}>
-              Locked once the draft was saved — start a new request to switch products.
-            </p>
-          )}
-        </div>
-        {isContainer && (
+        {/* Selected products list */}
+        {localItems.length > 0 && (
           <div>
-            <label
-              htmlFor="subfeature-picker"
-              className="block text-near-black font-medium"
-              style={{ fontSize: 13, marginBottom: 6 }}
+            <div
+              className="text-near-black font-medium"
+              style={{ fontSize: 13, marginBottom: 8 }}
             >
-              Sub-feature <span className="text-cardinal-red">*</span>
-            </label>
-            <select
-              id="subfeature-picker"
-              value={subFeatureId ?? ""}
-              disabled={productLocked}
-              onChange={(e) =>
-                onSubFeatureChange(e.currentTarget.value ? Number(e.currentTarget.value) : null)
-              }
-              className="w-full rounded-md border border-border bg-white text-body text-near-black h-8 px-2 disabled:bg-warm-gray-light disabled:text-warm-gray-med"
-            >
-              <option value="">Select a sub-feature…</option>
-              {activeSubFeatures.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
+              Selected products
+            </div>
+            <ul className="m-0 p-0 list-none flex flex-col" style={{ gap: 6 }}>
+              {localItems.map((item, i) => (
+                <li
+                  key={`${item.productId}-${item.subFeatureId ?? "null"}-${i}`}
+                  className="flex items-center justify-between rounded-md"
+                  style={{
+                    padding: "8px 10px",
+                    background: "#FBFBFA",
+                    border: "1px solid var(--color-warm-gray-light)",
+                    fontSize: 13,
+                  }}
+                >
+                  <span className="text-near-black">
+                    {item.productName}
+                    {item.subFeatureName && (
+                      <span className="text-warm-gray-med"> · {item.subFeatureName}</span>
+                    )}
+                  </span>
+                  {!itemsLocked && (
+                    <button
+                      type="button"
+                      onClick={() => onRemoveItem(i)}
+                      aria-label={`Remove ${item.productName}`}
+                      className="inline-flex items-center justify-center bg-transparent border-0 cursor-pointer text-warm-gray-med hover:text-near-black"
+                      style={{ padding: 2 }}
+                    >
+                      <X className="w-3.5 h-3.5" strokeWidth={1.5} />
+                    </button>
+                  )}
+                </li>
               ))}
-            </select>
-            {activeSubFeatures.length === 0 && (
-              <p className="m-0 mt-1 text-warm-gray-med" style={{ fontSize: 12 }}>
-                This container product has no active sub-features yet.
-              </p>
-            )}
+            </ul>
           </div>
         )}
 
-        {/* Template preview / no-template warning. Only renders once a
-            valid parent (product or sub-feature) is chosen. */}
-        {selectedProduct && (!isContainer || subFeatureId != null) && (
-          <TemplatePreview
-            template={template}
-            noTemplate={noTemplate}
-            questionCount={questions.length}
-          />
+        {/* Add product row */}
+        {!itemsLocked && (
+          <div>
+            <div
+              className="text-near-black font-medium"
+              style={{ fontSize: 13, marginBottom: 6 }}
+            >
+              {localItems.length === 0 ? (
+                <>Product <span className="text-cardinal-red">*</span></>
+              ) : (
+                "Add another product"
+              )}
+            </div>
+            <div className="flex items-end" style={{ gap: 8 }}>
+              <div style={{ flex: 1 }}>
+                <select
+                  id="product-picker"
+                  aria-label="Product"
+                  value={pendingProductId ?? ""}
+                  onChange={(e) =>
+                    onPendingProductChange(e.currentTarget.value ? Number(e.currentTarget.value) : null)
+                  }
+                  className="w-full rounded-md border border-border bg-white text-body text-near-black h-8 px-2"
+                >
+                  <option value="">Select a product…</option>
+                  {products.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} ({modeLabel(p.mode)})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {pendingIsContainer && (
+                <div style={{ flex: 1 }}>
+                  <label
+                    htmlFor="subfeature-picker"
+                    className="block text-near-black font-medium"
+                    style={{ fontSize: 13, marginBottom: 6 }}
+                  >
+                    Sub-feature <span className="text-cardinal-red">*</span>
+                  </label>
+                  <select
+                    id="subfeature-picker"
+                    value={pendingSubFeatureId ?? ""}
+                    onChange={(e) =>
+                      onPendingSubFeatureChange(
+                        e.currentTarget.value ? Number(e.currentTarget.value) : null,
+                      )
+                    }
+                    className="w-full rounded-md border border-border bg-white text-body text-near-black h-8 px-2"
+                  >
+                    <option value="">Select a sub-feature…</option>
+                    {pendingSubFeatures.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              <SecondaryButton
+                disabled={addDisabled}
+                onClick={onAddItem}
+              >
+                <Plus className="w-3.5 h-3.5" strokeWidth={2} />
+                Add
+              </SecondaryButton>
+            </div>
+          </div>
+        )}
+
+        {itemsLocked && localItems.length > 0 && (
+          <p className="m-0 text-warm-gray-med" style={{ fontSize: 12 }}>
+            Products are locked once the draft is saved — start a new request to change the product list.
+          </p>
         )}
       </div>
 
       <FooterRow>
         <TertiaryButton onClick={onCancel}>Cancel</TertiaryButton>
         <SecondaryButton
-          disabled={saving || title.trim() === "" || productId == null || (isContainer && subFeatureId == null)}
+          disabled={saving || title.trim() === "" || localItems.length === 0}
           onClick={onSaveDraft}
         >
           {savedFlash ? "Saved as draft" : "Save as draft"}
@@ -602,112 +619,61 @@ function Step1({
   );
 }
 
-function TemplatePreview({
-  template,
-  noTemplate,
-  questionCount,
-}: {
-  template: TemplateView | null;
-  noTemplate: boolean;
-  questionCount: number;
-}) {
-  if (noTemplate) {
-    return (
-      <div
-        className="rounded-md"
-        style={{
-          background: "var(--color-light-blue-soft)",
-          padding: "10px 12px",
-          border: "1px solid rgba(187,221,230,0.7)",
-          fontSize: 13,
-          color: "var(--fg-1)",
-        }}
-        role="alert"
-      >
-        This product doesn't have an active estimate template yet. The Solution
-        Owner needs to create one before estimates can be submitted.
-      </div>
-    );
-  }
-  if (!template) return null;
-  return (
-    <div
-      className="rounded-md"
-      style={{
-        background: "#FBFBFA",
-        padding: "10px 12px",
-        border: "1px solid var(--color-warm-gray-light)",
-        fontSize: 13,
-        color: "var(--fg-1)",
-      }}
-    >
-      <strong>Estimate template:</strong> {template.displayName.replace("Estimate template for ", "")}
-      <span className="text-warm-gray-med">
-        {" "}· {questionCount} {questionCount === 1 ? "question" : "questions"} to answer
-      </span>
-    </div>
-  );
-}
-
 // =====================================================================
-// Step 2 — Answer questions
+// Step 2 — Answer questions (per-item accordion)
 // =====================================================================
 
 interface Step2Props {
-  questions: QuestionListItem[];
-  answers: Record<number, string>;
-  onAnswerChange: (qid: number, value: string) => void;
-  allRequiredAnswered: boolean;
+  localItems: LocalItem[];
+  products: ProductDetail[];
+  draftId: number | null;
   savedFlash: boolean;
   saving: boolean;
+  allItemsReady: boolean;
+  onItemAnswerChange: (itemIndex: number, qid: number, value: string) => void;
+  onItemReadyChange: (itemIndex: number, ready: boolean) => void;
   onBack: () => void;
   onSaveDraft: () => void;
   onContinue: () => void;
 }
 
 function Step2({
-  questions,
-  answers,
-  onAnswerChange,
-  allRequiredAnswered,
+  localItems,
+  products,
   savedFlash,
   saving,
+  allItemsReady,
+  onItemAnswerChange,
+  onItemReadyChange,
   onBack,
   onSaveDraft,
   onContinue,
 }: Step2Props) {
+  const [openIndex, setOpenIndex] = useState(0);
+
   return (
     <Card>
-      {questions.length === 0 ? (
+      {localItems.length === 0 ? (
         <p className="m-0 text-warm-gray-med" style={{ fontSize: 14 }}>
-          No questions for this product. Continue to review.
+          No products selected.
         </p>
       ) : (
-        <ul className="m-0 p-0 list-none flex flex-col" style={{ gap: 18 }}>
-          {questions.map((q) => (
-            <li key={q.id}>
-              <div className="flex items-baseline" style={{ gap: 8, marginBottom: 4 }}>
-                <span className="text-near-black font-semibold" style={{ fontSize: 14 }}>
-                  {q.questionText}
-                </span>
-                {q.required && <RequiredPill />}
-              </div>
-              {q.helpText && (
-                <p className="m-0 mb-1 text-warm-gray-med" style={{ fontSize: 12 }}>
-                  {q.helpText}
-                </p>
-              )}
-              <Textarea
-                id={`answer-${q.id}`}
-                value={answers[q.id] ?? ""}
-                onChange={(e) => onAnswerChange(q.id, e.currentTarget.value)}
-                maxLength={8000}
-                rows={3}
-                aria-label={`Answer to: ${q.questionText}`}
+        <div className="flex flex-col" style={{ gap: 8 }}>
+          {localItems.map((item, i) => {
+            const product = products.find((p) => p.id === item.productId) ?? null;
+            return (
+              <ItemSection
+                key={`${item.productId}-${item.subFeatureId ?? "null"}-${i}`}
+                item={item}
+                product={product}
+                isOpen={openIndex === i}
+                onToggle={() => setOpenIndex(openIndex === i ? -1 : i)}
+                onAnswerChange={(qid, value) => onItemAnswerChange(i, qid, value)}
+                onReadyChange={(ready) => onItemReadyChange(i, ready)}
               />
-            </li>
-          ))}
-        </ul>
+            );
+          })}
+        </div>
       )}
 
       <FooterRow>
@@ -719,7 +685,7 @@ function Step2({
           {savedFlash ? "Saved as draft" : "Save as draft"}
         </SecondaryButton>
         <PrimaryButton
-          disabled={saving || (questions.length > 0 && !allRequiredAnswered)}
+          disabled={saving || !allItemsReady}
           onClick={onContinue}
         >
           Continue to review
@@ -730,6 +696,123 @@ function Step2({
   );
 }
 
+interface ItemSectionProps {
+  item: LocalItem;
+  product: ProductDetail | null;
+  isOpen: boolean;
+  onToggle: () => void;
+  onAnswerChange: (qid: number, value: string) => void;
+  onReadyChange: (ready: boolean) => void;
+}
+
+function ItemSection({
+  item,
+  product,
+  isOpen,
+  onToggle,
+  onAnswerChange,
+  onReadyChange,
+}: ItemSectionProps) {
+  const isContainer = product?.mode === "CONTAINER";
+
+  const productQuestionsQuery = useProductQuestionsQuery(
+    !isContainer ? item.productId : null,
+  );
+  const subFeatureQuestionsQuery = useSubFeatureQuestionsQuery(
+    isContainer && item.subFeatureId ? item.subFeatureId : null,
+  );
+  const questions: QuestionListItem[] = useMemo(() => {
+    const raw = isContainer
+      ? subFeatureQuestionsQuery.data
+      : productQuestionsQuery.data;
+    return (raw ?? []).filter((q) => q.active);
+  }, [isContainer, productQuestionsQuery.data, subFeatureQuestionsQuery.data]);
+
+  const requiredIds = questions.filter((q) => q.required).map((q) => q.id);
+  const allRequiredAnswered = requiredIds.every(
+    (qid) => (item.answers[qid] ?? "").trim() !== "",
+  );
+
+  useEffect(() => {
+    onReadyChange(requiredIds.length === 0 || allRequiredAnswered);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allRequiredAnswered, requiredIds.length]);
+
+  const heading = item.subFeatureName
+    ? `${item.productName} · ${item.subFeatureName}`
+    : item.productName;
+
+  return (
+    <div
+      className="rounded-md"
+      style={{ border: "1px solid var(--color-warm-gray-light)" }}
+    >
+      <button
+        type="button"
+        onClick={onToggle}
+        className="w-full flex items-center justify-between bg-transparent border-0 cursor-pointer text-left"
+        style={{
+          padding: "10px 14px",
+          fontSize: 14,
+          fontWeight: 600,
+          color: "var(--fg-1)",
+          background: isOpen ? "#FBFBFA" : "#FFFFFF",
+          borderRadius: isOpen ? "6px 6px 0 0" : 6,
+        }}
+      >
+        <span>{heading}</span>
+        <span className="flex items-center" style={{ gap: 8 }}>
+          {questions.length > 0 && (
+            <span className="text-warm-gray-med" style={{ fontSize: 12, fontWeight: 400 }}>
+              {questions.length} {questions.length === 1 ? "question" : "questions"}
+            </span>
+          )}
+          {isOpen
+            ? <Minus className="w-3.5 h-3.5 text-warm-gray-med" strokeWidth={1.5} />
+            : <Plus className="w-3.5 h-3.5 text-warm-gray-med" strokeWidth={1.5} />
+          }
+        </span>
+      </button>
+
+      {isOpen && (
+        <div style={{ padding: "14px 16px 16px", borderTop: "1px solid var(--color-warm-gray-light)" }}>
+          {questions.length === 0 ? (
+            <p className="m-0 text-warm-gray-med" style={{ fontSize: 14 }}>
+              No questions for this product.
+            </p>
+          ) : (
+            <ul className="m-0 p-0 list-none flex flex-col" style={{ gap: 18 }}>
+              {questions.map((q) => (
+                <li key={q.id}>
+                  <div className="flex items-baseline" style={{ gap: 8, marginBottom: 4 }}>
+                    <span className="text-near-black font-semibold" style={{ fontSize: 14 }}>
+                      {q.questionText}
+                    </span>
+                    {q.required && <RequiredPill />}
+                  </div>
+                  {q.helpText && (
+                    <p className="m-0 mb-1 text-warm-gray-med" style={{ fontSize: 12 }}>
+                      {q.helpText}
+                    </p>
+                  )}
+                  <Textarea
+                    id={`answer-${item.productId}-${item.subFeatureId ?? "null"}-${q.id}`}
+                    value={item.answers[q.id] ?? ""}
+                    onChange={(e) => onAnswerChange(q.id, e.currentTarget.value)}
+                    maxLength={8000}
+                    rows={3}
+                    aria-label={`Answer to: ${q.questionText}`}
+                  />
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // =====================================================================
 // Step 3 — Review & submit
 // =====================================================================
@@ -737,11 +820,8 @@ function Step2({
 interface Step3Props {
   title: string;
   description: string;
-  productName: string;
-  subFeatureName: string | null;
-  template: TemplateView | null;
-  questions: QuestionListItem[];
-  answers: Record<number, string>;
+  localItems: LocalItem[];
+  products: ProductDetail[];
   submitting: boolean;
   onBack: () => void;
   onSaveDraft: () => void;
@@ -751,11 +831,7 @@ interface Step3Props {
 function Step3({
   title,
   description,
-  productName,
-  subFeatureName,
-  template,
-  questions,
-  answers,
+  localItems,
   submitting,
   onBack,
   onSaveDraft,
@@ -768,47 +844,14 @@ function Step3({
           <strong>{title}</strong>
         </Section>
         {description && <Section label="Description">{description}</Section>}
-        <Section label="Product">
-          {productName}
-          {subFeatureName && <> · {subFeatureName}</>}
-          {template && (
-            <span className="text-warm-gray-med">
-              {" "}· Active template: v{template.versionNumber}
-            </span>
-          )}
-        </Section>
 
         <div>
-          <SectionLabel>Critical questions</SectionLabel>
-          {questions.length === 0 ? (
-            <p className="m-0 text-warm-gray-med" style={{ fontSize: 13 }}>
-              No questions on this product.
-            </p>
-          ) : (
-            <ul className="m-0 p-0 list-none flex flex-col" style={{ gap: 12 }}>
-              {questions.map((q) => {
-                const a = answers[q.id]?.trim() ?? "";
-                return (
-                  <li key={q.id}>
-                    <div className="text-near-black font-semibold" style={{ fontSize: 14 }}>
-                      {q.questionText}
-                    </div>
-                    <p
-                      className="m-0 mt-1"
-                      style={{
-                        fontSize: 14,
-                        color: a ? "var(--fg-1)" : "var(--color-warm-gray-med)",
-                        fontStyle: a ? undefined : "italic",
-                        whiteSpace: "pre-wrap",
-                      }}
-                    >
-                      {a || "Not answered"}
-                    </p>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
+          <SectionLabel>Products ({localItems.length})</SectionLabel>
+          <ul className="m-0 p-0 list-none flex flex-col mt-2" style={{ gap: 14 }}>
+            {localItems.map((item, i) => (
+              <ItemSummary key={i} item={item} />
+            ))}
+          </ul>
         </div>
 
         <div
@@ -842,6 +885,39 @@ function Step3({
         </PrimaryButton>
       </FooterRow>
     </Card>
+  );
+}
+
+interface ItemSummaryProps {
+  item: LocalItem;
+}
+
+function ItemSummary({ item }: ItemSummaryProps) {
+  const heading = item.subFeatureName
+    ? `${item.productName} · ${item.subFeatureName}`
+    : item.productName;
+
+  const answered = Object.values(item.answers).filter((v) => v.trim() !== "").length;
+  const total = Object.keys(item.answers).length;
+
+  return (
+    <li
+      className="rounded-md"
+      style={{
+        padding: "10px 12px",
+        background: "#FBFBFA",
+        border: "1px solid var(--color-warm-gray-light)",
+      }}
+    >
+      <div className="text-near-black font-semibold" style={{ fontSize: 14 }}>
+        {heading}
+      </div>
+      {total > 0 && (
+        <div className="text-warm-gray-med mt-1" style={{ fontSize: 12 }}>
+          {answered} of {total} {total === 1 ? "question" : "questions"} answered
+        </div>
+      )}
+    </li>
   );
 }
 
@@ -922,8 +998,3 @@ function RequiredPill() {
 function modeLabel(mode: ProductMode): string {
   return mode === "ATOMIC" ? "atomic" : "container";
 }
-
-// Use the unused PageHeader import marker if-needed; React doesn't support
-// "import for side effect" in this case, so we just rely on the component
-// being referenced. (kept import — used above.)
-void Plus;
