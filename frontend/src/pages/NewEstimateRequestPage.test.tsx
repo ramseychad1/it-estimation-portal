@@ -281,16 +281,15 @@ describe("<NewEstimateRequestPage>", () => {
     renderAt("/requests/new");
     const user = userEvent.setup();
 
-    await screen.findByLabelText(/What should this estimate be called\?/i);
-    await user.type(screen.getByLabelText(/What should this estimate be called\?/i), "My req");
+    // Wait for the product browser to load
+    await screen.findByLabelText(/Estimate name/i);
 
-    await user.selectOptions(
-      screen.getByRole("combobox", { name: /Product/i }),
-      "1",
-    );
-    // Sub-feature picker materialises for container products
-    expect(await screen.findByLabelText(/Sub-feature/i)).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: /Variant A/i })).toBeInTheDocument();
+    // Click the Container product — it expands an inline sub-feature list
+    await user.click(await screen.findByRole("button", { name: /Container/i }));
+
+    // Sub-features appear as inline buttons
+    expect(await screen.findByRole("button", { name: "Variant A" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Variant B" })).toBeInTheDocument();
   });
 
   it("Save as draft persists across step navigation", async () => {
@@ -303,18 +302,17 @@ describe("<NewEstimateRequestPage>", () => {
     const user = userEvent.setup();
 
     await user.type(
-      await screen.findByLabelText(/What should this estimate be called\?/i),
+      await screen.findByLabelText(/Estimate name/i),
       "Persist test",
     );
 
-    // Select product and add it to the list
-    await user.selectOptions(screen.getByRole("combobox", { name: /Product/i }), "1");
-    await user.click(screen.getByRole("button", { name: /^Add$/i }));
+    // Click the atomic product — it is added to the cart immediately
+    await user.click(await screen.findByRole("button", { name: /^Atomic$/ }));
 
-    // Product appears in selected list
-    await screen.findByText("Atomic");
+    // Cart confirms 1 item added
+    await screen.findByText("1 item");
 
-    await user.click(screen.getByRole("button", { name: /Save as draft/i }));
+    await user.click(screen.getByRole("button", { name: /Save draft/i }));
 
     // The Draft should be created server-side.
     await waitFor(() => {
@@ -323,8 +321,9 @@ describe("<NewEstimateRequestPage>", () => {
     });
 
     // Continue to step 2 — the URL should now carry both step + id.
-    await user.click(screen.getByRole("button", { name: /Continue to questions/i }));
-    await screen.findByText("Atomic");
+    await user.click(screen.getByRole("button", { name: /^Continue$/ }));
+    // Step 2 renders the item in the rail and accordion
+    await screen.findAllByText("Atomic");
   });
 
   it("Step 2: required question without answer disables Continue", async () => {
@@ -343,15 +342,15 @@ describe("<NewEstimateRequestPage>", () => {
 
     // First accordion item is open by default; question should be visible
     await screen.findByText("Required Q?");
-    expect(screen.getByRole("button", { name: /Continue to review/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /^Continue$/ })).toBeDisabled();
 
     await user.type(screen.getByLabelText(/Answer to: Required Q\?/i), "An answer");
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /Continue to review/i })).not.toBeDisabled();
+      expect(screen.getByRole("button", { name: /^Continue$/ })).not.toBeDisabled();
     });
   });
 
-  it("Step 3: Submit confirmation modal fires POST submit and navigates to detail", async () => {
+  it("Step 3: Inline confirmation enables Submit and navigates to detail", async () => {
     products = [{ id: 1, name: "Atomic", mode: "ATOMIC" }];
     questions = [
       { id: 300, productId: 1, subFeatureId: null, questionText: "Q?", required: true, active: true },
@@ -364,10 +363,21 @@ describe("<NewEstimateRequestPage>", () => {
     renderAt("/requests/new?step=3&id=700");
     const user = userEvent.setup();
 
-    await screen.findByText(/What happens next/i);
-    await user.click(screen.getByRole("button", { name: /Submit for review/i }));
-    // ConfirmModal opens — confirm with the distinct "Submit" button.
-    await user.click(await screen.findByRole("button", { name: /^Submit$/i }));
+    // Step 3 ready banner
+    await screen.findByText(/Everything looks ready to submit/i);
+
+    // Submit button is disabled until the confirmation checkbox is checked
+    expect(screen.getByRole("button", { name: /Submit estimate request/i })).toBeDisabled();
+
+    // Check the confirmation checkbox
+    await user.click(screen.getByRole("checkbox"));
+
+    // Submit button becomes enabled
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /Submit estimate request/i })).not.toBeDisabled();
+    });
+
+    await user.click(screen.getByRole("button", { name: /Submit estimate request/i }));
 
     await waitFor(() => {
       expect(submittedIds).toContain(700);

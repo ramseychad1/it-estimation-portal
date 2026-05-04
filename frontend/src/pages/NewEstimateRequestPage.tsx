@@ -1,6 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { ArrowLeft, ArrowRight, Minus, Plus, X } from "lucide-react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Lock,
+  Search,
+  X,
+} from "lucide-react";
 import { ConfirmModal } from "../components/ConfirmModal";
 import { PageHeader } from "../components/PageHeader";
 import { Stepper } from "../components/Stepper";
@@ -12,6 +21,7 @@ import {
 } from "../components/buttons";
 import { useToast } from "../components/Toast";
 import { useUnsavedChangesGuard } from "../lib/useUnsavedChangesGuard";
+import { useAuth } from "../lib/auth";
 import { useProductsQuery } from "../lib/queries/products";
 import { useSubFeaturesForProductQuery } from "../lib/queries/subFeatures";
 import {
@@ -26,14 +36,10 @@ import {
   useSubmitRequestMutation,
   useUpdateDraftMutation,
 } from "../lib/queries/estimates";
-import type { ProductDetail, ProductMode } from "../lib/api/products";
+import type { ProductDetail } from "../lib/api/products";
 import type { QuestionListItem } from "../lib/api/questions";
 
-// Silence unused imports that are referenced transitively or kept for future use
-void useProductQuestionsQuery;
-void useSubFeatureQuestionsQuery;
-
-const STEPS = ["Choose products", "Answer questions", "Review & submit"];
+const STEPS = ["Products", "Questions", "Review"];
 
 type Step = 1 | 2 | 3;
 
@@ -53,9 +59,14 @@ type LocalItem = {
   answers: Record<number, string>;
 };
 
+// =====================================================================
+// Root page component
+// =====================================================================
+
 export function NewEstimateRequestPage() {
   const navigate = useNavigate();
   const toast = useToast();
+  const { user } = useAuth();
   const [params, setParams] = useSearchParams();
 
   const urlStep = clampStep(params.get("step"));
@@ -68,30 +79,22 @@ export function NewEstimateRequestPage() {
   const [goLiveDate, setGoLiveDate] = useState("");
   const [goLiveDateUnknown, setGoLiveDateUnknown] = useState(false);
   const [localItems, setLocalItems] = useState<LocalItem[]>([]);
-  const [pendingProductId, setPendingProductId] = useState<number | null>(null);
-  const [pendingSubFeatureId, setPendingSubFeatureId] = useState<number | null>(null);
   const [dirty, setDirty] = useState(false);
   const [draftId, setDraftId] = useState<number | null>(urlId);
   const [savedFlash, setSavedFlash] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
-  const [submitOpen, setSubmitOpen] = useState(false);
   const [itemsReady, setItemsReady] = useState<boolean[]>([]);
+  const [itemCounts, setItemCounts] = useState<Array<{ answered: number; total: number }>>([]);
 
   const itemsLocked = draftId != null;
 
-  // Sync from loaded draft
   useEffect(() => {
     if (!urlId || !existingQuery.data) return;
     const d = existingQuery.data;
     setTitle(d.title);
     setDescription(d.description ?? "");
-    if (d.goLiveDate) {
-      setGoLiveDate(d.goLiveDate);
-      setGoLiveDateUnknown(false);
-    } else {
-      setGoLiveDate("");
-      setGoLiveDateUnknown(false);
-    }
+    setGoLiveDate(d.goLiveDate ?? "");
+    setGoLiveDateUnknown(false);
     const hydrated = d.items.map((item) => ({
       productId: item.productId,
       productName: item.productName,
@@ -118,13 +121,6 @@ export function NewEstimateRequestPage() {
   const productsQuery = useProductsQuery({ status: "ACTIVE", size: 100 });
   const products = productsQuery.data?.items ?? [];
 
-  const pendingProduct = products.find((p) => p.id === pendingProductId) ?? null;
-  const pendingIsContainer = pendingProduct?.mode === "CONTAINER";
-  const subFeaturesQuery = useSubFeaturesForProductQuery(
-    pendingIsContainer ? pendingProductId : null,
-  );
-  const pendingSubFeatures = (subFeaturesQuery.data ?? []).filter((s) => s.active);
-
   const createMutation = useCreateDraftMutation();
   const updateMutation = useUpdateDraftMutation();
   const saveItemAnswersMutation = useSaveDraftItemAnswersMutation();
@@ -135,11 +131,14 @@ export function NewEstimateRequestPage() {
 
   useEffect(() => {
     if (!urlId && urlStep > 1) {
-      setParams((p) => {
-        const next = new URLSearchParams(p);
-        next.set("step", "1");
-        return next;
-      }, { replace: true });
+      setParams(
+        (p) => {
+          const next = new URLSearchParams(p);
+          next.set("step", "1");
+          return next;
+        },
+        { replace: true },
+      );
     }
   }, [urlId, urlStep, setParams]);
 
@@ -158,28 +157,23 @@ export function NewEstimateRequestPage() {
     setTimeout(() => setSavedFlash(false), 1500);
   }
 
-  function addPendingItem() {
-    if (!pendingProductId || !pendingProduct) return;
-    if (pendingIsContainer && !pendingSubFeatureId) return;
-    const subFeature = pendingIsContainer
-      ? pendingSubFeatures.find((s) => s.id === pendingSubFeatureId) ?? null
-      : null;
-    const newItem: LocalItem = {
-      productId: pendingProductId,
-      productName: pendingProduct.name,
-      subFeatureId: pendingIsContainer ? pendingSubFeatureId : null,
-      subFeatureName: subFeature?.name ?? null,
-      itemId: null,
-      answers: {},
-    };
-    setLocalItems((prev) => [...prev, newItem]);
-    setPendingProductId(null);
-    setPendingSubFeatureId(null);
+  function addItem(
+    productId: number,
+    productName: string,
+    subFeatureId: number | null,
+    subFeatureName: string | null,
+  ) {
+    setLocalItems((prev) => [
+      ...prev,
+      { productId, productName, subFeatureId, subFeatureName, itemId: null, answers: {} },
+    ]);
     setDirty(true);
   }
 
   function removeItem(index: number) {
     setLocalItems((prev) => prev.filter((_, i) => i !== index));
+    setItemsReady((prev) => prev.filter((_, i) => i !== index));
+    setItemCounts((prev) => prev.filter((_, i) => i !== index));
     setDirty(true);
   }
 
@@ -190,7 +184,7 @@ export function NewEstimateRequestPage() {
     }
     try {
       let id = draftId;
-      const resolvedGoLiveDate = goLiveDateUnknown ? null : (goLiveDate || null);
+      const resolvedGoLiveDate = goLiveDateUnknown ? null : goLiveDate || null;
       if (id == null) {
         const created = await createMutation.mutateAsync({
           title: title.trim(),
@@ -204,7 +198,7 @@ export function NewEstimateRequestPage() {
         id = created.id;
         setDraftId(id);
         setLocalItems((prev) =>
-          prev.map((item, i) => ({ ...item, itemId: created.items[i]?.id ?? null }))
+          prev.map((item, i) => ({ ...item, itemId: created.items[i]?.id ?? null })),
         );
       } else {
         await updateMutation.mutateAsync({
@@ -254,30 +248,15 @@ export function NewEstimateRequestPage() {
     try {
       await persistAllAnswers();
       const submitted = await submitMutation.mutateAsync(draftId);
-      toast.success("Request submitted. The Solution Owner team will review your request.");
+      toast.success(
+        "Request submitted. The Solution Owner team will review your request.",
+      );
       navigate(`/requests/${submitted.id}`);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Could not submit the request.");
-    } finally {
-      setSubmitOpen(false);
+      toast.error(
+        err instanceof Error ? err.message : "Could not submit the request.",
+      );
     }
-  }
-
-  function handleCancel() {
-    setCancelOpen(true);
-  }
-
-  async function performCancel() {
-    if (draftId != null) {
-      try {
-        await discardMutation.mutateAsync(draftId);
-        toast.success("Draft discarded.");
-      } catch {
-        toast.error("Could not discard the draft.");
-      }
-    }
-    setCancelOpen(false);
-    navigate("/requests");
   }
 
   const handleItemReadyChange = useCallback((index: number, ready: boolean) => {
@@ -288,18 +267,38 @@ export function NewEstimateRequestPage() {
     });
   }, []);
 
-  const handleItemAnswerChange = useCallback((itemIndex: number, qid: number, value: string) => {
-    setLocalItems((prev) => {
-      const next = [...prev];
-      next[itemIndex] = { ...next[itemIndex], answers: { ...next[itemIndex].answers, [qid]: value } };
-      return next;
-    });
-    setDirty(true);
-  }, []);
+  const handleItemCountChange = useCallback(
+    (index: number, answered: number, total: number) => {
+      setItemCounts((prev) => {
+        const next = [...prev];
+        next[index] = { answered, total };
+        return next;
+      });
+    },
+    [],
+  );
 
-  const allItemsReady = itemsReady.length === localItems.length &&
+  const handleItemAnswerChange = useCallback(
+    (itemIndex: number, qid: number, value: string) => {
+      setLocalItems((prev) => {
+        const next = [...prev];
+        next[itemIndex] = {
+          ...next[itemIndex],
+          answers: { ...next[itemIndex].answers, [qid]: value },
+        };
+        return next;
+      });
+      setDirty(true);
+    },
+    [],
+  );
+
+  const allItemsReady =
+    itemsReady.length === localItems.length &&
     localItems.length > 0 &&
     itemsReady.every(Boolean);
+
+  const requesterName = user ? `${user.firstName} ${user.lastName}` : "";
 
   return (
     <>
@@ -310,10 +309,9 @@ export function NewEstimateRequestPage() {
           { label: "New" },
         ]}
         title="New estimate request"
-        subtitle="Three steps. Pick your products, answer the critical questions, review and submit."
       />
 
-      <div style={{ marginTop: 24, marginBottom: 24 }}>
+      <div style={{ marginTop: 24, marginBottom: 28 }}>
         <Stepper steps={STEPS} currentStep={step - 1} />
       </div>
 
@@ -324,36 +322,34 @@ export function NewEstimateRequestPage() {
           goLiveDate={goLiveDate}
           goLiveDateUnknown={goLiveDateUnknown}
           localItems={localItems}
-          pendingProductId={pendingProductId}
-          pendingSubFeatureId={pendingSubFeatureId}
           products={products}
-          pendingProduct={pendingProduct}
-          pendingSubFeatures={pendingSubFeatures}
           itemsLocked={itemsLocked}
           savedFlash={savedFlash}
           saving={createMutation.isPending || updateMutation.isPending}
-          onTitleChange={(v) => { setTitle(v); setDirty(true); }}
-          onDescriptionChange={(v) => { setDescription(v); setDirty(true); }}
-          onGoLiveDateChange={(v) => { setGoLiveDate(v); setGoLiveDateUnknown(false); setDirty(true); }}
+          onTitleChange={(v) => {
+            setTitle(v);
+            setDirty(true);
+          }}
+          onDescriptionChange={(v) => {
+            setDescription(v);
+            setDirty(true);
+          }}
+          onGoLiveDateChange={(v) => {
+            setGoLiveDate(v);
+            setGoLiveDateUnknown(false);
+            setDirty(true);
+          }}
           onGoLiveDateUnknownChange={(unknown) => {
             setGoLiveDateUnknown(unknown);
             if (unknown) setGoLiveDate("");
             setDirty(true);
           }}
-          onPendingProductChange={(id) => {
-            setPendingProductId(id);
-            setPendingSubFeatureId(null);
-          }}
-          onPendingSubFeatureChange={setPendingSubFeatureId}
-          onAddItem={addPendingItem}
+          onAddItem={addItem}
           onRemoveItem={removeItem}
-          onCancel={handleCancel}
+          onCancel={() => setCancelOpen(true)}
           onSaveDraft={() => void ensureDraftThen()}
           onContinue={() => void ensureDraftThen(2)}
-          continueDisabled={
-            title.trim() === "" ||
-            localItems.length === 0
-          }
+          continueDisabled={title.trim() === "" || localItems.length === 0}
         />
       )}
 
@@ -361,12 +357,13 @@ export function NewEstimateRequestPage() {
         <Step2
           localItems={localItems}
           products={products}
-          draftId={draftId}
           savedFlash={savedFlash}
           saving={saveItemAnswersMutation.isPending}
           allItemsReady={allItemsReady}
+          itemCounts={itemCounts}
           onItemAnswerChange={handleItemAnswerChange}
           onItemReadyChange={handleItemReadyChange}
+          onItemCountChange={handleItemCountChange}
           onBack={() => setStep(1)}
           onSaveDraft={() => void persistAllAnswers()}
           onContinue={() => void persistAllAnswers(3)}
@@ -377,12 +374,17 @@ export function NewEstimateRequestPage() {
         <Step3
           title={title}
           description={description}
+          goLiveDate={goLiveDate}
+          goLiveDateUnknown={goLiveDateUnknown}
           localItems={localItems}
           products={products}
+          requesterName={requesterName}
           submitting={submitMutation.isPending || saveItemAnswersMutation.isPending}
           onBack={() => setStep(2)}
+          onGoToStep1={() => setStep(1)}
+          onGoToStep2={() => setStep(2)}
           onSaveDraft={() => void persistAllAnswers()}
-          onSubmit={() => setSubmitOpen(true)}
+          onSubmit={performSubmit}
         />
       )}
 
@@ -400,29 +402,25 @@ export function NewEstimateRequestPage() {
         cancelLabel="Keep editing"
         destructive
         onCancel={() => setCancelOpen(false)}
-        onConfirm={performCancel}
-      />
-
-      <ConfirmModal
-        open={submitOpen}
-        title="Submit this request?"
-        body={
-          <p className="text-body text-warm-gray-med m-0">
-            After submission you can't change the answers without the Solution
-            Owner sending it back.
-          </p>
-        }
-        confirmLabel="Submit"
-        cancelLabel="Keep editing"
-        onCancel={() => setSubmitOpen(false)}
-        onConfirm={performSubmit}
+        onConfirm={async () => {
+          if (draftId != null) {
+            try {
+              await discardMutation.mutateAsync(draftId);
+              toast.success("Draft discarded.");
+            } catch {
+              toast.error("Could not discard the draft.");
+            }
+          }
+          setCancelOpen(false);
+          navigate("/requests");
+        }}
       />
     </>
   );
 }
 
 // =====================================================================
-// Step 1 — Choose products
+// Step 1 — Products
 // =====================================================================
 
 interface Step1Props {
@@ -431,11 +429,7 @@ interface Step1Props {
   goLiveDate: string;
   goLiveDateUnknown: boolean;
   localItems: LocalItem[];
-  pendingProductId: number | null;
-  pendingSubFeatureId: number | null;
   products: ProductDetail[];
-  pendingProduct: ProductDetail | null;
-  pendingSubFeatures: { id: number; name: string }[];
   itemsLocked: boolean;
   savedFlash: boolean;
   saving: boolean;
@@ -443,9 +437,12 @@ interface Step1Props {
   onDescriptionChange: (v: string) => void;
   onGoLiveDateChange: (date: string) => void;
   onGoLiveDateUnknownChange: (unknown: boolean) => void;
-  onPendingProductChange: (id: number | null) => void;
-  onPendingSubFeatureChange: (id: number | null) => void;
-  onAddItem: () => void;
+  onAddItem: (
+    productId: number,
+    productName: string,
+    subFeatureId: number | null,
+    subFeatureName: string | null,
+  ) => void;
   onRemoveItem: (index: number) => void;
   onCancel: () => void;
   onSaveDraft: () => void;
@@ -459,11 +456,7 @@ function Step1({
   goLiveDate,
   goLiveDateUnknown,
   localItems,
-  pendingProductId,
-  pendingSubFeatureId,
   products,
-  pendingProduct,
-  pendingSubFeatures,
   itemsLocked,
   savedFlash,
   saving,
@@ -471,8 +464,6 @@ function Step1({
   onDescriptionChange,
   onGoLiveDateChange,
   onGoLiveDateUnknownChange,
-  onPendingProductChange,
-  onPendingSubFeatureChange,
   onAddItem,
   onRemoveItem,
   onCancel,
@@ -480,225 +471,653 @@ function Step1({
   onContinue,
   continueDisabled,
 }: Step1Props) {
-  const pendingIsContainer = pendingProduct?.mode === "CONTAINER";
-  const addDisabled =
-    itemsLocked ||
-    pendingProductId == null ||
-    (pendingIsContainer && pendingSubFeatureId == null);
+  return (
+    <>
+      {/* About card */}
+      <section
+        className="bg-white rounded-lg"
+        style={{
+          border: "1px solid var(--color-border)",
+          padding: "22px 24px",
+          marginBottom: 24,
+        }}
+      >
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 220px",
+            gap: "20px 24px",
+          }}
+        >
+          <div>
+            <TextInput
+              id="request-title"
+              label="Estimate name"
+              value={title}
+              onChange={(e) => onTitleChange(e.currentTarget.value)}
+              maxLength={255}
+              required
+            />
+          </div>
+          <div>
+            <label
+              className="block text-near-black font-medium"
+              style={{ fontSize: 13, marginBottom: 4 }}
+            >
+              Go-live date{" "}
+              <span className="text-warm-gray-med font-normal">(optional)</span>
+            </label>
+            <input
+              type="date"
+              value={goLiveDate}
+              disabled={goLiveDateUnknown}
+              onChange={(e) => onGoLiveDateChange(e.currentTarget.value)}
+              className="w-full rounded-md border border-border bg-white text-body text-near-black h-8 px-3 disabled:bg-warm-gray-light disabled:text-warm-gray-med focus:outline-none focus:border-warm-gray-med focus:ring-2 focus:ring-light-blue"
+            />
+            <label
+              className="inline-flex items-center cursor-pointer"
+              style={{ marginTop: 6, gap: 6, fontSize: 12 }}
+            >
+              <input
+                type="checkbox"
+                checked={goLiveDateUnknown}
+                onChange={(e) => onGoLiveDateUnknownChange(e.currentTarget.checked)}
+                className="rounded border-border"
+                style={{
+                  width: 14,
+                  height: 14,
+                  accentColor: "var(--color-near-black)",
+                }}
+              />
+              <span className="text-warm-gray-med">Unknown at this time</span>
+            </label>
+          </div>
+          <div style={{ gridColumn: "1 / -1" }}>
+            <Textarea
+              id="request-description"
+              label={
+                <>
+                  Description{" "}
+                  <span className="text-warm-gray-med font-normal">(optional)</span>
+                </>
+              }
+              helper="Add context — business goal, related projects, stakeholders…"
+              rows={3}
+              value={description}
+              onChange={(e) => onDescriptionChange(e.currentTarget.value)}
+              maxLength={4000}
+            />
+          </div>
+        </div>
+      </section>
+
+      {/* Products section */}
+      <div style={{ marginBottom: 12 }}>
+        <h2
+          className="text-near-black font-semibold"
+          style={{ fontSize: 18, letterSpacing: "-0.005em", margin: 0 }}
+        >
+          Products
+        </h2>
+        <p className="text-warm-gray-med" style={{ fontSize: 13, margin: "2px 0 0" }}>
+          {itemsLocked
+            ? "Products are locked once the draft is saved — start a new request to change this list."
+            : "Click a product to add it. Container products expand to show their sub-features."}
+        </p>
+      </div>
+
+      <ProductBrowser
+        products={products}
+        localItems={localItems}
+        itemsLocked={itemsLocked}
+        onAddItem={onAddItem}
+        onRemoveItem={onRemoveItem}
+      />
+
+      <FooterRow left={<TertiaryButton onClick={onCancel}>Cancel</TertiaryButton>}>
+        <SecondaryButton
+          disabled={saving || title.trim() === "" || localItems.length === 0}
+          onClick={onSaveDraft}
+        >
+          {savedFlash ? "Saved" : "Save draft"}
+        </SecondaryButton>
+        <PrimaryButton disabled={continueDisabled || saving} onClick={onContinue}>
+          Continue
+          <ArrowRight className="w-3.5 h-3.5" strokeWidth={2} />
+        </PrimaryButton>
+      </FooterRow>
+    </>
+  );
+}
+
+// =====================================================================
+// Product Browser (Step 1 left panel + cart)
+// =====================================================================
+
+interface ProductBrowserProps {
+  products: ProductDetail[];
+  localItems: LocalItem[];
+  itemsLocked: boolean;
+  onAddItem: (
+    productId: number,
+    productName: string,
+    subFeatureId: number | null,
+    subFeatureName: string | null,
+  ) => void;
+  onRemoveItem: (index: number) => void;
+}
+
+type ProductGroup = {
+  teamId: number | null;
+  teamName: string;
+  products: ProductDetail[];
+};
+
+function ProductBrowser({
+  products,
+  localItems,
+  itemsLocked,
+  onAddItem,
+  onRemoveItem,
+}: ProductBrowserProps) {
+  const [search, setSearch] = useState("");
+  const [expandedProductId, setExpandedProductId] = useState<number | null>(null);
+  const [collapsedTeams, setCollapsedTeams] = useState<Set<string>>(new Set());
+
+  const groups = useMemo<ProductGroup[]>(() => {
+    const map = new Map<string, ProductGroup>();
+    for (const p of products) {
+      const key = p.team ? `${p.team.id}:${p.team.name}` : "unassigned";
+      if (!map.has(key)) {
+        map.set(key, {
+          teamId: p.team?.id ?? null,
+          teamName: p.team?.name ?? "Unassigned",
+          products: [],
+        });
+      }
+      map.get(key)!.products.push(p);
+    }
+    return Array.from(map.values()).sort((a, b) => {
+      if (a.teamName === "Unassigned") return 1;
+      if (b.teamName === "Unassigned") return -1;
+      return a.teamName.localeCompare(b.teamName);
+    });
+  }, [products]);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return groups;
+    return groups
+      .map((g) => ({
+        ...g,
+        products: g.products.filter((p) =>
+          p.name.toLowerCase().includes(q),
+        ),
+      }))
+      .filter((g) => g.products.length > 0);
+  }, [groups, search]);
+
+  function isItemAdded(productId: number, subFeatureId: number | null) {
+    return localItems.some(
+      (i) => i.productId === productId && i.subFeatureId === subFeatureId,
+    );
+  }
+
+  function handleProductClick(product: ProductDetail) {
+    if (itemsLocked) return;
+    if (product.mode === "ATOMIC") {
+      if (!isItemAdded(product.id, null)) {
+        onAddItem(product.id, product.name, null, null);
+      }
+    } else {
+      setExpandedProductId((prev) => (prev === product.id ? null : product.id));
+    }
+  }
+
+  function toggleTeam(teamName: string) {
+    setCollapsedTeams((prev) => {
+      const next = new Set(prev);
+      if (next.has(teamName)) next.delete(teamName);
+      else next.add(teamName);
+      return next;
+    });
+  }
 
   return (
-    <Card>
-      <div className="flex flex-col" style={{ gap: 16 }}>
-        <TextInput
-          id="request-title"
-          label="What should this estimate be called?"
-          helper="A short name you'll use to find this later, e.g. 'Member Portal v2'."
-          value={title}
-          onChange={(e) => onTitleChange(e.currentTarget.value)}
-          maxLength={255}
-          required
-        />
-        <Textarea
-          id="request-description"
-          label="Description"
-          helper="Background or context the reviewer should know."
-          rows={3}
-          value={description}
-          onChange={(e) => onDescriptionChange(e.currentTarget.value)}
-          maxLength={4000}
-        />
-
-        {/* Go Live Date */}
-        <div>
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "minmax(0, 1fr) 300px",
+        gap: 20,
+        alignItems: "start",
+        marginBottom: 24,
+      }}
+    >
+      {/* Left: browser */}
+      <div
+        className="bg-white rounded-lg"
+        style={{ border: "1px solid var(--color-border)", overflow: "hidden" }}
+      >
+        {/* Search bar */}
+        <div
+          style={{
+            padding: "12px 14px",
+            borderBottom: "1px solid var(--color-warm-gray-light)",
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+          }}
+        >
           <label
-            htmlFor="go-live-date"
-            className="block text-near-black font-medium"
-            style={{ fontSize: 13, marginBottom: 4 }}
+            className="flex items-center"
+            style={{
+              flex: 1,
+              gap: 8,
+              padding: "0 10px",
+              height: 32,
+              background: "var(--color-warm-gray-light)",
+              borderRadius: 6,
+              border: "1px solid transparent",
+            }}
           >
-            Go Live Date
-          </label>
-          <input
-            id="go-live-date"
-            type="date"
-            value={goLiveDate}
-            disabled={goLiveDateUnknown}
-            onChange={(e) => onGoLiveDateChange(e.currentTarget.value)}
-            className={
-              "w-full rounded-md border border-border bg-white text-body text-near-black " +
-              "transition-colors duration-hover ease-out-soft " +
-              "focus:outline-none focus:border-warm-gray-med focus:ring-2 focus:ring-light-blue " +
-              "disabled:bg-warm-gray-light disabled:text-warm-gray-med " +
-              "h-8 px-3"
-            }
-            style={{ maxWidth: 200 }}
-          />
-          <label
-            className="inline-flex items-center cursor-pointer"
-            style={{ marginTop: 8, gap: 6, fontSize: 13 }}
-          >
-            <input
-              type="checkbox"
-              checked={goLiveDateUnknown}
-              onChange={(e) => onGoLiveDateUnknownChange(e.currentTarget.checked)}
-              className="rounded border-border"
-              style={{ width: 14, height: 14, accentColor: "var(--color-near-black)" }}
+            <Search
+              style={{ width: 13, height: 13, flexShrink: 0, color: "var(--fg-2)" }}
+              strokeWidth={1.5}
             />
-            <span className="text-warm-gray-med">Unknown at this time</span>
+            <input
+              type="search"
+              placeholder="Search products…"
+              value={search}
+              onChange={(e) => setSearch(e.currentTarget.value)}
+              className="bg-transparent border-0 outline-none text-near-black"
+              style={{ flex: 1, fontSize: 13 }}
+            />
           </label>
+          <span className="text-warm-gray-med" style={{ fontSize: 12, whiteSpace: "nowrap" }}>
+            {products.length} products · {groups.length} teams
+          </span>
         </div>
 
-        {/* Selected products list */}
-        {localItems.length > 0 && (
-          <div>
-            <div
-              className="text-near-black font-medium"
-              style={{ fontSize: 13, marginBottom: 8 }}
+        {/* Product list */}
+        <div style={{ maxHeight: 480, overflowY: "auto", padding: "4px 0 8px" }}>
+          {filtered.length === 0 && (
+            <p
+              className="text-warm-gray-med"
+              style={{ padding: "20px 16px", fontSize: 13, margin: 0 }}
             >
-              Selected products
+              No products match your search.
+            </p>
+          )}
+          {filtered.map((group) => {
+            const collapsed = collapsedTeams.has(group.teamName);
+            return (
+              <div key={group.teamName}>
+                {/* Team header */}
+                <button
+                  type="button"
+                  onClick={() => toggleTeam(group.teamName)}
+                  className="w-full flex items-center bg-transparent border-0 cursor-pointer"
+                  style={{ padding: "8px 14px", gap: 8 }}
+                >
+                  <ChevronDown
+                    style={{
+                      width: 12,
+                      height: 12,
+                      flexShrink: 0,
+                      color: "var(--fg-2)",
+                      transform: collapsed ? "rotate(-90deg)" : "none",
+                      transition: "transform 160ms ease",
+                    }}
+                    strokeWidth={2}
+                  />
+                  <span
+                    className="text-warm-gray-med font-medium uppercase"
+                    style={{ fontSize: 11, letterSpacing: "0.06em" }}
+                  >
+                    {group.teamName}
+                  </span>
+                  <span className="text-warm-gray-med" style={{ fontSize: 11, marginLeft: "auto" }}>
+                    {group.products.length}
+                  </span>
+                </button>
+
+                {/* Products in team */}
+                {!collapsed &&
+                  group.products.map((product) => {
+                    const isAtomic = product.mode === "ATOMIC";
+                    const atomicAdded = isAtomic && isItemAdded(product.id, null);
+                    const isExpanded = expandedProductId === product.id;
+
+                    return (
+                      <div key={product.id}>
+                        <button
+                          type="button"
+                          disabled={itemsLocked || atomicAdded}
+                          onClick={() => handleProductClick(product)}
+                          className="w-full flex items-center text-left bg-transparent border-0"
+                          style={{
+                            padding: "9px 14px 9px 34px",
+                            gap: 10,
+                            fontSize: 14,
+                            color: atomicAdded ? "var(--fg-2)" : "var(--fg-1)",
+                            background: isExpanded
+                              ? "var(--color-light-blue-soft)"
+                              : "transparent",
+                            cursor: itemsLocked || atomicAdded ? "default" : "pointer",
+                          }}
+                          onMouseEnter={(e) => {
+                            if (!itemsLocked && !atomicAdded)
+                              e.currentTarget.style.background = isExpanded
+                                ? "var(--color-light-blue-soft)"
+                                : "var(--color-warm-gray-light)";
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.background = isExpanded
+                              ? "var(--color-light-blue-soft)"
+                              : "transparent";
+                          }}
+                        >
+                          {/* Mode icon */}
+                          <span
+                            style={{
+                              width: 14,
+                              height: 14,
+                              flexShrink: 0,
+                              display: "inline-flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                            }}
+                          >
+                            {isAtomic ? (
+                              <span
+                                style={{
+                                  width: 6,
+                                  height: 6,
+                                  borderRadius: "50%",
+                                  background: "var(--fg-2)",
+                                }}
+                              />
+                            ) : (
+                              <ChevronRight
+                                style={{
+                                  width: 12,
+                                  height: 12,
+                                  color: "var(--fg-2)",
+                                  transform: isExpanded ? "rotate(90deg)" : "none",
+                                  transition: "transform 160ms ease",
+                                }}
+                                strokeWidth={1.7}
+                              />
+                            )}
+                          </span>
+
+                          {/* Name */}
+                          <span style={{ flex: 1, minWidth: 0 }}>{product.name}</span>
+
+                          {/* Right metadata */}
+                          {atomicAdded ? (
+                            <span
+                              className="inline-flex items-center font-medium"
+                              style={{ fontSize: 11, color: "var(--color-success)", gap: 4 }}
+                            >
+                              <Check style={{ width: 11, height: 11 }} strokeWidth={2.5} />
+                              Added
+                            </span>
+                          ) : !isAtomic && product.subFeatureCount > 0 ? (
+                            <span className="text-warm-gray-med" style={{ fontSize: 11 }}>
+                              {product.subFeatureCount} sub-feature
+                              {product.subFeatureCount !== 1 ? "s" : ""}
+                            </span>
+                          ) : null}
+                        </button>
+
+                        {/* Inline sub-feature list */}
+                        {!isAtomic && isExpanded && (
+                          <ContainerSubFeatureList
+                            productId={product.id}
+                            localItems={localItems}
+                            itemsLocked={itemsLocked}
+                            onAdd={(subFeatureId, subFeatureName) =>
+                              onAddItem(
+                                product.id,
+                                product.name,
+                                subFeatureId,
+                                subFeatureName,
+                              )
+                            }
+                          />
+                        )}
+                      </div>
+                    );
+                  })}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Right: cart */}
+      <div style={{ position: "sticky", top: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+        <div
+          className="bg-white rounded-lg"
+          style={{ border: "1px solid var(--color-border)", overflow: "hidden" }}
+        >
+          <div
+            style={{
+              padding: "12px 14px",
+              borderBottom: "1px solid var(--color-warm-gray-light)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+            }}
+          >
+            <span className="text-near-black font-semibold" style={{ fontSize: 14 }}>
+              Selected
+            </span>
+            <span className="text-warm-gray-med" style={{ fontSize: 12 }}>
+              {localItems.length} {localItems.length === 1 ? "item" : "items"}
+            </span>
+          </div>
+
+          {localItems.length === 0 ? (
+            <div style={{ padding: "24px 14px", textAlign: "center" }}>
+              <p className="text-warm-gray-med" style={{ fontSize: 13, margin: 0, lineHeight: "18px" }}>
+                No products selected yet.
+                <br />
+                Click a product to add it.
+              </p>
             </div>
-            <ul className="m-0 p-0 list-none flex flex-col" style={{ gap: 6 }}>
+          ) : (
+            <ul className="m-0 p-0 list-none">
               {localItems.map((item, i) => (
                 <li
                   key={`${item.productId}-${item.subFeatureId ?? "null"}-${i}`}
-                  className="flex items-center justify-between rounded-md"
                   style={{
-                    padding: "8px 10px",
-                    background: "#FBFBFA",
-                    border: "1px solid var(--color-warm-gray-light)",
-                    fontSize: 13,
+                    padding: "10px 14px",
+                    borderBottom:
+                      i < localItems.length - 1
+                        ? "1px solid var(--color-warm-gray-light)"
+                        : "none",
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 10,
                   }}
                 >
-                  <span className="text-near-black">
-                    {item.productName}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div
+                      className="text-near-black font-medium"
+                      style={{ fontSize: 14, lineHeight: "18px" }}
+                    >
+                      {item.productName}
+                    </div>
                     {item.subFeatureName && (
-                      <span className="text-warm-gray-med"> · {item.subFeatureName}</span>
+                      <div className="text-warm-gray-med" style={{ fontSize: 12, marginTop: 2 }}>
+                        └ {item.subFeatureName}
+                      </div>
                     )}
-                  </span>
+                  </div>
                   {!itemsLocked && (
                     <button
                       type="button"
                       onClick={() => onRemoveItem(i)}
                       aria-label={`Remove ${item.productName}`}
-                      className="inline-flex items-center justify-center bg-transparent border-0 cursor-pointer text-warm-gray-med hover:text-near-black"
-                      style={{ padding: 2 }}
+                      className="inline-flex items-center justify-center bg-transparent border-0 cursor-pointer text-warm-gray-med rounded"
+                      style={{ width: 22, height: 22, flexShrink: 0, padding: 0 }}
+                      onMouseEnter={(e) => {
+                        (e.currentTarget as HTMLElement).style.color =
+                          "var(--color-cardinal-red)";
+                        (e.currentTarget as HTMLElement).style.background =
+                          "var(--color-warm-gray-light)";
+                      }}
+                      onMouseLeave={(e) => {
+                        (e.currentTarget as HTMLElement).style.color = "var(--fg-2)";
+                        (e.currentTarget as HTMLElement).style.background = "transparent";
+                      }}
                     >
-                      <X className="w-3.5 h-3.5" strokeWidth={1.5} />
+                      <X style={{ width: 13, height: 13 }} strokeWidth={2} />
                     </button>
                   )}
                 </li>
               ))}
             </ul>
-          </div>
-        )}
+          )}
+        </div>
 
-        {/* Add product row */}
-        {!itemsLocked && (
-          <div>
-            <div
-              className="text-near-black font-medium"
-              style={{ fontSize: 13, marginBottom: 6 }}
-            >
-              {localItems.length === 0 ? (
-                <>Product <span className="text-cardinal-red">*</span></>
-              ) : (
-                "Add another product"
-              )}
-            </div>
-            <div className="flex items-end" style={{ gap: 8 }}>
-              <div style={{ flex: 1 }}>
-                <select
-                  id="product-picker"
-                  aria-label="Product"
-                  value={pendingProductId ?? ""}
-                  onChange={(e) =>
-                    onPendingProductChange(e.currentTarget.value ? Number(e.currentTarget.value) : null)
-                  }
-                  className="w-full rounded-md border border-border bg-white text-body text-near-black h-8 px-2"
-                >
-                  <option value="">Select a product…</option>
-                  {products.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name} ({modeLabel(p.mode)})
-                    </option>
-                  ))}
-                </select>
-              </div>
-              {pendingIsContainer && (
-                <div style={{ flex: 1 }}>
-                  <label
-                    htmlFor="subfeature-picker"
-                    className="block text-near-black font-medium"
-                    style={{ fontSize: 13, marginBottom: 6 }}
-                  >
-                    Sub-feature <span className="text-cardinal-red">*</span>
-                  </label>
-                  <select
-                    id="subfeature-picker"
-                    value={pendingSubFeatureId ?? ""}
-                    onChange={(e) =>
-                      onPendingSubFeatureChange(
-                        e.currentTarget.value ? Number(e.currentTarget.value) : null,
-                      )
-                    }
-                    className="w-full rounded-md border border-border bg-white text-body text-near-black h-8 px-2"
-                  >
-                    <option value="">Select a sub-feature…</option>
-                    {pendingSubFeatures.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-              <SecondaryButton
-                disabled={addDisabled}
-                onClick={onAddItem}
-              >
-                <Plus className="w-3.5 h-3.5" strokeWidth={2} />
-                Add
-              </SecondaryButton>
-            </div>
-          </div>
-        )}
-
-        {itemsLocked && localItems.length > 0 && (
-          <p className="m-0 text-warm-gray-med" style={{ fontSize: 12 }}>
-            Products are locked once the draft is saved — start a new request to change the product list.
-          </p>
-        )}
-      </div>
-
-      <FooterRow>
-        <TertiaryButton onClick={onCancel}>Cancel</TertiaryButton>
-        <SecondaryButton
-          disabled={saving || title.trim() === "" || localItems.length === 0}
-          onClick={onSaveDraft}
+        {/* Lock note */}
+        <div
+          className="rounded-lg flex"
+          style={{
+            padding: "11px 13px",
+            gap: 10,
+            background: "rgba(184, 134, 11, 0.06)",
+            border: "1px solid rgba(184, 134, 11, 0.20)",
+            fontSize: 12,
+            color: "var(--fg-1)",
+            lineHeight: "18px",
+            alignItems: "flex-start",
+          }}
         >
-          {savedFlash ? "Saved as draft" : "Save as draft"}
-        </SecondaryButton>
-        <PrimaryButton disabled={continueDisabled || saving} onClick={onContinue}>
-          Continue to questions
-          <ArrowRight className="w-3.5 h-3.5" strokeWidth={2} />
-        </PrimaryButton>
-      </FooterRow>
-    </Card>
+          <Lock
+            style={{
+              width: 13,
+              height: 13,
+              color: "var(--color-warning)",
+              flexShrink: 0,
+              marginTop: 1,
+            }}
+            strokeWidth={2}
+          />
+          <div>
+            <strong style={{ color: "var(--color-warning)" }}>Heads-up:</strong> Products lock when you
+            save the draft. To change this list later, you'll need to start a new request.
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
 // =====================================================================
-// Step 2 — Answer questions (per-item accordion)
+// Sub-feature inline list (loads on demand when container is expanded)
+// =====================================================================
+
+interface ContainerSubFeatureListProps {
+  productId: number;
+  localItems: LocalItem[];
+  itemsLocked: boolean;
+  onAdd: (subFeatureId: number, subFeatureName: string) => void;
+}
+
+function ContainerSubFeatureList({
+  productId,
+  localItems,
+  itemsLocked,
+  onAdd,
+}: ContainerSubFeatureListProps) {
+  const query = useSubFeaturesForProductQuery(productId);
+  const subFeatures = (query.data ?? []).filter((s) => s.active);
+
+  if (query.isPending) {
+    return (
+      <div className="text-warm-gray-med" style={{ padding: "8px 14px 8px 52px", fontSize: 13 }}>
+        Loading…
+      </div>
+    );
+  }
+
+  if (subFeatures.length === 0) {
+    return (
+      <div className="text-warm-gray-med" style={{ padding: "8px 14px 8px 52px", fontSize: 13 }}>
+        No sub-features available.
+      </div>
+    );
+  }
+
+  return (
+    <div
+      style={{
+        borderTop: "1px solid var(--color-warm-gray-light)",
+        borderBottom: "1px solid var(--color-warm-gray-light)",
+        background: "#FAFAF9",
+      }}
+    >
+      {subFeatures.map((sf) => {
+        const added = localItems.some(
+          (i) => i.productId === productId && i.subFeatureId === sf.id,
+        );
+        return (
+          <button
+            key={sf.id}
+            type="button"
+            disabled={itemsLocked || added}
+            onClick={() => !added && onAdd(sf.id, sf.name)}
+            className="w-full flex items-center text-left bg-transparent border-0"
+            style={{
+              padding: "9px 14px 9px 52px",
+              gap: 10,
+              fontSize: 13,
+              color: added ? "var(--fg-2)" : "var(--fg-1)",
+              cursor: itemsLocked || added ? "default" : "pointer",
+            }}
+            onMouseEnter={(e) => {
+              if (!itemsLocked && !added)
+                e.currentTarget.style.background = "var(--color-warm-gray-light)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = "transparent";
+            }}
+          >
+            <span style={{ flex: 1, minWidth: 0 }}>{sf.name}</span>
+            {added && (
+              <span
+                className="inline-flex items-center font-medium"
+                style={{ fontSize: 11, color: "var(--color-success)", gap: 4 }}
+              >
+                <Check style={{ width: 11, height: 11 }} strokeWidth={2.5} />
+                Added
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// =====================================================================
+// Step 2 — Answer questions (rail + accordion)
 // =====================================================================
 
 interface Step2Props {
   localItems: LocalItem[];
   products: ProductDetail[];
-  draftId: number | null;
   savedFlash: boolean;
   saving: boolean;
   allItemsReady: boolean;
+  itemCounts: Array<{ answered: number; total: number }>;
   onItemAnswerChange: (itemIndex: number, qid: number, value: string) => void;
   onItemReadyChange: (itemIndex: number, ready: boolean) => void;
+  onItemCountChange: (itemIndex: number, answered: number, total: number) => void;
   onBack: () => void;
   onSaveDraft: () => void;
   onContinue: () => void;
@@ -710,75 +1129,244 @@ function Step2({
   savedFlash,
   saving,
   allItemsReady,
+  itemCounts,
   onItemAnswerChange,
   onItemReadyChange,
+  onItemCountChange,
   onBack,
   onSaveDraft,
   onContinue,
 }: Step2Props) {
   const [openIndex, setOpenIndex] = useState(0);
 
-  return (
-    <Card>
-      {localItems.length === 0 ? (
-        <p className="m-0 text-warm-gray-med" style={{ fontSize: 14 }}>
-          No products selected.
+  const doneCount = itemCounts.filter(
+    (c, i) => c && c.total > 0
+      ? c.answered >= c.total
+      : (itemCounts[i]?.total === 0),
+  ).length;
+
+  if (localItems.length === 0) {
+    return (
+      <>
+        <p className="text-warm-gray-med" style={{ fontSize: 14 }}>
+          No products selected. Go back and add at least one.
         </p>
-      ) : (
-        <div className="flex flex-col" style={{ gap: 8 }}>
+        <FooterRow left={<TertiaryButton onClick={onBack}><ArrowLeft className="w-3.5 h-3.5" strokeWidth={2} /> Back</TertiaryButton>}>
+          <SecondaryButton disabled={saving} onClick={onSaveDraft}>
+            {savedFlash ? "Saved" : "Save draft"}
+          </SecondaryButton>
+        </FooterRow>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "280px 1fr",
+          gap: 24,
+          alignItems: "start",
+          marginBottom: 24,
+        }}
+      >
+        {/* Left rail */}
+        <aside style={{ position: "sticky", top: 16, display: "flex", flexDirection: "column", gap: 8 }}>
+          <div
+            className="flex items-center justify-between text-warm-gray-med font-medium uppercase"
+            style={{ fontSize: 11, letterSpacing: "0.06em", padding: "0 4px 4px" }}
+          >
+            <span>Items</span>
+            <span>
+              {doneCount} / {localItems.length} done
+            </span>
+          </div>
+          {localItems.map((item, i) => {
+            const counts = itemCounts[i];
+            const total = counts?.total ?? 0;
+            const answered = counts?.answered ?? 0;
+            const isDone = total > 0 && answered >= total;
+            const isActive = openIndex === i;
+
+            return (
+              <button
+                key={`${item.productId}-${item.subFeatureId ?? "null"}-${i}`}
+                type="button"
+                onClick={() => setOpenIndex(i)}
+                className="text-left bg-white rounded-lg border cursor-pointer"
+                style={{
+                  padding: "12px 14px",
+                  borderColor: isActive
+                    ? "var(--color-near-black)"
+                    : "var(--color-border)",
+                  boxShadow: isActive
+                    ? "0 0 0 1px var(--color-near-black)"
+                    : "none",
+                  background: isDone && !isActive ? "#FBFBFA" : "#fff",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 6,
+                }}
+              >
+                <div className="flex items-start" style={{ gap: 8 }}>
+                  {/* Status icon */}
+                  <span
+                    style={{
+                      width: 16,
+                      height: 16,
+                      borderRadius: "50%",
+                      flexShrink: 0,
+                      marginTop: 1,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      background: isDone
+                        ? "var(--color-success)"
+                        : "#fff",
+                      border: isDone
+                        ? "none"
+                        : `1.5px solid ${isActive ? "var(--color-near-black)" : "var(--color-border-strong)"}`,
+                      position: "relative",
+                    }}
+                  >
+                    {isDone ? (
+                      <Check
+                        style={{ width: 10, height: 10, color: "#fff" }}
+                        strokeWidth={3}
+                      />
+                    ) : isActive ? (
+                      <span
+                        style={{
+                          width: 6,
+                          height: 6,
+                          borderRadius: "50%",
+                          background: "var(--color-near-black)",
+                        }}
+                      />
+                    ) : null}
+                  </span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div
+                      className="text-near-black font-semibold"
+                      style={{
+                        fontSize: 13,
+                        lineHeight: "16px",
+                        color: isDone && !isActive ? "var(--fg-2)" : "var(--fg-1)",
+                      }}
+                    >
+                      {item.productName}
+                    </div>
+                    {item.subFeatureName && (
+                      <div className="text-warm-gray-med" style={{ fontSize: 11, marginTop: 2 }}>
+                        {item.subFeatureName}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                {/* Progress bar */}
+                <div
+                  style={{
+                    height: 4,
+                    background: "var(--color-warm-gray-light)",
+                    borderRadius: 2,
+                    overflow: "hidden",
+                    marginTop: 2,
+                  }}
+                >
+                  <div
+                    style={{
+                      height: "100%",
+                      width: total > 0 ? `${Math.round((answered / total) * 100)}%` : "0%",
+                      background: "var(--color-near-black)",
+                      borderRadius: 2,
+                      transition: "width 200ms ease",
+                    }}
+                  />
+                </div>
+                <div
+                  className="flex items-center justify-between text-warm-gray-med"
+                  style={{ fontSize: 10, fontVariantNumeric: "tabular-nums" }}
+                >
+                  <span>
+                    {answered} of {total} answered
+                  </span>
+                  <span>{isDone ? "Done" : "In progress"}</span>
+                </div>
+              </button>
+            );
+          })}
+        </aside>
+
+        {/* Right: accordion list */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           {localItems.map((item, i) => {
             const product = products.find((p) => p.id === item.productId) ?? null;
+            const counts = itemCounts[i];
+            const isDone =
+              counts && counts.total > 0 && counts.answered >= counts.total;
+
             return (
               <ItemSection
                 key={`${item.productId}-${item.subFeatureId ?? "null"}-${i}`}
                 item={item}
                 product={product}
                 isOpen={openIndex === i}
+                isDone={!!isDone}
                 onToggle={() => setOpenIndex(openIndex === i ? -1 : i)}
                 onAnswerChange={(qid, value) => onItemAnswerChange(i, qid, value)}
                 onReadyChange={(ready) => onItemReadyChange(i, ready)}
+                onCountChange={(answered, total) => onItemCountChange(i, answered, total)}
               />
             );
           })}
         </div>
-      )}
+      </div>
 
-      <FooterRow>
-        <TertiaryButton onClick={onBack}>
-          <ArrowLeft className="w-3.5 h-3.5" strokeWidth={2} />
-          Back
-        </TertiaryButton>
+      <FooterRow
+        left={
+          <TertiaryButton onClick={onBack}>
+            <ArrowLeft className="w-3.5 h-3.5" strokeWidth={2} />
+            Back
+          </TertiaryButton>
+        }
+      >
         <SecondaryButton disabled={saving} onClick={onSaveDraft}>
-          {savedFlash ? "Saved as draft" : "Save as draft"}
+          {savedFlash ? "Saved" : "Save draft"}
         </SecondaryButton>
-        <PrimaryButton
-          disabled={saving || !allItemsReady}
-          onClick={onContinue}
-        >
-          Continue to review
+        <PrimaryButton disabled={saving || !allItemsReady} onClick={onContinue}>
+          Continue
           <ArrowRight className="w-3.5 h-3.5" strokeWidth={2} />
         </PrimaryButton>
       </FooterRow>
-    </Card>
+    </>
   );
 }
+
+// =====================================================================
+// Item accordion (Step 2)
+// =====================================================================
 
 interface ItemSectionProps {
   item: LocalItem;
   product: ProductDetail | null;
   isOpen: boolean;
+  isDone: boolean;
   onToggle: () => void;
   onAnswerChange: (qid: number, value: string) => void;
   onReadyChange: (ready: boolean) => void;
+  onCountChange: (answered: number, total: number) => void;
 }
 
 function ItemSection({
   item,
   product,
   isOpen,
+  isDone,
   onToggle,
   onAnswerChange,
   onReadyChange,
+  onCountChange,
 }: ItemSectionProps) {
   const isContainer = product?.mode === "CONTAINER";
 
@@ -788,6 +1376,7 @@ function ItemSection({
   const subFeatureQuestionsQuery = useSubFeatureQuestionsQuery(
     isContainer && item.subFeatureId ? item.subFeatureId : null,
   );
+
   const questions: QuestionListItem[] = useMemo(() => {
     const raw = isContainer
       ? subFeatureQuestionsQuery.data
@@ -796,69 +1385,142 @@ function ItemSection({
   }, [isContainer, productQuestionsQuery.data, subFeatureQuestionsQuery.data]);
 
   const requiredIds = questions.filter((q) => q.required).map((q) => q.id);
-  const allRequiredAnswered = requiredIds.every(
+  const answeredRequired = requiredIds.filter(
     (qid) => (item.answers[qid] ?? "").trim() !== "",
-  );
+  ).length;
+  const allRequiredAnswered = answeredRequired === requiredIds.length;
+
+  const answeredCount = questions.filter(
+    (q) => (item.answers[q.id] ?? "").trim() !== "",
+  ).length;
 
   useEffect(() => {
     onReadyChange(requiredIds.length === 0 || allRequiredAnswered);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allRequiredAnswered, requiredIds.length]);
 
-  const heading = item.subFeatureName
-    ? `${item.productName} · ${item.subFeatureName}`
-    : item.productName;
+  useEffect(() => {
+    onCountChange(answeredCount, questions.length);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [answeredCount, questions.length]);
 
   return (
     <div
-      className="rounded-md"
-      style={{ border: "1px solid var(--color-warm-gray-light)" }}
+      className="bg-white rounded-lg"
+      style={{
+        border: `1px solid ${isOpen ? "var(--color-near-black)" : "var(--color-border)"}`,
+        overflow: "hidden",
+      }}
     >
+      {/* Accordion header */}
       <button
         type="button"
         onClick={onToggle}
-        className="w-full flex items-center justify-between bg-transparent border-0 cursor-pointer text-left"
+        className="w-full flex items-center bg-transparent border-0 cursor-pointer text-left"
         style={{
-          padding: "10px 14px",
-          fontSize: 14,
-          fontWeight: 600,
-          color: "var(--fg-1)",
-          background: isOpen ? "#FBFBFA" : "#FFFFFF",
-          borderRadius: isOpen ? "6px 6px 0 0" : 6,
+          padding: "13px 18px",
+          gap: 12,
+          background: isOpen ? "#FBFBFA" : "#fff",
+          borderBottom: isOpen ? "1px solid var(--color-warm-gray-light)" : "none",
         }}
       >
-        <span>{heading}</span>
-        <span className="flex items-center" style={{ gap: 8 }}>
-          {questions.length > 0 && (
-            <span className="text-warm-gray-med" style={{ fontSize: 12, fontWeight: 400 }}>
-              {questions.length} {questions.length === 1 ? "question" : "questions"}
+        {/* Status dot */}
+        <span
+          style={{
+            width: 18,
+            height: 18,
+            borderRadius: "50%",
+            flexShrink: 0,
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: isDone ? "var(--color-success)" : "#fff",
+            border: isDone
+              ? "none"
+              : `1.5px solid ${isOpen ? "var(--color-near-black)" : "var(--color-border-strong)"}`,
+          }}
+        >
+          {isDone ? (
+            <Check style={{ width: 11, height: 11, color: "#fff" }} strokeWidth={3} />
+          ) : isOpen ? (
+            <span
+              style={{
+                width: 7,
+                height: 7,
+                borderRadius: "50%",
+                background: "var(--color-near-black)",
+              }}
+            />
+          ) : null}
+        </span>
+
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <span className="text-near-black font-semibold" style={{ fontSize: 15 }}>
+            {item.productName}
+          </span>
+          {item.subFeatureName && (
+            <span className="text-warm-gray-med font-normal" style={{ fontSize: 14 }}>
+              {" · "}
+              {item.subFeatureName}
             </span>
           )}
-          {isOpen
-            ? <Minus className="w-3.5 h-3.5 text-warm-gray-med" strokeWidth={1.5} />
-            : <Plus className="w-3.5 h-3.5 text-warm-gray-med" strokeWidth={1.5} />
-          }
+          <div className="text-warm-gray-med" style={{ fontSize: 12, marginTop: 2 }}>
+            {isDone
+              ? "All required questions answered"
+              : `${answeredCount} of ${questions.length} answered`}
+          </div>
+        </div>
+
+        <span className="text-warm-gray-med" style={{ fontSize: 12, fontVariantNumeric: "tabular-nums" }}>
+          {answeredCount} / {questions.length}
         </span>
+
+        <ChevronDown
+          style={{
+            width: 16,
+            height: 16,
+            color: isOpen ? "var(--fg-1)" : "var(--fg-2)",
+            transform: isOpen ? "rotate(180deg)" : "none",
+            transition: "transform 160ms ease",
+            flexShrink: 0,
+          }}
+          strokeWidth={2}
+        />
       </button>
 
+      {/* Accordion body */}
       {isOpen && (
-        <div style={{ padding: "14px 16px 16px", borderTop: "1px solid var(--color-warm-gray-light)" }}>
+        <div style={{ padding: "8px 24px 24px" }}>
           {questions.length === 0 ? (
-            <p className="m-0 text-warm-gray-med" style={{ fontSize: 14 }}>
+            <p className="text-warm-gray-med" style={{ fontSize: 14, margin: "12px 0 0" }}>
               No questions for this product.
             </p>
           ) : (
-            <ul className="m-0 p-0 list-none flex flex-col" style={{ gap: 18 }}>
+            <ul className="m-0 p-0 list-none flex flex-col" style={{ gap: 0 }}>
               {questions.map((q) => (
-                <li key={q.id}>
-                  <div className="flex items-baseline" style={{ gap: 8, marginBottom: 4 }}>
-                    <span className="text-near-black font-semibold" style={{ fontSize: 14 }}>
+                <li
+                  key={q.id}
+                  style={{
+                    paddingTop: 18,
+                    paddingBottom: 0,
+                    borderTop: "1px solid var(--color-warm-gray-light)",
+                    marginTop: 0,
+                  }}
+                >
+                  <div className="flex items-baseline" style={{ gap: 8, marginBottom: 6 }}>
+                    <span className="text-near-black font-medium" style={{ fontSize: 13 }}>
                       {q.questionText}
                     </span>
-                    {q.required && <RequiredPill />}
+                    {q.required ? (
+                      <RequiredPill />
+                    ) : (
+                      <span className="text-warm-gray-med" style={{ fontSize: 12 }}>
+                        (optional)
+                      </span>
+                    )}
                   </div>
                   {q.helpText && (
-                    <p className="m-0 mb-1 text-warm-gray-med" style={{ fontSize: 12 }}>
+                    <p className="text-warm-gray-med" style={{ fontSize: 12, margin: "0 0 6px" }}>
                       {q.helpText}
                     </p>
                   )}
@@ -887,10 +1549,15 @@ function ItemSection({
 interface Step3Props {
   title: string;
   description: string;
+  goLiveDate: string;
+  goLiveDateUnknown: boolean;
   localItems: LocalItem[];
   products: ProductDetail[];
+  requesterName: string;
   submitting: boolean;
   onBack: () => void;
+  onGoToStep1: () => void;
+  onGoToStep2: () => void;
   onSaveDraft: () => void;
   onSubmit: () => void;
 }
@@ -898,146 +1565,362 @@ interface Step3Props {
 function Step3({
   title,
   description,
+  goLiveDate,
+  goLiveDateUnknown,
   localItems,
+  products,
+  requesterName,
   submitting,
   onBack,
+  onGoToStep1,
+  onGoToStep2,
   onSaveDraft,
   onSubmit,
 }: Step3Props) {
+  const [confirmed, setConfirmed] = useState(false);
+
+  const formattedDate = useMemo(() => {
+    if (goLiveDateUnknown || !goLiveDate) return null;
+    const [y, m, d] = goLiveDate.split("-").map(Number);
+    return new Date(y, m - 1, d).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+  }, [goLiveDate, goLiveDateUnknown]);
+
   return (
-    <Card>
-      <div className="flex flex-col" style={{ gap: 18 }}>
-        <Section label="Title">
-          <strong>{title}</strong>
-        </Section>
-        {description && <Section label="Description">{description}</Section>}
-
-        <div>
-          <SectionLabel>Products ({localItems.length})</SectionLabel>
-          <ul className="m-0 p-0 list-none flex flex-col mt-2" style={{ gap: 14 }}>
-            {localItems.map((item, i) => (
-              <ItemSummary key={i} item={item} />
-            ))}
-          </ul>
-        </div>
-
-        <div
-          className="rounded-md"
+    <>
+      {/* Ready banner */}
+      <div
+        className="rounded-lg flex items-center"
+        style={{
+          padding: "16px 20px",
+          background: "rgba(187, 221, 230, 0.18)",
+          border: "1px solid rgba(187, 221, 230, 0.80)",
+          marginBottom: 20,
+          gap: 14,
+        }}
+      >
+        <span
           style={{
-            background: "var(--color-light-blue-soft)",
-            padding: "10px 12px",
-            border: "1px solid rgba(187,221,230,0.7)",
-            fontSize: 13,
-            color: "var(--fg-1)",
+            width: 36,
+            height: 36,
+            borderRadius: "50%",
+            background: "#fff",
+            color: "#2C5666",
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
           }}
         >
-          <strong>What happens next:</strong> When you submit, this request locks
-          the current template values. The Solution Owner will review the
-          questions, choose complexity, and approve. You'll be notified when
-          it's ready.
+          <Check style={{ width: 18, height: 18 }} strokeWidth={2} />
+        </span>
+        <div>
+          <div className="text-near-black font-semibold" style={{ fontSize: 15 }}>
+            Everything looks ready to submit
+          </div>
+          <div className="text-warm-gray-med" style={{ fontSize: 13, marginTop: 2 }}>
+            {localItems.length} {localItems.length === 1 ? "product" : "products"}.
+            Once submitted, the estimating team will be notified and you can track
+            progress on the request page.
+          </div>
         </div>
       </div>
 
-      <FooterRow>
-        <TertiaryButton onClick={onBack}>
-          <ArrowLeft className="w-3.5 h-3.5" strokeWidth={2} />
-          Back
-        </TertiaryButton>
+      {/* Estimate details */}
+      <ReviewSection
+        title="Estimate details"
+        onEdit={onGoToStep1}
+      >
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "160px 1fr",
+            gap: "10px 24px",
+          }}
+        >
+          <KVRow label="Name" value={title} />
+          {description && <KVRow label="Description" value={description} />}
+          <KVRow label="Go-live date" value={formattedDate ?? "Unknown"} />
+          {requesterName && <KVRow label="Requested by" value={requesterName} />}
+        </div>
+      </ReviewSection>
+
+      {/* Products & answers */}
+      <ReviewSection
+        title={`Products & answers (${localItems.length})`}
+        onEdit={onGoToStep2}
+      >
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          {localItems.map((item, i) => {
+            const product = products.find((p) => p.id === item.productId) ?? null;
+            return (
+              <ItemReviewCard
+                key={`${item.productId}-${item.subFeatureId ?? "null"}-${i}`}
+                item={item}
+                product={product}
+                isFirst={i === 0}
+              />
+            );
+          })}
+        </div>
+      </ReviewSection>
+
+      {/* Inline confirmation */}
+      <div
+        className="rounded-lg"
+        style={{
+          padding: "18px 20px",
+          border: "1px solid var(--color-border)",
+          background: "#FBFBFA",
+          marginBottom: 4,
+        }}
+      >
+        <label className="flex items-start cursor-pointer" style={{ gap: 14 }}>
+          <input
+            type="checkbox"
+            checked={confirmed}
+            onChange={(e) => setConfirmed(e.currentTarget.checked)}
+            style={{
+              width: 16,
+              height: 16,
+              marginTop: 2,
+              flexShrink: 0,
+              accentColor: "var(--color-near-black)",
+              cursor: "pointer",
+            }}
+          />
+          <div className="text-near-black" style={{ fontSize: 13, lineHeight: "18px" }}>
+            <strong>I confirm the products and answers above are accurate.</strong>
+            <br />
+            Once submitted, the estimating team will receive this request and the product
+            list cannot be changed. You can still track progress and comment on the request
+            page.
+          </div>
+        </label>
+        <div
+          className="flex items-center"
+          style={{
+            gap: 8,
+            fontSize: 12,
+            color: "var(--color-warning)",
+            marginTop: 12,
+            paddingTop: 12,
+            borderTop: "1px solid var(--color-warm-gray-light)",
+          }}
+        >
+          <Lock style={{ width: 12, height: 12 }} strokeWidth={2} />
+          Submitting will lock the product list. To change products later, start a new
+          request.
+        </div>
+      </div>
+
+      <FooterRow
+        left={
+          <TertiaryButton onClick={onBack}>
+            <ArrowLeft className="w-3.5 h-3.5" strokeWidth={2} />
+            Back
+          </TertiaryButton>
+        }
+      >
         <SecondaryButton disabled={submitting} onClick={onSaveDraft}>
-          Save as draft
+          Save draft
         </SecondaryButton>
-        <PrimaryButton disabled={submitting} onClick={onSubmit}>
-          Submit for review
+        <PrimaryButton disabled={submitting || !confirmed} onClick={onSubmit}>
+          Submit estimate request
           <ArrowRight className="w-3.5 h-3.5" strokeWidth={2} />
         </PrimaryButton>
       </FooterRow>
-    </Card>
+    </>
   );
 }
 
-interface ItemSummaryProps {
+// =====================================================================
+// Item review card (Step 3 — loads questions to display Q&A)
+// =====================================================================
+
+interface ItemReviewCardProps {
   item: LocalItem;
+  product: ProductDetail | null;
+  isFirst: boolean;
 }
 
-function ItemSummary({ item }: ItemSummaryProps) {
-  const heading = item.subFeatureName
-    ? `${item.productName} · ${item.subFeatureName}`
-    : item.productName;
+function ItemReviewCard({ item, product, isFirst }: ItemReviewCardProps) {
+  const isContainer = product?.mode === "CONTAINER";
 
-  const answered = Object.values(item.answers).filter((v) => v.trim() !== "").length;
-  const total = Object.keys(item.answers).length;
-
-  return (
-    <li
-      className="rounded-md"
-      style={{
-        padding: "10px 12px",
-        background: "#FBFBFA",
-        border: "1px solid var(--color-warm-gray-light)",
-      }}
-    >
-      <div className="text-near-black font-semibold" style={{ fontSize: 14 }}>
-        {heading}
-      </div>
-      {total > 0 && (
-        <div className="text-warm-gray-med mt-1" style={{ fontSize: 12 }}>
-          {answered} of {total} {total === 1 ? "question" : "questions"} answered
-        </div>
-      )}
-    </li>
+  const productQuestionsQuery = useProductQuestionsQuery(
+    !isContainer ? item.productId : null,
   );
-}
-
-// =====================================================================
-// Local UI helpers
-// =====================================================================
-
-function Card({ children }: { children: React.ReactNode }) {
-  return (
-    <section
-      className="bg-white rounded-lg"
-      style={{
-        border: "1px solid var(--color-warm-gray-light)",
-        padding: "18px 20px 20px",
-      }}
-    >
-      {children}
-    </section>
+  const subFeatureQuestionsQuery = useSubFeatureQuestionsQuery(
+    isContainer && item.subFeatureId ? item.subFeatureId : null,
   );
-}
 
-function FooterRow({ children }: { children: React.ReactNode }) {
+  const questions: QuestionListItem[] = useMemo(() => {
+    const raw = isContainer
+      ? subFeatureQuestionsQuery.data
+      : productQuestionsQuery.data;
+    return (raw ?? []).filter((q) => q.active);
+  }, [isContainer, productQuestionsQuery.data, subFeatureQuestionsQuery.data]);
+
   return (
     <div
-      className="flex items-center justify-end"
+      style={{
+        paddingTop: isFirst ? 0 : 16,
+        marginTop: isFirst ? 0 : 0,
+        borderTop: isFirst ? "none" : "1px solid var(--color-warm-gray-light)",
+      }}
+    >
+      <div className="flex items-baseline" style={{ gap: 8, marginBottom: 10 }}>
+        <span className="text-near-black font-semibold" style={{ fontSize: 14 }}>
+          {item.productName}
+        </span>
+        {item.subFeatureName && (
+          <span className="text-warm-gray-med" style={{ fontSize: 13 }}>
+            · {item.subFeatureName}
+          </span>
+        )}
+      </div>
+
+      {questions.length > 0 ? (
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            gap: "0 24px",
+          }}
+        >
+          {questions.map((q) => {
+            const answer = (item.answers[q.id] ?? "").trim();
+            return (
+              <div
+                key={q.id}
+                style={{
+                  padding: "6px 0",
+                  gridColumn: answer.length > 60 ? "1 / -1" : undefined,
+                }}
+              >
+                <div className="text-warm-gray-med" style={{ fontSize: 12 }}>
+                  {q.questionText}
+                </div>
+                <div
+                  className={answer ? "text-near-black" : "text-warm-gray-med"}
+                  style={{
+                    fontSize: 14,
+                    marginTop: 2,
+                    fontStyle: answer ? "normal" : "italic",
+                  }}
+                >
+                  {answer || "— No answer provided —"}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="text-warm-gray-med" style={{ fontSize: 13, margin: 0 }}>
+          No questions for this product.
+        </p>
+      )}
+    </div>
+  );
+}
+
+// =====================================================================
+// Shared UI helpers
+// =====================================================================
+
+function ReviewSection({
+  title,
+  onEdit,
+  children,
+}: {
+  title: string;
+  onEdit: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      className="bg-white rounded-lg"
+      style={{
+        border: "1px solid var(--color-border)",
+        marginBottom: 16,
+        overflow: "hidden",
+      }}
+    >
+      <div
+        style={{
+          padding: "13px 18px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          background: "#FBFBFA",
+          borderBottom: "1px solid var(--color-warm-gray-light)",
+        }}
+      >
+        <span className="text-near-black font-semibold" style={{ fontSize: 14 }}>
+          {title}
+        </span>
+        <button
+          type="button"
+          onClick={onEdit}
+          className="inline-flex items-center text-near-black bg-transparent border-0 cursor-pointer"
+          style={{ fontSize: 12, gap: 4, textDecoration: "none" }}
+          onMouseEnter={(e) =>
+            ((e.currentTarget as HTMLElement).style.textDecoration = "underline")
+          }
+          onMouseLeave={(e) =>
+            ((e.currentTarget as HTMLElement).style.textDecoration = "none")
+          }
+        >
+          Edit
+          <ArrowRight style={{ width: 11, height: 11 }} strokeWidth={2} />
+        </button>
+      </div>
+      <div style={{ padding: "16px 20px" }}>{children}</div>
+    </div>
+  );
+}
+
+function KVRow({ label, value }: { label: string; value: string }) {
+  return (
+    <>
+      <div className="text-warm-gray-med" style={{ fontSize: 12, paddingTop: 1 }}>
+        {label}
+      </div>
+      <div className="text-near-black" style={{ fontSize: 14 }}>
+        {value}
+      </div>
+    </>
+  );
+}
+
+function FooterRow({
+  children,
+  left,
+}: {
+  children: React.ReactNode;
+  left?: React.ReactNode;
+}) {
+  return (
+    <div
+      className="flex items-center justify-between bg-white"
       style={{
         gap: 8,
         marginTop: 24,
         paddingTop: 16,
+        paddingBottom: 8,
         borderTop: "1px solid var(--color-warm-gray-light)",
+        position: "sticky",
+        bottom: 0,
+        zIndex: 10,
       }}
     >
-      {children}
-    </div>
-  );
-}
-
-function Section({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <SectionLabel>{label}</SectionLabel>
-      <div className="text-near-black mt-1" style={{ fontSize: 14 }}>{children}</div>
-    </div>
-  );
-}
-
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <div
-      className="text-warm-gray-med uppercase font-medium"
-      style={{ fontSize: 11, letterSpacing: "0.04em" }}
-    >
-      {children}
+      <div>{left ?? null}</div>
+      <div className="inline-flex items-center" style={{ gap: 8 }}>
+        {children}
+      </div>
     </div>
   );
 }
@@ -1060,8 +1943,4 @@ function RequiredPill() {
       Required
     </span>
   );
-}
-
-function modeLabel(mode: ProductMode): string {
-  return mode === "ATOMIC" ? "atomic" : "container";
 }
