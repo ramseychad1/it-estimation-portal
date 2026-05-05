@@ -134,6 +134,7 @@ export interface ListMyRequestsParams {
   search?: string;
   page?: number;
   size?: number;
+  allRequests?: boolean;
 }
 
 function toQuery(params: Record<string, unknown>): string {

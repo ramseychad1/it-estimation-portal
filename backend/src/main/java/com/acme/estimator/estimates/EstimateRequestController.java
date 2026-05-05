@@ -58,12 +58,17 @@ public class EstimateRequestController {
         @RequestParam(required = false) String search,
         @RequestParam(defaultValue = "0") int page,
         @RequestParam(defaultValue = "25") int size,
+        @RequestParam(defaultValue = "false") boolean allRequests,
         @AuthenticationPrincipal AppUserDetails principal
     ) {
+        User actor = currentUser(principal);
+        if (allRequests && !actor.isAdmin()) {
+            throw ApiException.forbidden("Only admins can view all requests.");
+        }
         org.springframework.data.domain.Sort sort =
             org.springframework.data.domain.Sort.by("createdAt").descending();
         Page<EstimateRequestListItem> result = service.myRequests(
-            PageRequest.of(page, size, sort), status, search, currentUser(principal)
+            PageRequest.of(page, size, sort), status, search, actor, allRequests
         );
         return PageResponse.from(result, x -> x);
     }

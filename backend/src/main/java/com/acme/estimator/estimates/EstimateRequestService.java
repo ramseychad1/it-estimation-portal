@@ -91,15 +91,17 @@ public class EstimateRequestService {
 
     @Transactional(readOnly = true)
     public Page<EstimateRequestListItem> myRequests(
-        Pageable pageable, String statusFilter, String titleSearch, User requester
+        Pageable pageable, String statusFilter, String titleSearch,
+        User requester, boolean allRequesters
     ) {
         String search = (titleSearch == null) ? null : titleSearch.trim();
-        Long requesterId = requester.getId();
 
         var spec = (org.springframework.data.jpa.domain.Specification<EstimateRequest>)
             (root, query, cb) -> {
                 List<jakarta.persistence.criteria.Predicate> predicates = new ArrayList<>();
-                predicates.add(cb.equal(root.get("requesterId"), requesterId));
+                if (!allRequesters) {
+                    predicates.add(cb.equal(root.get("requesterId"), requester.getId()));
+                }
                 if (search != null && !search.isEmpty()) {
                     predicates.add(cb.like(
                         cb.lower(root.get("title")),
@@ -119,10 +121,17 @@ public class EstimateRequestService {
         Map<Long, String> productNames = batchLoadProductNames(itemsByRequestId);
         Map<Long, String> subNames = batchLoadSubNames(itemsByRequestId);
 
+        // Populate requester names only in the all-requesters view; the
+        // personal "my requests" surface doesn't need them (the requester is
+        // always the current user).
+        Map<Long, String> userNames = allRequesters
+            ? batchLoadUserNames(page.getContent(), itemsByRequestId)
+            : Map.of();
+
         // Apply derived status filter in memory (simpler than complex subqueries for M1 scale)
         Page<EstimateRequestListItem> result = page.map(req -> {
             List<EstimateRequestItem> items = itemsByRequestId.getOrDefault(req.getId(), List.of());
-            return toListItem(req, items, productNames, subNames, Map.of());
+            return toListItem(req, items, productNames, subNames, userNames);
         });
 
         // If status filter is set, filter after mapping

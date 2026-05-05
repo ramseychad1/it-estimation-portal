@@ -12,7 +12,10 @@ import { PageHeader } from "../components/PageHeader";
 import { PrimaryButton, SecondaryButton } from "../components/buttons";
 import { SearchInput } from "../components/SearchInput";
 import { StatusBadge, estimateStatusBadge } from "../components/StatusBadge";
+import { Toggle } from "../components/Toggle";
 import { useToast } from "../components/Toast";
+import { useAuth } from "../lib/auth";
+import { isAdmin } from "../lib/permissions";
 import {
   useDiscardDraftMutation,
   useMyRequestsQuery,
@@ -43,6 +46,8 @@ export function MyRequestsPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const toast = useToast();
+  const { user } = useAuth();
+  const userIsAdmin = isAdmin(user?.roles ?? []);
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>(() => {
@@ -50,6 +55,7 @@ export function MyRequestsPage() {
     const valid: StatusFilter[] = ["ALL", "DRAFT", "SUBMITTED", "IN_REVIEW", "APPROVED", "REJECTED", "PARTIALLY_APPROVED", "NEEDS_REVISION"];
     return (valid.includes(param as StatusFilter) ? param : "ALL") as StatusFilter;
   });
+  const [allRequests, setAllRequests] = useState(false);
   const [page, setPage] = useState(0);
   const [hiddenCols, setHiddenCols] = useColumnsVisibility(
     "my-requests-columns",
@@ -66,8 +72,9 @@ export function MyRequestsPage() {
       search: debouncedSearch.trim() || undefined,
       page,
       size: PAGE_SIZE,
+      allRequests: allRequests || undefined,
     }),
-    [statusFilter, debouncedSearch, page],
+    [statusFilter, debouncedSearch, page, allRequests],
   );
   const requestsQuery = useMyRequestsQuery(queryParams);
   const discardMutation = useDiscardDraftMutation();
@@ -95,14 +102,14 @@ export function MyRequestsPage() {
       onSelect: () => setDiscardTarget(row),
     };
     const downloadSummary: KebabMenuItem = {
-      // Disabled — document export ships in a later phase. KebabMenu
-      // doesn't carry tooltips today; the disabled state alone signals
-      // "not available." Upgrade KebabMenuItem with a `tooltip` slot if
-      // we add more disabled-with-explanation items.
       label: "Download summary",
       disabled: true,
       onSelect: () => undefined,
     };
+
+    // In all-requesters mode the admin may be viewing someone else's draft —
+    // only "Open" is safe; the owner can discard from the detail page.
+    if (allRequests) return [open];
 
     switch (row.derivedStatus) {
       case "DRAFT":
@@ -150,6 +157,16 @@ export function MyRequestsPage() {
         </div>
       ),
     },
+    ...(allRequests ? [{
+      key: "requester",
+      header: "Requester",
+      width: 160,
+      render: (r: EstimateRequestListItem) => (
+        <span className="text-near-black" style={{ fontSize: 13 }}>
+          {r.requesterName ?? "—"}
+        </span>
+      ),
+    } as DataTableColumn<EstimateRequestListItem>] : []),
     {
       key: "status",
       header: "Status",
@@ -196,7 +213,11 @@ export function MyRequestsPage() {
       <PageHeader
         breadcrumb={[{ label: "Workspace" }, { label: "Estimate requests" }]}
         title="Estimate requests"
-        subtitle="Your estimate requests, drafts and submitted."
+        subtitle={
+          allRequests
+            ? "All estimate requests across all users."
+            : "Your estimate requests, drafts and submitted."
+        }
         actions={
           <PrimaryButton onClick={() => navigate("/requests/new")}>
             <Plus className="w-3.5 h-3.5" strokeWidth={2} />
@@ -229,6 +250,13 @@ export function MyRequestsPage() {
             ]}
             onChange={(v) => setStatusFilter(v as StatusFilter)}
           />
+          {userIsAdmin && (
+            <Toggle
+              checked={allRequests}
+              onCheckedChange={(v) => { setAllRequests(v); setPage(0); }}
+              label="All requesters"
+            />
+          )}
           <ListToolbar.Spacer />
           <span className="text-warm-gray-med" style={{ fontSize: 12 }}>
             {totalElements} {totalElements === 1 ? "request" : "requests"}
@@ -260,7 +288,7 @@ export function MyRequestsPage() {
             rows={items}
             rowKey={(r) => r.id}
             loading={requestsQuery.isLoading}
-            ariaLabel="My estimate requests"
+            ariaLabel={allRequests ? "All estimate requests" : "My estimate requests"}
             onRowClick={(r) => navigate(`/requests/${r.id}`)}
             emptyState={
               hasFilter ? (
