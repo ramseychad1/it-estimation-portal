@@ -2,6 +2,8 @@ import { Info } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { ApiError } from "../../../lib/api";
+import { useAuth } from "../../../lib/auth";
+import { isAdmin } from "../../../lib/permissions";
 import { useCreateProductMutation } from "../../../lib/queries/products";
 import { useTeamsQuery } from "../../../lib/queries/teams";
 import { useToast } from "../../../components/Toast";
@@ -44,6 +46,7 @@ const MODE_CARDS: ModeCardConfig[] = [
 export function NewProductDrawer({ open, onClose }: NewProductDrawerProps) {
   const navigate = useNavigate();
   const toast = useToast();
+  const { user } = useAuth();
   const createMutation = useCreateProductMutation();
   const teamsQuery = useTeamsQuery({ status: "ACTIVE", size: 100 });
 
@@ -112,7 +115,10 @@ export function NewProductDrawer({ open, onClose }: NewProductDrawerProps) {
         : "After saving, you'll be taken to the product's detail page to continue setup.";
 
   const busy = createMutation.isPending;
-  const activeTeams = teamsQuery.data?.items ?? [];
+  const allTeams = teamsQuery.data?.items ?? [];
+  const activeTeams = isAdmin(user?.roles ?? [])
+    ? allTeams
+    : allTeams.filter((t) => (user?.teamIds ?? []).includes(t.id));
 
   return (
     <Drawer

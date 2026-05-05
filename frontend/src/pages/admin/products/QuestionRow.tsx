@@ -25,8 +25,8 @@ export function SortableQuestionRow({
   onDelete,
 }: {
   question: QuestionListItem;
-  onEdit: () => void;
-  onDelete: () => void;
+  onEdit?: () => void;
+  onDelete?: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: question.id,
@@ -79,17 +79,19 @@ export function SortableQuestionRow({
       <StatusBadge variant={question.active ? "active" : "inactive"}>
         {question.active ? "Active" : "Inactive"}
       </StatusBadge>
-      <KebabMenu
-        items={[
-          { label: "Edit", icon: <Pencil className="w-3.5 h-3.5" strokeWidth={1.5} />, onSelect: onEdit },
-          {
-            label: "Delete",
-            icon: <Trash2 className="w-3.5 h-3.5" strokeWidth={1.5} />,
-            destructive: true,
-            onSelect: onDelete,
-          },
-        ]}
-      />
+      {(onEdit || onDelete) && (
+        <KebabMenu
+          items={[
+            ...(onEdit ? [{ label: "Edit", icon: <Pencil className="w-3.5 h-3.5" strokeWidth={1.5} />, onSelect: onEdit }] : []),
+            ...(onDelete ? [{
+              label: "Delete",
+              icon: <Trash2 className="w-3.5 h-3.5" strokeWidth={1.5} />,
+              destructive: true,
+              onSelect: onDelete,
+            }] : []),
+          ]}
+        />
+      )}
     </li>
   );
 }

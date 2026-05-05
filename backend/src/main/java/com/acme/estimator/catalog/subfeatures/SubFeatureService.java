@@ -4,6 +4,7 @@ import com.acme.estimator.audit.AuditService;
 import com.acme.estimator.audit.ChangeLogEntry;
 import com.acme.estimator.audit.ChangeLogEntryRepository;
 import com.acme.estimator.auth.User;
+import com.acme.estimator.auth.UserRepository;
 import com.acme.estimator.catalog.products.Product;
 import com.acme.estimator.catalog.products.ProductMode;
 import com.acme.estimator.catalog.products.ProductRepository;
@@ -26,6 +27,7 @@ public class SubFeatureService {
     private final ProductRepository productRepository;
     private final CriticalQuestionRepository questionRepository;
     private final ChangeLogEntryRepository changeLogRepository;
+    private final UserRepository userRepository;
     private final AuditService auditService;
 
     // ---- reads ---------------------------------------------------------
@@ -58,6 +60,8 @@ public class SubFeatureService {
     public SubFeatureDetail create(Long productId, CreateSubFeatureRequest req, User actor) {
         Product product = productRepository.findById(productId)
             .orElseThrow(() -> ApiException.notFound("Product " + productId + " not found"));
+
+        assertTeamAccess(actor, product);
 
         // Sub-features only attach to CONTAINER products. ATOMIC products
         // hold a direct estimate template; routing a sub-feature under one
@@ -99,6 +103,8 @@ public class SubFeatureService {
     public SubFeatureDetail update(Long id, UpdateSubFeatureRequest req, User actor) {
         SubFeature s = subFeatureRepository.findById(id)
             .orElseThrow(() -> ApiException.notFound("Sub-feature " + id + " not found"));
+
+        assertTeamAccessByProductId(actor, s.getProductId());
 
         // Active-flag flips routed through dedicated endpoints — same rule as
         // Product. Keeps audit-row shape consistent (ACTIVATED / DEACTIVATED).
@@ -157,6 +163,7 @@ public class SubFeatureService {
     public SubFeatureDetail activate(Long id, User actor) {
         SubFeature s = subFeatureRepository.findById(id)
             .orElseThrow(() -> ApiException.notFound("Sub-feature " + id + " not found"));
+        assertTeamAccessByProductId(actor, s.getProductId());
         if (s.isActive()) return toDetail(s);
 
         // Reactivation collision — same shape as ProductService.activate.
@@ -182,6 +189,7 @@ public class SubFeatureService {
     public SubFeatureDetail deactivate(Long id, User actor) {
         SubFeature s = subFeatureRepository.findById(id)
             .orElseThrow(() -> ApiException.notFound("Sub-feature " + id + " not found"));
+        assertTeamAccessByProductId(actor, s.getProductId());
         if (!s.isActive()) return toDetail(s);
 
         s.setActive(false);
@@ -202,6 +210,8 @@ public class SubFeatureService {
         SubFeature s = subFeatureRepository.findById(id)
             .orElseThrow(() -> ApiException.notFound("Sub-feature " + id + " not found"));
 
+        assertTeamAccessByProductId(actor, s.getProductId());
+
         if (confirmationName == null
             || !confirmationName.trim().equalsIgnoreCase(s.getName())) {
             throw ApiException.badRequest(
@@ -215,6 +225,23 @@ public class SubFeatureService {
     }
 
     // ---- helpers --------------------------------------------------------
+
+    private void assertTeamAccess(User actor, Product product) {
+        if (actor.isAdmin()) return;
+        Long teamId = product.getTeam() != null ? product.getTeam().getId() : null;
+        if (teamId == null || !userRepository.findTeamIdsByUserId(actor.getId()).contains(teamId)) {
+            throw ApiException.forbidden(
+                "You can only manage sub-features for products belonging to your teams."
+            );
+        }
+    }
+
+    private void assertTeamAccessByProductId(User actor, Long productId) {
+        if (actor.isAdmin()) return;
+        Product product = productRepository.findById(productId)
+            .orElseThrow(() -> ApiException.notFound("Product " + productId + " not found"));
+        assertTeamAccess(actor, product);
+    }
 
     private void ensureProductExists(Long productId) {
         if (!productRepository.existsById(productId)) {

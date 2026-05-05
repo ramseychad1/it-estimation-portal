@@ -30,6 +30,8 @@ import { KebabMenu, type KebabMenuItem } from "../../../components/KebabMenu";
 import { PrimaryButton } from "../../../components/buttons";
 import { ConfirmModal } from "../../../components/ConfirmModal";
 import { useToast } from "../../../components/Toast";
+import { useAuth } from "../../../lib/auth";
+import { isAdmin } from "../../../lib/permissions";
 import {
   useActivateSubFeatureMutation,
   useDeactivateSubFeatureMutation,
@@ -65,6 +67,7 @@ export function SubFeatureDetailPage() {
   const sid = subFeatureId ? Number(subFeatureId) : null;
   const navigate = useNavigate();
   const toast = useToast();
+  const { user } = useAuth();
 
   const productQuery = useProductQuery(pid);
   const subFeatureQuery = useSubFeatureQuery(sid);
@@ -109,49 +112,55 @@ export function SubFeatureDetailPage() {
   const product = productQuery.data;
   const questions = questionsQuery.data ?? [];
 
+  const canManage =
+    isAdmin(user?.roles ?? []) ||
+    (user?.teamIds ?? []).includes(product?.team?.id ?? -1);
+
   const headerKebab: KebabMenuItem[] = [
-    {
-      label: "Edit Product",
+    ...(!canManage ? [] : [{
+      label: "Edit Sub-feature",
       icon: <Pencil className="w-3.5 h-3.5" strokeWidth={1.5} />,
       onSelect: () => setDrawer({ kind: "edit-sub-feature" }),
-    },
+    } as KebabMenuItem]),
     {
       label: "View history",
       icon: <History className="w-3.5 h-3.5" strokeWidth={1.5} />,
       onSelect: () =>
         navigate(`/admin/change-log?search=${encodeURIComponent(sub.name)}`),
     },
-    { kind: "divider" },
-    sub.active
-      ? {
-          label: "Deactivate",
-          icon: <XCircle className="w-3.5 h-3.5" strokeWidth={1.5} />,
-          onSelect: () =>
-            deactivateMutation.mutate(sub.id, {
-              onSuccess: () => toast.success(`${sub.name} deactivated.`),
-              onError: () => toast.error("Could not deactivate."),
-            }),
-        }
-      : {
-          label: "Activate",
-          icon: <CheckCircle2 className="w-3.5 h-3.5" strokeWidth={1.5} />,
-          onSelect: () =>
-            activateMutation.mutate(sub.id, {
-              onSuccess: () => toast.success(`${sub.name} activated.`),
-              onError: (err) =>
-                toast.error(
-                  err instanceof Error && err.message.includes("Cannot reactivate")
-                    ? err.message
-                    : "Could not activate.",
-                ),
-            }),
-        },
-    {
-      label: "Delete",
-      icon: <Trash2 className="w-3.5 h-3.5" strokeWidth={1.5} />,
-      destructive: true,
-      onSelect: () => setDeleteOpen(true),
-    },
+    ...(!canManage ? [] : [
+      { kind: "divider" } as KebabMenuItem,
+      sub.active
+        ? {
+            label: "Deactivate",
+            icon: <XCircle className="w-3.5 h-3.5" strokeWidth={1.5} />,
+            onSelect: () =>
+              deactivateMutation.mutate(sub.id, {
+                onSuccess: () => toast.success(`${sub.name} deactivated.`),
+                onError: () => toast.error("Could not deactivate."),
+              }),
+          } as KebabMenuItem
+        : {
+            label: "Activate",
+            icon: <CheckCircle2 className="w-3.5 h-3.5" strokeWidth={1.5} />,
+            onSelect: () =>
+              activateMutation.mutate(sub.id, {
+                onSuccess: () => toast.success(`${sub.name} activated.`),
+                onError: (err) =>
+                  toast.error(
+                    err instanceof Error && err.message.includes("Cannot reactivate")
+                      ? err.message
+                      : "Could not activate.",
+                  ),
+              }),
+          } as KebabMenuItem,
+      {
+        label: "Delete",
+        icon: <Trash2 className="w-3.5 h-3.5" strokeWidth={1.5} />,
+        destructive: true,
+        onSelect: () => setDeleteOpen(true),
+      } as KebabMenuItem,
+    ]),
   ];
 
   return (
@@ -173,7 +182,7 @@ export function SubFeatureDetailPage() {
           </StatusBadge>
         }
         subtitle={sub.description ? <span>{sub.description}</span> : undefined}
-        actions={<KebabMenu items={headerKebab} />}
+        actions={headerKebab.length > 0 ? <KebabMenu items={headerKebab} /> : undefined}
         auditFooter={
           <EntityHeader.AuditFooter
             createdAt={sub.createdAt}
@@ -186,24 +195,26 @@ export function SubFeatureDetailPage() {
 
       <div className="flex flex-col gap-6 mt-6">
         <Section title="Estimate template">
-          <SubFeatureTemplateEditor subFeatureId={sub.id} />
+          <SubFeatureTemplateEditor subFeatureId={sub.id} canManage={canManage} />
         </Section>
 
         <Section
           title="Critical questions"
           count={questions.length}
           action={
-            <PrimaryButton
-              onClick={() =>
-                setDrawer({
-                  kind: "add-question",
-                  parent: { kind: "SubFeature", id: sub.id, name: sub.name },
-                })
-              }
-            >
-              <Plus className="w-3.5 h-3.5" strokeWidth={2} />
-              Add question
-            </PrimaryButton>
+            canManage ? (
+              <PrimaryButton
+                onClick={() =>
+                  setDrawer({
+                    kind: "add-question",
+                    parent: { kind: "SubFeature", id: sub.id, name: sub.name },
+                  })
+                }
+              >
+                <Plus className="w-3.5 h-3.5" strokeWidth={2} />
+                Add question
+              </PrimaryButton>
+            ) : undefined
           }
         >
           {questionsQuery.isLoading ? (
@@ -214,23 +225,26 @@ export function SubFeatureDetailPage() {
               title="No questions yet"
               description="Critical questions are asked of the requester before an estimate can be generated."
               action={
-                <PrimaryButton
-                  onClick={() =>
-                    setDrawer({
-                      kind: "add-question",
-                      parent: { kind: "SubFeature", id: sub.id, name: sub.name },
-                    })
-                  }
-                >
-                  <Plus className="w-3.5 h-3.5" strokeWidth={2} />
-                  Add question
-                </PrimaryButton>
+                canManage ? (
+                  <PrimaryButton
+                    onClick={() =>
+                      setDrawer({
+                        kind: "add-question",
+                        parent: { kind: "SubFeature", id: sub.id, name: sub.name },
+                      })
+                    }
+                  >
+                    <Plus className="w-3.5 h-3.5" strokeWidth={2} />
+                    Add question
+                  </PrimaryButton>
+                ) : undefined
               }
             />
           ) : (
             <DraggableSubFeatureQuestionList
               subFeatureId={sub.id}
               questions={questions}
+              canManage={canManage}
               onEdit={(q) =>
                 setDrawer({
                   kind: "edit-question",
@@ -288,11 +302,13 @@ export function SubFeatureDetailPage() {
 function DraggableSubFeatureQuestionList({
   subFeatureId,
   questions,
+  canManage,
   onEdit,
   onRequestDelete,
 }: {
   subFeatureId: number;
   questions: QuestionListItem[];
+  canManage: boolean;
   onEdit: (q: QuestionListItem) => void;
   onRequestDelete: (q: QuestionListItem) => void;
 }) {
@@ -307,6 +323,7 @@ function DraggableSubFeatureQuestionList({
   const ids = useMemo(() => questions.map((q) => q.id), [questions]);
 
   function handleDragEnd(event: DragEndEvent) {
+    if (!canManage) return;
     const { active, over } = event;
     if (!over || active.id === over.id) return;
     const oldIndex = ids.indexOf(Number(active.id));
@@ -329,8 +346,8 @@ function DraggableSubFeatureQuestionList({
             <SortableQuestionRow
               key={q.id}
               question={q}
-              onEdit={() => onEdit(q)}
-              onDelete={() => onRequestDelete(q)}
+              onEdit={canManage ? () => onEdit(q) : undefined}
+              onDelete={canManage ? () => onRequestDelete(q) : undefined}
             />
           ))}
         </ul>
@@ -429,7 +446,13 @@ function DeleteQuestionConfirm({
  * SubFeature equivalent of {@code ProductTemplateEditor}. Inline for the
  * same locality reasons; if the two start to drift they should split.
  */
-function SubFeatureTemplateEditor({ subFeatureId }: { subFeatureId: number }) {
+function SubFeatureTemplateEditor({
+  subFeatureId,
+  canManage,
+}: {
+  subFeatureId: number;
+  canManage: boolean;
+}) {
   const query = useSubFeatureTemplateQuery(subFeatureId);
   const create = useCreateSubFeatureTemplateMutation();
   const save = useSaveSubFeatureTemplateMutation();
@@ -439,6 +462,7 @@ function SubFeatureTemplateEditor({ subFeatureId }: { subFeatureId: number }) {
       template={query.data ?? null}
       loading={query.isLoading}
       parentNoun="sub-feature"
+      canManage={canManage}
       onCreate={async () => {
         await create.mutateAsync({ subFeatureId });
       }}

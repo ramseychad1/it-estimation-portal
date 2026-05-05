@@ -4,6 +4,7 @@ export interface CurrentUser {
   firstName: string;
   lastName: string;
   roles: string[];
+  teamIds: number[];
 }
 
 export const ROLE_ADMIN = "Admin";

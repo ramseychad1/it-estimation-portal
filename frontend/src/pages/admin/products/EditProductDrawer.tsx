@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { ApiError } from "../../../lib/api";
+import { useAuth } from "../../../lib/auth";
+import { isAdmin } from "../../../lib/permissions";
 import {
   useActivateProductMutation,
   useDeactivateProductMutation,
@@ -50,6 +52,7 @@ export function EditProductDrawer({
   const [values, setValues] = useState<FormValues>(initial);
   const [error, setError] = useState<{ name?: string; form?: string }>({});
 
+  const { user } = useAuth();
   const updateMutation = useUpdateProductMutation();
   const activateMutation = useActivateProductMutation();
   const deactivateMutation = useDeactivateProductMutation();
@@ -113,7 +116,10 @@ export function EditProductDrawer({
 
   if (!product) return null;
 
-  const activeTeams = teamsQuery.data?.items ?? [];
+  const allTeams = teamsQuery.data?.items ?? [];
+  const activeTeams = isAdmin(user?.roles ?? [])
+    ? allTeams
+    : allTeams.filter((t) => (user?.teamIds ?? []).includes(t.id));
 
   return (
     <Drawer

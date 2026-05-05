@@ -31,6 +31,8 @@ import { KebabMenu, type KebabMenuItem } from "../../../components/KebabMenu";
 import { PrimaryButton } from "../../../components/buttons";
 import { ConfirmModal } from "../../../components/ConfirmModal";
 import { useToast } from "../../../components/Toast";
+import { useAuth } from "../../../lib/auth";
+import { isAdmin } from "../../../lib/permissions";
 import {
   useActivateProductMutation,
   useDeactivateProductMutation,
@@ -70,6 +72,7 @@ export function ProductDetailPage() {
   const id = productId ? Number(productId) : null;
   const navigate = useNavigate();
   const toast = useToast();
+  const { user } = useAuth();
 
   const productQuery = useProductQuery(id);
   const subFeaturesQuery = useSubFeaturesForProductQuery(
@@ -116,57 +119,57 @@ export function ProductDetailPage() {
   }
 
   const product = productQuery.data;
+  const canManage =
+    isAdmin(user?.roles ?? []) ||
+    (user?.teamIds ?? []).includes(product.team?.id ?? -1);
 
   const headerKebab: KebabMenuItem[] = [
-    {
+    ...(!canManage ? [] : [{
       label: "Edit Product",
       icon: <Pencil className="w-3.5 h-3.5" strokeWidth={1.5} />,
       onSelect: () => setDrawer({ kind: "edit-product" }),
-    },
+    } as KebabMenuItem]),
     {
       label: "View history",
       icon: <History className="w-3.5 h-3.5" strokeWidth={1.5} />,
-      // Deep-links to the Change Log filtered by this product's name so the
-      // user lands on something useful rather than a generic feed. Search
-      // is name-based because we don't expose the entity id in user-facing
-      // surfaces; multiple deactivated copies sharing the name is acceptable
-      // friction, not a correctness issue.
       onSelect: () =>
         navigate(
           `/admin/change-log?search=${encodeURIComponent(product.name)}`,
         ),
     },
-    { kind: "divider" },
-    product.active
-      ? {
-          label: "Deactivate",
-          icon: <XCircle className="w-3.5 h-3.5" strokeWidth={1.5} />,
-          onSelect: () =>
-            deactivateMutation.mutate(product.id, {
-              onSuccess: () => toast.success(`${product.name} deactivated.`),
-              onError: () => toast.error("Could not deactivate."),
-            }),
-        }
-      : {
-          label: "Activate",
-          icon: <CheckCircle2 className="w-3.5 h-3.5" strokeWidth={1.5} />,
-          onSelect: () =>
-            activateMutation.mutate(product.id, {
-              onSuccess: () => toast.success(`${product.name} activated.`),
-              onError: (err) =>
-                toast.error(
-                  err instanceof Error && err.message.includes("Cannot reactivate")
-                    ? err.message
-                    : "Could not activate.",
-                ),
-            }),
-        },
-    {
-      label: "Delete",
-      icon: <Trash2 className="w-3.5 h-3.5" strokeWidth={1.5} />,
-      destructive: true,
-      onSelect: () => setDeleteOpen(true),
-    },
+    ...(!canManage ? [] : [
+      { kind: "divider" } as KebabMenuItem,
+      product.active
+        ? {
+            label: "Deactivate",
+            icon: <XCircle className="w-3.5 h-3.5" strokeWidth={1.5} />,
+            onSelect: () =>
+              deactivateMutation.mutate(product.id, {
+                onSuccess: () => toast.success(`${product.name} deactivated.`),
+                onError: () => toast.error("Could not deactivate."),
+              }),
+          }
+        : {
+            label: "Activate",
+            icon: <CheckCircle2 className="w-3.5 h-3.5" strokeWidth={1.5} />,
+            onSelect: () =>
+              activateMutation.mutate(product.id, {
+                onSuccess: () => toast.success(`${product.name} activated.`),
+                onError: (err) =>
+                  toast.error(
+                    err instanceof Error && err.message.includes("Cannot reactivate")
+                      ? err.message
+                      : "Could not activate.",
+                  ),
+              }),
+          },
+      {
+        label: "Delete",
+        icon: <Trash2 className="w-3.5 h-3.5" strokeWidth={1.5} />,
+        destructive: true,
+        onSelect: () => setDeleteOpen(true),
+      },
+    ]),
   ];
 
   return (
@@ -200,7 +203,7 @@ export function ProductDetailPage() {
             )}
           </span>
         }
-        actions={<KebabMenu items={headerKebab} />}
+        actions={headerKebab.length > 0 ? <KebabMenu items={headerKebab} /> : undefined}
         auditFooter={
           <EntityHeader.AuditFooter
             createdAt={product.createdAt}
@@ -218,6 +221,7 @@ export function ProductDetailPage() {
             productName={product.name}
             subFeatures={subFeaturesQuery.data ?? []}
             loading={subFeaturesQuery.isLoading}
+            canManage={canManage}
             onAddSubFeature={() => setDrawer({ kind: "new-sub-feature" })}
             onRequestDeleteSubFeature={(sub) => setSubFeatureToDelete(sub)}
           />
@@ -227,6 +231,7 @@ export function ProductDetailPage() {
             productName={product.name}
             questions={questionsQuery.data ?? []}
             loading={questionsQuery.isLoading}
+            canManage={canManage}
             onAddQuestion={() =>
               setDrawer({
                 kind: "add-question",
@@ -300,6 +305,7 @@ function ContainerLayout({
   productName,
   subFeatures,
   loading,
+  canManage,
   onAddSubFeature,
   onRequestDeleteSubFeature,
 }: {
@@ -307,6 +313,7 @@ function ContainerLayout({
   productName: string;
   subFeatures: SubFeatureListItem[];
   loading: boolean;
+  canManage: boolean;
   onAddSubFeature: () => void;
   onRequestDeleteSubFeature: (sub: SubFeatureListItem) => void;
 }) {
@@ -316,10 +323,12 @@ function ContainerLayout({
         title="Sub-features"
         count={subFeatures.length}
         action={
-          <PrimaryButton onClick={onAddSubFeature}>
-            <Plus className="w-3.5 h-3.5" strokeWidth={2} />
-            New sub-feature
-          </PrimaryButton>
+          canManage ? (
+            <PrimaryButton onClick={onAddSubFeature}>
+              <Plus className="w-3.5 h-3.5" strokeWidth={2} />
+              New sub-feature
+            </PrimaryButton>
+          ) : undefined
         }
       >
         {loading ? (
@@ -330,16 +339,19 @@ function ContainerLayout({
             title="No sub-features yet"
             description="Add the first sub-feature to organize this product's variants."
             action={
-              <PrimaryButton onClick={onAddSubFeature}>
-                <Plus className="w-3.5 h-3.5" strokeWidth={2} />
-                New sub-feature
-              </PrimaryButton>
+              canManage ? (
+                <PrimaryButton onClick={onAddSubFeature}>
+                  <Plus className="w-3.5 h-3.5" strokeWidth={2} />
+                  New sub-feature
+                </PrimaryButton>
+              ) : undefined
             }
           />
         ) : (
           <SubFeatureMiniTable
             productId={productId}
             rows={subFeatures}
+            canManage={canManage}
             onRequestDelete={onRequestDeleteSubFeature}
           />
         )}
@@ -371,10 +383,12 @@ function ContainerLayout({
 function SubFeatureMiniTable({
   productId,
   rows,
+  canManage,
   onRequestDelete,
 }: {
   productId: number;
   rows: SubFeatureListItem[];
+  canManage: boolean;
   onRequestDelete: (sub: SubFeatureListItem) => void;
 }) {
   const navigate = useNavigate();
@@ -445,13 +459,15 @@ function SubFeatureMiniTable({
                   label: "Open",
                   onSelect: () => navigate(`/catalog/products/${productId}/sub-features/${sub.id}`),
                 },
-                { kind: "divider" },
-                {
-                  label: "Delete",
-                  icon: <Trash2 className="w-3.5 h-3.5" strokeWidth={1.5} />,
-                  destructive: true,
-                  onSelect: () => onRequestDelete(sub),
-                },
+                ...(!canManage ? [] : [
+                  { kind: "divider" } as KebabMenuItem,
+                  {
+                    label: "Delete",
+                    icon: <Trash2 className="w-3.5 h-3.5" strokeWidth={1.5} />,
+                    destructive: true,
+                    onSelect: () => onRequestDelete(sub),
+                  },
+                ]),
               ]}
             />
           </span>
@@ -470,6 +486,7 @@ function AtomicLayout({
   productName,
   questions,
   loading,
+  canManage,
   onAddQuestion,
   onEditQuestion,
   onRequestDeleteQuestion,
@@ -478,6 +495,7 @@ function AtomicLayout({
   productName: string;
   questions: QuestionListItem[];
   loading: boolean;
+  canManage: boolean;
   onAddQuestion: () => void;
   onEditQuestion: (q: QuestionListItem) => void;
   onRequestDeleteQuestion: (q: QuestionListItem) => void;
@@ -485,17 +503,19 @@ function AtomicLayout({
   return (
     <>
       <Section title="Estimate template">
-        <ProductTemplateEditor productId={productId} />
+        <ProductTemplateEditor productId={productId} canManage={canManage} />
       </Section>
 
       <Section
         title="Critical questions"
         count={questions.length}
         action={
-          <PrimaryButton onClick={onAddQuestion}>
-            <Plus className="w-3.5 h-3.5" strokeWidth={2} />
-            Add question
-          </PrimaryButton>
+          canManage ? (
+            <PrimaryButton onClick={onAddQuestion}>
+              <Plus className="w-3.5 h-3.5" strokeWidth={2} />
+              Add question
+            </PrimaryButton>
+          ) : undefined
         }
       >
         {loading ? (
@@ -506,16 +526,19 @@ function AtomicLayout({
             title="No questions yet"
             description="Critical questions are asked of the requester before an estimate can be generated."
             action={
-              <PrimaryButton onClick={onAddQuestion}>
-                <Plus className="w-3.5 h-3.5" strokeWidth={2} />
-                Add question
-              </PrimaryButton>
+              canManage ? (
+                <PrimaryButton onClick={onAddQuestion}>
+                  <Plus className="w-3.5 h-3.5" strokeWidth={2} />
+                  Add question
+                </PrimaryButton>
+              ) : undefined
             }
           />
         ) : (
           <DraggableQuestionList
             productId={productId}
             questions={questions}
+            canManage={canManage}
             onEdit={onEditQuestion}
             onRequestDelete={onRequestDeleteQuestion}
           />
@@ -531,11 +554,13 @@ function AtomicLayout({
 function DraggableQuestionList({
   productId,
   questions,
+  canManage,
   onEdit,
   onRequestDelete,
 }: {
   productId: number;
   questions: QuestionListItem[];
+  canManage: boolean;
   onEdit: (q: QuestionListItem) => void;
   onRequestDelete: (q: QuestionListItem) => void;
 }) {
@@ -550,6 +575,7 @@ function DraggableQuestionList({
   const ids = useMemo(() => questions.map((q) => q.id), [questions]);
 
   function handleDragEnd(event: DragEndEvent) {
+    if (!canManage) return;
     const { active, over } = event;
     if (!over || active.id === over.id) return;
     const oldIndex = ids.indexOf(Number(active.id));
@@ -572,8 +598,8 @@ function DraggableQuestionList({
             <SortableQuestionRow
               key={q.id}
               question={q}
-              onEdit={() => onEdit(q)}
-              onDelete={() => onRequestDelete(q)}
+              onEdit={canManage ? () => onEdit(q) : undefined}
+              onDelete={canManage ? () => onRequestDelete(q) : undefined}
             />
           ))}
         </ul>
@@ -683,7 +709,7 @@ function DeleteQuestionConfirm({
  * this file because it has no other call sites; if the SubFeature
  * equivalent and this start to drift, lift them into separate files.
  */
-function ProductTemplateEditor({ productId }: { productId: number }) {
+function ProductTemplateEditor({ productId, canManage }: { productId: number; canManage: boolean }) {
   const query = useProductTemplateQuery(productId);
   const create = useCreateProductTemplateMutation();
   const save = useSaveProductTemplateMutation();
@@ -693,6 +719,7 @@ function ProductTemplateEditor({ productId }: { productId: number }) {
       template={query.data ?? null}
       loading={query.isLoading}
       parentNoun="atomic product"
+      canManage={canManage}
       onCreate={async () => {
         await create.mutateAsync({ productId });
       }}

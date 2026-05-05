@@ -4,6 +4,7 @@ import com.acme.estimator.audit.AuditService;
 import com.acme.estimator.audit.ChangeLogEntry;
 import com.acme.estimator.audit.ChangeLogEntryRepository;
 import com.acme.estimator.auth.User;
+import com.acme.estimator.auth.UserRepository;
 import com.acme.estimator.catalog.products.Product;
 import com.acme.estimator.catalog.products.ProductRepository;
 import com.acme.estimator.catalog.questions.dto.CreateQuestionRequest;
@@ -45,6 +46,7 @@ public class CriticalQuestionService {
     private final ProductRepository productRepository;
     private final SubFeatureRepository subFeatureRepository;
     private final ChangeLogEntryRepository changeLogRepository;
+    private final UserRepository userRepository;
     private final AuditService auditService;
 
     // ---- reads: in-context lists ---------------------------------------
@@ -98,6 +100,8 @@ public class CriticalQuestionService {
         Product product = productRepository.findById(productId)
             .orElseThrow(() -> ApiException.notFound("Product " + productId + " not found"));
 
+        assertTeamAccess(actor, product);
+
         // Reject when the product has any active sub-features. Otherwise the
         // question's parent-vs-children semantics would be ambiguous —
         // requesters would have to answer it for every sub-feature, but the
@@ -135,6 +139,9 @@ public class CriticalQuestionService {
         SubFeature sub = subFeatureRepository.findById(subFeatureId)
             .orElseThrow(() -> ApiException.notFound("Sub-feature " + subFeatureId + " not found"));
 
+        Product parentProduct = productRepository.findById(sub.getProductId()).orElse(null);
+        assertTeamAccess(actor, parentProduct);
+
         int nextOrder = questionRepository.findMaxDisplayOrderForSubFeature(subFeatureId) + 1;
 
         CriticalQuestion q = new CriticalQuestion();
@@ -161,6 +168,7 @@ public class CriticalQuestionService {
     @Transactional
     public QuestionDetail update(Long id, UpdateQuestionRequest req, User actor) {
         CriticalQuestion q = findOrThrow(id);
+        assertTeamAccessForQuestion(actor, q);
 
         boolean dirty = false;
 
@@ -233,6 +241,7 @@ public class CriticalQuestionService {
     @Transactional
     public void delete(Long id, User actor) {
         CriticalQuestion q = findOrThrow(id);
+        assertTeamAccessForQuestion(actor, q);
         Long qid = q.getId();
         questionRepository.delete(q);
         auditService.recordDeleted(CriticalQuestion.ENTITY_TYPE, qid, actor, null);
@@ -251,6 +260,7 @@ public class CriticalQuestionService {
     public List<QuestionListItem> reorderForProduct(Long productId, List<Long> questionIds, User actor) {
         Product parent = productRepository.findById(productId)
             .orElseThrow(() -> ApiException.notFound("Product " + productId + " not found"));
+        assertTeamAccess(actor, parent);
         List<CriticalQuestion> current =
             questionRepository.findByProductIdOrderByDisplayOrder(productId);
         applyReorder(current, questionIds, actor);
@@ -264,6 +274,7 @@ public class CriticalQuestionService {
         SubFeature parent = subFeatureRepository.findById(subFeatureId)
             .orElseThrow(() -> ApiException.notFound("Sub-feature " + subFeatureId + " not found"));
         Product grandparent = productRepository.findById(parent.getProductId()).orElse(null);
+        assertTeamAccess(actor, grandparent);
         Long gid = grandparent == null ? null : grandparent.getId();
         String gname = grandparent == null ? null : grandparent.getName();
 
@@ -328,6 +339,30 @@ public class CriticalQuestionService {
     }
 
     // ---- helpers -------------------------------------------------------
+
+    private void assertTeamAccess(User actor, Product product) {
+        if (actor.isAdmin()) return;
+        Long teamId = product != null && product.getTeam() != null ? product.getTeam().getId() : null;
+        if (teamId == null || !userRepository.findTeamIdsByUserId(actor.getId()).contains(teamId)) {
+            throw ApiException.forbidden(
+                "You can only manage questions for products belonging to your teams."
+            );
+        }
+    }
+
+    private void assertTeamAccessForQuestion(User actor, CriticalQuestion q) {
+        if (actor.isAdmin()) return;
+        Product product = null;
+        if (q.getProductId() != null) {
+            product = productRepository.findById(q.getProductId()).orElse(null);
+        } else if (q.getSubFeatureId() != null) {
+            SubFeature sub = subFeatureRepository.findById(q.getSubFeatureId()).orElse(null);
+            if (sub != null) {
+                product = productRepository.findById(sub.getProductId()).orElse(null);
+            }
+        }
+        assertTeamAccess(actor, product);
+    }
 
     private CriticalQuestion findOrThrow(Long id) {
         return questionRepository.findById(id)

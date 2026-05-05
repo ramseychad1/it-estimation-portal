@@ -34,6 +34,8 @@ import {
   useDeactivateProductMutation,
   useProductsQuery,
 } from "../../lib/queries/products";
+import { useAuth } from "../../lib/auth";
+import { isAdmin } from "../../lib/permissions";
 import { useTeamsQuery } from "../../lib/queries/teams";
 import { NewProductDrawer } from "./products/NewProductDrawer";
 import { EditProductDrawer } from "./products/EditProductDrawer";
@@ -65,6 +67,7 @@ export function ProductsPage() {
 
   const navigate = useNavigate();
   const toast = useToast();
+  const { user } = useAuth();
 
   const [search, setSearch] = useState("");
   const [modeFilter, setModeFilter] = useState<"" | ProductMode>("");
@@ -102,6 +105,8 @@ export function ProductsPage() {
   const totalElements = productsQuery.data?.totalElements ?? 0;
   const totalPages = productsQuery.data?.totalPages ?? 1;
   const hasFilter = !!search.trim() || modeFilter !== "" || statusFilter !== "ALL" || teamIdFilter !== undefined;
+  const canCreateProduct =
+    isAdmin(user?.roles ?? []) || (user?.teamIds ?? []).length > 0;
 
   function clearSelection() {
     setSelectedIds([]);
@@ -134,52 +139,58 @@ export function ProductsPage() {
   }
 
   function buildKebab(row: ProductListItem): KebabMenuItem[] {
+    const canManageRow =
+      isAdmin(user?.roles ?? []) ||
+      (user?.teamIds ?? []).includes(row.team?.id ?? -1);
+
     return [
       {
         label: "Open",
         onSelect: () => navigate(`/catalog/products/${row.id}`),
       },
-      {
+      ...(canManageRow ? [{
         label: "Edit Product",
         icon: <Pencil className="w-3.5 h-3.5" strokeWidth={1.5} />,
         onSelect: () => void openEdit(row),
-      },
+      } as KebabMenuItem] : []),
       {
         label: "View history",
         icon: <History className="w-3.5 h-3.5" strokeWidth={1.5} />,
         onSelect: () => navigate(`/catalog/products/${row.id}#history`),
       },
-      { kind: "divider" },
-      row.active
-        ? {
-            label: "Deactivate",
-            icon: <XCircle className="w-3.5 h-3.5" strokeWidth={1.5} />,
-            onSelect: () =>
-              deactivateMutation.mutate(row.id, {
-                onSuccess: () => toast.success(`${row.name} deactivated.`),
-                onError: () => toast.error("Could not deactivate that product."),
-              }),
-          }
-        : {
-            label: "Activate",
-            icon: <CheckCircle2 className="w-3.5 h-3.5" strokeWidth={1.5} />,
-            onSelect: () =>
-              activateMutation.mutate(row.id, {
-                onSuccess: () => toast.success(`${row.name} activated.`),
-                onError: (err) =>
-                  toast.error(
-                    err instanceof Error && err.message.includes("Cannot reactivate")
-                      ? err.message
-                      : "Could not activate that product.",
-                  ),
-              }),
-          },
-      {
-        label: "Delete",
-        icon: <Trash2 className="w-3.5 h-3.5" strokeWidth={1.5} />,
-        destructive: true,
-        onSelect: () => void requestDelete(row),
-      },
+      ...(canManageRow ? [
+        { kind: "divider" } as KebabMenuItem,
+        row.active
+          ? {
+              label: "Deactivate",
+              icon: <XCircle className="w-3.5 h-3.5" strokeWidth={1.5} />,
+              onSelect: () =>
+                deactivateMutation.mutate(row.id, {
+                  onSuccess: () => toast.success(`${row.name} deactivated.`),
+                  onError: () => toast.error("Could not deactivate that product."),
+                }),
+            } as KebabMenuItem
+          : {
+              label: "Activate",
+              icon: <CheckCircle2 className="w-3.5 h-3.5" strokeWidth={1.5} />,
+              onSelect: () =>
+                activateMutation.mutate(row.id, {
+                  onSuccess: () => toast.success(`${row.name} activated.`),
+                  onError: (err) =>
+                    toast.error(
+                      err instanceof Error && err.message.includes("Cannot reactivate")
+                        ? err.message
+                        : "Could not activate that product.",
+                    ),
+                }),
+            } as KebabMenuItem,
+        {
+          label: "Delete",
+          icon: <Trash2 className="w-3.5 h-3.5" strokeWidth={1.5} />,
+          destructive: true,
+          onSelect: () => void requestDelete(row),
+        } as KebabMenuItem,
+      ] : []),
     ];
   }
 
@@ -299,10 +310,12 @@ export function ProductsPage() {
         title="Products"
         subtitle="The catalog of products and sub-features that estimate requests are built from."
         actions={
-          <PrimaryButton onClick={() => setDrawer({ mode: "create" })}>
-            <Plus className="w-3.5 h-3.5" strokeWidth={2} />
-            New Product
-          </PrimaryButton>
+          canCreateProduct ? (
+            <PrimaryButton onClick={() => setDrawer({ mode: "create" })}>
+              <Plus className="w-3.5 h-3.5" strokeWidth={2} />
+              New Product
+            </PrimaryButton>
+          ) : undefined
         }
       />
 
@@ -425,10 +438,12 @@ export function ProductsPage() {
                 title="No products yet"
                 description="Add your first product to start building estimate templates."
                 action={
-                  <PrimaryButton onClick={() => setDrawer({ mode: "create" })}>
-                    <Plus className="w-3.5 h-3.5" strokeWidth={2} />
-                    New Product
-                  </PrimaryButton>
+                  canCreateProduct ? (
+                    <PrimaryButton onClick={() => setDrawer({ mode: "create" })}>
+                      <Plus className="w-3.5 h-3.5" strokeWidth={2} />
+                      New Product
+                    </PrimaryButton>
+                  ) : undefined
                 }
               />
             )

@@ -63,7 +63,8 @@ public class AuthController {
             u.setLastActiveAt(OffsetDateTime.now(ZoneOffset.UTC));
             userRepository.save(u);
         });
-        return ResponseEntity.ok(CurrentUserResponse.from(principal));
+        var teamIds = userRepository.findTeamIdsByUserId(principal.getUserId());
+        return ResponseEntity.ok(CurrentUserResponse.from(principal, teamIds));
     }
 
     @PostMapping("/logout")
@@ -82,6 +83,7 @@ public class AuthController {
         if (auth == null || !auth.isAuthenticated() || !(auth.getPrincipal() instanceof AppUserDetails details)) {
             throw new ResponseStatusException(UNAUTHORIZED);
         }
-        return ResponseEntity.ok(CurrentUserResponse.from(details));
+        var teamIds = userRepository.findTeamIdsByUserId(details.getUserId());
+        return ResponseEntity.ok(CurrentUserResponse.from(details, teamIds));
     }
 }

@@ -33,6 +33,8 @@ interface TemplateEditorCardProps {
   onSave: (req: SaveTemplateVersionRequest) => Promise<TemplateView>;
   /** Render label for the empty-state CTA — "atomic product" or "sub-feature". */
   parentNoun: string;
+  /** When false the editor renders read-only; create/save/discard are hidden. Defaults to true. */
+  canManage?: boolean;
 }
 
 /**
@@ -58,6 +60,7 @@ export function TemplateEditorCard({
   onCreate,
   onSave,
   parentNoun,
+  canManage = true,
 }: TemplateEditorCardProps) {
   const toast = useToast();
   const ratesQuery = useRatesPageQuery({ size: 1 });
@@ -108,22 +111,24 @@ export function TemplateEditorCard({
         title="No template yet"
         description={`Create the estimate template for this ${parentNoun} to enable estimate requests.`}
         action={
-          <PrimaryButton
-            onClick={async () => {
-              setCreating(true);
-              try {
-                await onCreate();
-                toast.success("Template created.");
-              } catch {
-                toast.error("Could not create the template.");
-              } finally {
-                setCreating(false);
-              }
-            }}
-            disabled={creating}
-          >
-            {creating ? "Creating…" : "+ Create template"}
-          </PrimaryButton>
+          canManage ? (
+            <PrimaryButton
+              onClick={async () => {
+                setCreating(true);
+                try {
+                  await onCreate();
+                  toast.success("Template created.");
+                } catch {
+                  toast.error("Could not create the template.");
+                } finally {
+                  setCreating(false);
+                }
+              }}
+              disabled={creating}
+            >
+              {creating ? "Creating…" : "+ Create template"}
+            </PrimaryButton>
+          ) : undefined
         }
       />
     );
@@ -191,22 +196,24 @@ export function TemplateEditorCard({
         <div className="flex items-center gap-2">
           <VersionPill versionNumber={template.versionNumber} />
         </div>
-        <div className="flex items-center gap-2">
-          {isDirty && (
-            <TertiaryButton
-              onClick={discardChanges}
-              className="text-cardinal-red hover:text-cardinal-red"
+        {canManage && (
+          <div className="flex items-center gap-2">
+            {isDirty && (
+              <TertiaryButton
+                onClick={discardChanges}
+                className="text-cardinal-red hover:text-cardinal-red"
+              >
+                Discard changes
+              </TertiaryButton>
+            )}
+            <PrimaryButton
+              onClick={handleSave}
+              disabled={!isDirty || saving}
             >
-              Discard changes
-            </TertiaryButton>
-          )}
-          <PrimaryButton
-            onClick={handleSave}
-            disabled={!isDirty || saving}
-          >
-            {saving ? "Saving…" : "Save changes"}
-          </PrimaryButton>
-        </div>
+              {saving ? "Saving…" : "Save changes"}
+            </PrimaryButton>
+          </div>
+        )}
       </div>
 
       {/* The grid itself */}
@@ -238,7 +245,7 @@ export function TemplateEditorCard({
         onPaste={(anchor, rows) => {
           setValues((prev) => applyPasteAt(anchor, rows, phases, prev));
         }}
-        disabled={saving}
+        disabled={saving || !canManage}
       />
 
       {/* Card footer: last-saved meta + change-reason input when dirty */}

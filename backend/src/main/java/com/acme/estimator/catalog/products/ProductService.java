@@ -92,6 +92,7 @@ public class ProductService {
             });
 
         Team team = resolveActiveTeam(req.teamId());
+        assertTeamAccess(actor, team.getId());
 
         Product product = new Product();
         product.setName(req.name().trim());
@@ -111,6 +112,8 @@ public class ProductService {
     public ProductDetail update(Long id, UpdateProductRequest req, User actor) {
         Product product = productRepository.findById(id)
             .orElseThrow(() -> ApiException.notFound("Product " + id + " not found"));
+
+        assertTeamAccess(actor, product.getTeam() != null ? product.getTeam().getId() : null);
 
         // Third layer of mode protection: explicit service-level rejection.
         // The DB CHECK constraint and JPA updatable=false would also block
@@ -195,6 +198,7 @@ public class ProductService {
     public ProductDetail activate(Long id, User actor) {
         Product product = productRepository.findById(id)
             .orElseThrow(() -> ApiException.notFound("Product " + id + " not found"));
+        assertTeamAccess(actor, product.getTeam() != null ? product.getTeam().getId() : null);
         if (product.isActive()) return toDetail(product);
 
         // Reactivation collision: refuse to re-activate "Foo" if a different
@@ -224,6 +228,7 @@ public class ProductService {
     public ProductDetail deactivate(Long id, User actor) {
         Product product = productRepository.findById(id)
             .orElseThrow(() -> ApiException.notFound("Product " + id + " not found"));
+        assertTeamAccess(actor, product.getTeam() != null ? product.getTeam().getId() : null);
         if (!product.isActive()) return toDetail(product);
 
         product.setActive(false);
@@ -250,6 +255,8 @@ public class ProductService {
     public void delete(Long id, String confirmationName, User actor) {
         Product product = productRepository.findById(id)
             .orElseThrow(() -> ApiException.notFound("Product " + id + " not found"));
+
+        assertTeamAccess(actor, product.getTeam() != null ? product.getTeam().getId() : null);
 
         if (confirmationName == null
             || !confirmationName.trim().equalsIgnoreCase(product.getName())) {
@@ -291,6 +298,15 @@ public class ProductService {
             }
             return p;
         };
+    }
+
+    private void assertTeamAccess(User actor, Long teamId) {
+        if (actor.isAdmin()) return;
+        if (teamId == null || !userRepository.findTeamIdsByUserId(actor.getId()).contains(teamId)) {
+            throw ApiException.forbidden(
+                "You can only manage products for teams you are assigned to."
+            );
+        }
     }
 
     private Team resolveActiveTeam(Long teamId) {
