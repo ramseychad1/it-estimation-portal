@@ -208,8 +208,9 @@ export function EstimateDetailPage() {
         {header}
         <div className="flex flex-col" style={{ gap: 16, marginTop: 24 }}>
           <RequestSummaryCard detail={detail} />
+          <EstimateRollupCard items={detail.items} currentRate={currentRate} />
           {detail.items.map((it) => (
-            <ApprovedItemCard key={it.id} item={it} currentRate={currentRate} />
+            <CollapsibleApprovedItemCard key={it.id} item={it} currentRate={currentRate} />
           ))}
           <ActivityCard history={historyQuery.data ?? []} loading={historyQuery.isLoading} />
         </div>
@@ -427,139 +428,215 @@ function DraftItemCard({
   );
 }
 
-// ── Per-item card: APPROVED / PARTIALLY_APPROVED ───────────────────────────
+// ── Invoice-style rollup table (APPROVED items only) ──────────────────────
 
-function ApprovedItemCard({
+function EstimateRollupCard({
+  items,
+  currentRate,
+}: {
+  items: EstimateRequestItemDto[];
+  currentRate: { onshoreRate: string; offshoreRate: string; effectiveDate: string } | null;
+}) {
+  const approvedRows = items.filter(
+    (it) => it.status === "APPROVED" && it.complexity != null,
+  );
+  if (approvedRows.length === 0) return null;
+
+  const rowData = approvedRows.map((it) => ({
+    it,
+    ons: onshoreHoursForLines(it.phaseLines, it.complexity),
+    offs: offshoreHoursForLines(it.phaseLines, it.complexity),
+    total: totalHoursForLines(it.phaseLines, it.complexity),
+    cost: totalCostForLines(it.phaseLines, it.complexity, currentRate),
+  }));
+
+  const sumOns = rowData.reduce((s, r) => s + r.ons, 0);
+  const sumOffs = rowData.reduce((s, r) => s + r.offs, 0);
+  const sumTotal = rowData.reduce((s, r) => s + r.total, 0);
+  const sumCost = rowData.reduce((s, r) => s + r.cost, 0);
+
+  const footerStyle = {
+    background: "var(--color-warm-gray-light)",
+    borderTop: "2px solid var(--color-border-strong)",
+  };
+
+  return (
+    <Card title="Estimate Summary">
+      <div className="overflow-x-auto">
+        <table className="w-full" style={{ borderCollapse: "collapse", fontSize: 13 }}>
+          <thead>
+            <tr style={{ borderBottom: "1px solid var(--color-warm-gray-light)" }}>
+              <Th>Product / Sub-feature</Th>
+              <Th align="right">Onshore Hrs</Th>
+              <Th align="right">Offshore Hrs</Th>
+              <Th align="right">Total Hrs</Th>
+              {currentRate && <Th align="right">Total Estimate</Th>}
+            </tr>
+          </thead>
+          <tbody>
+            {rowData.map(({ it, ons, offs, total, cost }) => (
+              <tr key={it.id} style={{ borderBottom: "1px solid var(--color-warm-gray-light)" }}>
+                <Td>
+                  <span className="font-medium text-near-black">
+                    {it.subFeatureName ? `${it.productName} · ${it.subFeatureName}` : it.productName}
+                  </span>
+                  {it.teamName && (
+                    <span className="text-warm-gray-med" style={{ fontSize: 12, marginLeft: 6 }}>
+                      ({it.teamName})
+                    </span>
+                  )}
+                </Td>
+                <Td align="right"><span className="tabular-nums">{fmtHrs(ons)}</span></Td>
+                <Td align="right"><span className="tabular-nums">{fmtHrs(offs)}</span></Td>
+                <Td align="right"><span className="tabular-nums">{fmtHrs(total)}</span></Td>
+                {currentRate && (
+                  <Td align="right"><span className="tabular-nums">${fmtMoney(cost)}</span></Td>
+                )}
+              </tr>
+            ))}
+            <tr style={footerStyle}>
+              <Td>
+                <span className="uppercase font-semibold text-near-black" style={{ fontSize: 11, letterSpacing: "0.06em" }}>
+                  Total
+                </span>
+              </Td>
+              <Td align="right"><span className="font-semibold tabular-nums">{fmtHrs(sumOns)}</span></Td>
+              <Td align="right"><span className="font-semibold tabular-nums">{fmtHrs(sumOffs)}</span></Td>
+              <Td align="right"><span className="font-semibold tabular-nums">{fmtHrs(sumTotal)}</span></Td>
+              {currentRate && (
+                <Td align="right">
+                  <span className="font-semibold tabular-nums">${fmtMoney(sumCost)}</span>
+                </Td>
+              )}
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      {currentRate && (
+        <p className="m-0 mt-3 text-warm-gray-med" style={{ fontSize: 11 }}>
+          Based on blended rates effective {currentRate.effectiveDate}.
+        </p>
+      )}
+    </Card>
+  );
+}
+
+// ── Collapsible per-item card: APPROVED / PARTIALLY_APPROVED / REJECTED ────
+
+function CollapsibleApprovedItemCard({
   item,
   currentRate,
 }: {
   item: EstimateRequestItemDto;
   currentRate: { onshoreRate: string; offshoreRate: string; effectiveDate: string } | null;
 }) {
+  const [open, setOpen] = useState(false);
   const title = item.subFeatureName
     ? `${item.productName} · ${item.subFeatureName}`
     : item.productName;
-
   const { variant, label } = estimateStatusBadge(item.status);
   const isApproved = item.status === "APPROVED";
   const isRejected = item.status === "REJECTED";
 
   return (
-    <Card
-      title={title}
-      headerRight={
+    <section
+      className="bg-white rounded-lg"
+      style={{ border: "1px solid var(--color-warm-gray-light)" }}
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center justify-between text-left bg-transparent border-0 cursor-pointer"
+        style={{
+          padding: "12px 16px",
+          borderBottom: open ? "1px solid var(--color-warm-gray-light)" : "none",
+          borderRadius: open ? 0 : undefined,
+        }}
+      >
         <div className="flex items-center" style={{ gap: 8 }}>
+          <span className="text-near-black font-semibold" style={{ fontSize: 14 }}>
+            {title}
+          </span>
           {item.teamName && (
             <span className="text-warm-gray-med" style={{ fontSize: 12 }}>{item.teamName}</span>
           )}
           <StatusBadge variant={variant}>{label}</StatusBadge>
         </div>
-      }
-    >
-      {/* Approved banner */}
-      {isApproved && (
-        <div
-          className="rounded-md mb-4 flex items-center"
+        <ChevronDown
+          className="text-warm-gray-med flex-shrink-0"
           style={{
-            background: "var(--color-light-blue-soft)",
-            border: "1px solid rgba(187,221,230,0.7)",
-            padding: "10px 12px",
-            fontSize: 13,
-            color: "var(--fg-1)",
-            gap: 8,
+            width: 16,
+            height: 16,
+            transform: open ? "rotate(180deg)" : "rotate(0deg)",
+            transition: "transform 150ms ease",
           }}
-        >
-          <CheckCircle className="w-3.5 h-3.5" strokeWidth={1.5} />
-          <span>
-            Approved by <strong>{item.reviewerName ?? "the reviewer"}</strong>
-            {item.reviewedAt && <> on {new Date(item.reviewedAt).toLocaleDateString()}</>}.
-          </span>
-        </div>
-      )}
-
-      {/* Rejected banner */}
-      {isRejected && (
-        <div
-          className="rounded-md mb-4 flex items-start"
-          style={{
-            background: "rgba(247, 228, 173, 0.4)",
-            border: "1px solid rgba(212, 167, 44, 0.3)",
-            padding: "10px 12px",
-            fontSize: 13,
-            color: "var(--fg-1)",
-            gap: 8,
-          }}
-        >
-          <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" strokeWidth={1.5} />
-          <span>
-            Rejected by <strong>{item.reviewerName ?? "the reviewer"}</strong>
-            {item.reviewedAt && <> on {new Date(item.reviewedAt).toLocaleDateString()}</>}.
-            {item.rejectionReason && <> <span className="italic">{item.rejectionReason}</span></>}
-          </span>
-        </div>
-      )}
-
-      {/* Still in review */}
-      {!isApproved && !isRejected && (
-        <div
-          className="rounded-md mb-4 flex items-center"
-          style={{
-            background: "var(--color-light-blue-soft)",
-            border: "1px solid rgba(187,221,230,0.7)",
-            padding: "10px 12px",
-            fontSize: 13,
-            color: "var(--fg-1)",
-            gap: 8,
-          }}
-        >
-          <Clock className="w-3.5 h-3.5" strokeWidth={1.5} />
-          <span>This item is still awaiting review.</span>
-        </div>
-      )}
-
-      {/* Complexity pill for approved items */}
-      {isApproved && item.complexity && (
-        <div className="mb-4">
-          <SectionLabel>Complexity</SectionLabel>
-          <div className="mt-1">
-            <StatusBadge variant="approved">{complexityLabel(item.complexity)}</StatusBadge>
-          </div>
-        </div>
-      )}
-
-      {/* Reviewer justification / rejection reason */}
-      {item.justification && (
-        <div className="mb-4">
-          <SectionLabel>{isRejected ? "Rejection reason" : "Reviewer's justification"}</SectionLabel>
-          <blockquote
-            className="m-0 mt-1"
-            style={{
-              borderLeft: "4px solid var(--color-light-blue)",
-              paddingLeft: 12,
-              fontStyle: "italic",
-              fontSize: 14,
-              color: "var(--fg-1)",
-            }}
-          >
-            {item.justification}
-          </blockquote>
-        </div>
-      )}
-
-      {/* Phase line table — only for approved items with a chosen complexity */}
-      {isApproved && item.complexity && item.phaseLines.length > 0 && (
-        <PhaseLineTable
-          lines={item.phaseLines}
-          complexity={item.complexity}
-          currentRate={currentRate}
+          strokeWidth={1.5}
         />
+      </button>
+      {open && (
+        <div style={{ padding: "16px 16px 18px" }}>
+          {isApproved && (
+            <div
+              className="rounded-md mb-4 flex items-center"
+              style={{ background: "var(--color-light-blue-soft)", border: "1px solid rgba(187,221,230,0.7)", padding: "10px 12px", fontSize: 13, color: "var(--fg-1)", gap: 8 }}
+            >
+              <CheckCircle className="w-3.5 h-3.5" strokeWidth={1.5} />
+              <span>
+                Approved by <strong>{item.reviewerName ?? "the reviewer"}</strong>
+                {item.reviewedAt && <> on {new Date(item.reviewedAt).toLocaleDateString()}</>}.
+              </span>
+            </div>
+          )}
+          {isRejected && (
+            <div
+              className="rounded-md mb-4 flex items-start"
+              style={{ background: "rgba(247, 228, 173, 0.4)", border: "1px solid rgba(212, 167, 44, 0.3)", padding: "10px 12px", fontSize: 13, color: "var(--fg-1)", gap: 8 }}
+            >
+              <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" strokeWidth={1.5} />
+              <span>
+                Rejected by <strong>{item.reviewerName ?? "the reviewer"}</strong>
+                {item.reviewedAt && <> on {new Date(item.reviewedAt).toLocaleDateString()}</>}.
+                {item.rejectionReason && <> <span className="italic">{item.rejectionReason}</span></>}
+              </span>
+            </div>
+          )}
+          {!isApproved && !isRejected && (
+            <div
+              className="rounded-md mb-4 flex items-center"
+              style={{ background: "var(--color-light-blue-soft)", border: "1px solid rgba(187,221,230,0.7)", padding: "10px 12px", fontSize: 13, color: "var(--fg-1)", gap: 8 }}
+            >
+              <Clock className="w-3.5 h-3.5" strokeWidth={1.5} />
+              <span>This item is still awaiting review.</span>
+            </div>
+          )}
+          {isApproved && item.complexity && (
+            <div className="mb-4">
+              <SectionLabel>Complexity</SectionLabel>
+              <div className="mt-1">
+                <StatusBadge variant="approved">{complexityLabel(item.complexity)}</StatusBadge>
+              </div>
+            </div>
+          )}
+          {item.justification && (
+            <div className="mb-4">
+              <SectionLabel>{isRejected ? "Rejection reason" : "Reviewer's justification"}</SectionLabel>
+              <blockquote
+                className="m-0 mt-1"
+                style={{ borderLeft: "4px solid var(--color-light-blue)", paddingLeft: 12, fontStyle: "italic", fontSize: 14, color: "var(--fg-1)" }}
+              >
+                {item.justification}
+              </blockquote>
+            </div>
+          )}
+          {isApproved && item.complexity && item.phaseLines.length > 0 && (
+            <PhaseLineTable lines={item.phaseLines} complexity={item.complexity} currentRate={currentRate} />
+          )}
+          {isApproved && item.complexity && currentRate && (
+            <CostSummary lines={item.phaseLines} complexity={item.complexity} currentRate={currentRate} />
+          )}
+        </div>
       )}
-
-      {/* Cost summary */}
-      {isApproved && item.complexity && currentRate && (
-        <CostSummary lines={item.phaseLines} complexity={item.complexity} currentRate={currentRate} />
-      )}
-    </Card>
+    </section>
   );
 }
 

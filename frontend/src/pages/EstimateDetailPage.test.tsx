@@ -355,8 +355,11 @@ describe("<EstimateDetailPage>", () => {
     };
 
     renderAt("10");
+    const user = userEvent.setup();
 
     expect(await screen.findByRole("heading", { name: "Approved Request", level: 1 })).toBeInTheDocument();
+    // Expand the item card (collapsed by default).
+    await user.click(await screen.findByRole("button", { name: /Member Portal/i }));
     // Approved banner with reviewer name.
     expect(await screen.findByText(/Approved by/i)).toBeInTheDocument();
     expect(screen.getByText("SO Smith")).toBeInTheDocument();
@@ -405,8 +408,11 @@ describe("<EstimateDetailPage>", () => {
     };
 
     renderAt("11");
+    const user = userEvent.setup();
 
     expect(await screen.findByRole("heading", { name: "Rejected Request", level: 1 })).toBeInTheDocument();
+    // Expand the item card (collapsed by default).
+    await user.click(await screen.findByRole("button", { name: /Member Portal/i }));
     // Amber-tint rejection banner.
     expect(await screen.findByText(/Rejected by/i)).toBeInTheDocument();
     expect(screen.getByText("SO Brown")).toBeInTheDocument();
@@ -644,8 +650,11 @@ describe("<EstimateDetailPage>", () => {
     };
 
     renderAt("12");
+    const user = userEvent.setup();
 
     expect(await screen.findByRole("heading", { name: "Override Display", level: 1 })).toBeInTheDocument();
+    // Expand the item card (collapsed by default).
+    await user.click(await screen.findByRole("button", { name: /Member Portal/i }));
     // The "Override" pill renders next to the overridden value (case-insensitive
     // match because the pill renders uppercase).
     await waitFor(() => {
