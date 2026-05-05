@@ -251,7 +251,7 @@ function ItemReviewCard({
       {
         onSuccess: () => {
           toast.success(`Approved "${requestTitle}".`);
-          navigate("/review");
+          setApproveOpen(false);
         },
         onError: (err) =>
           toast.error(err instanceof Error ? err.message : "Couldn't approve."),
@@ -266,7 +266,6 @@ function ItemReviewCard({
         onSuccess: () => {
           toast.success(`Rejected "${requestTitle}".`);
           setRejectOpen(false);
-          navigate("/review");
         },
         onError: (err) =>
           toast.error(err instanceof Error ? err.message : "Couldn't reject."),

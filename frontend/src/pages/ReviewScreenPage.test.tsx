@@ -283,7 +283,7 @@ describe("<ReviewScreenPage>", () => {
     });
   });
 
-  it("Approve flow: confirmation modal + POST + navigate to queue", async () => {
+  it("Approve flow: confirmation modal + POST + stays on page showing approved state", async () => {
     state.detail = {
       id: 4, title: "About to Approve", status: "IN_REVIEW",
       reviewerId: 1, reviewerName: "SO One", reviewerStatus: "you",
@@ -309,7 +309,9 @@ describe("<ReviewScreenPage>", () => {
       expect(state.itemApprovals[0].body.complexity).toBe("MED");
       expect(state.itemApprovals[0].body).toHaveProperty("lineOverrides");
     });
-    expect(await screen.findByTestId("queue-stub")).toBeInTheDocument();
+    // Page stays — no navigation to queue, item flips to approved terminal state.
+    expect(screen.queryByTestId("queue-stub")).not.toBeInTheDocument();
+    expect(await screen.findByText(/Approved by SO One/i)).toBeInTheDocument();
   });
 
   it("Reject flow: modal with justification field, POST + navigate", async () => {
