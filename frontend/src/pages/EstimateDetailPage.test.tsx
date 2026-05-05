@@ -618,6 +618,43 @@ describe("<EstimateDetailPage>", () => {
     expect(screen.getByRole("button", { name: /Discard request/i })).toBeInTheDocument();
   });
 
+  it("shows rate-change alert when approvedBlendedRateId differs from current rate", async () => {
+    detail = {
+      id: 13,
+      title: "Rate Changed Request",
+      description: null,
+      productName: "Member Portal",
+      subFeatureName: null,
+      templateId: 5,
+      templateVersionNumber: 2,
+      status: "APPROVED",
+      complexity: "LOW",
+      justification: "Low complexity confirmed.",
+      reviewerName: "SO Green",
+      reviewedAt: "2026-04-10T00:00:00Z",
+      // Rate id 2 was current at approval time; mock returns current rate id 1.
+      approvedBlendedRateId: 2,
+      requesterId: 1,
+      submittedAt: "2026-04-05T00:00:00Z",
+      createdAt: "2026-04-01T00:00:00Z",
+      updatedAt: "2026-04-10T00:00:00Z",
+      phaseLines: [
+        {
+          sdlcPhaseId: 1, sdlcPhaseName: "Discovery", displayOrder: 1,
+          onshoreLow: 5, onshoreMed: 10, onshoreHigh: 15,
+          offshoreLow: 2, offshoreMed: 4, offshoreHigh: 6,
+          onshoreOverride: null, offshoreOverride: null,
+        },
+      ],
+      answers: [],
+    };
+
+    renderAt("13");
+
+    expect(await screen.findByRole("heading", { name: "Rate Changed Request", level: 1 })).toBeInTheDocument();
+    expect(await screen.findByText(/Rates have changed since this estimate was approved/i)).toBeInTheDocument();
+  });
+
   it("Override values display with the 'Override' tag and contribute to row total", async () => {
     detail = {
       id: 12,

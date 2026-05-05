@@ -203,11 +203,34 @@ export function EstimateDetailPage() {
 
   // ── APPROVED / PARTIALLY_APPROVED / REJECTED ──────────────────────────────
   if (isApproved || isPartiallyApproved || detail.derivedStatus === "REJECTED") {
+    const rateHasChanged = currentRate != null && detail.items.some(
+      (it) => it.status === "APPROVED" &&
+              it.approvedBlendedRateId != null &&
+              it.approvedBlendedRateId !== currentRate.id,
+    );
     return (
       <>
         {header}
         <div className="flex flex-col" style={{ gap: 16, marginTop: 24 }}>
           <RequestSummaryCard detail={detail} />
+          {rateHasChanged && (
+            <div
+              className="rounded-lg flex items-start"
+              style={{
+                background: "rgba(247, 228, 173, 0.4)",
+                border: "1px solid rgba(212, 167, 44, 0.3)",
+                padding: "12px 16px",
+                gap: 10,
+                fontSize: 13,
+                color: "var(--fg-1)",
+              }}
+            >
+              <Info className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" strokeWidth={1.5} />
+              <span>
+                Rates have changed since this estimate was approved — costs shown reflect the current rate and may differ from the approved amount.
+              </span>
+            </div>
+          )}
           <EstimateRollupCard items={detail.items} currentRate={currentRate} />
           {detail.items.map((it) => (
             <CollapsibleApprovedItemCard key={it.id} item={it} currentRate={currentRate} />
