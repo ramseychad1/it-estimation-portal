@@ -170,10 +170,19 @@ export function MyRequestsPage() {
     {
       key: "status",
       header: "Status",
-      width: 120,
+      width: 140,
       render: (r) => {
         const { variant, label } = estimateStatusBadge(r.derivedStatus);
-        return <StatusBadge variant={variant}>{label}</StatusBadge>;
+        return (
+          <div className="flex flex-col" style={{ gap: 3 }}>
+            <StatusBadge variant={variant}>{label}</StatusBadge>
+            {r.derivedStatus === "PARTIALLY_APPROVED" && r.itemCount > 1 && (
+              <span className="text-warm-gray-med" style={{ fontSize: 11 }}>
+                {r.approvedItemCount} of {r.itemCount} approved
+              </span>
+            )}
+          </div>
+        );
       },
     },
     {

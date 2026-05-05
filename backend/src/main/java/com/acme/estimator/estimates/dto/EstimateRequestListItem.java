@@ -35,5 +35,7 @@ public record EstimateRequestListItem(
      *   <li>"Multiple" — items are claimed by more than one reviewer</li>
      * </ul>
      */
-    String reviewerSummary
+    String reviewerSummary,
+    /** Number of items with status APPROVED. Useful for PARTIALLY_APPROVED progress display. */
+    int approvedItemCount
 ) {}

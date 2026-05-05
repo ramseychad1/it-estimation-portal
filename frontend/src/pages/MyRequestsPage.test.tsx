@@ -44,6 +44,7 @@ function listResponse(items: MockRequest[]) {
     submittedAt: r.submittedAt,
     updatedAt: r.updatedAt,
     createdAt: r.createdAt,
+    approvedItemCount: r.status === "APPROVED" ? 1 : 0,
   }));
   return jsonResponse({
     items: mapped,

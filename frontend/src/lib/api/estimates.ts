@@ -29,6 +29,8 @@ export interface EstimateRequestListItem {
   requesterName: string | null;
   /** "Unclaimed", a single reviewer's full name, or "Multiple" for multi-reviewer requests. */
   reviewerSummary: string | null;
+  /** Count of APPROVED items. Used to show "N of M approved" on PARTIALLY_APPROVED rows. */
+  approvedItemCount: number;
 }
 
 export interface EstimateRequestPhaseLineView {

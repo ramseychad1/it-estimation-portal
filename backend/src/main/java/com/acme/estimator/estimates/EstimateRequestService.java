@@ -1450,6 +1450,10 @@ public class EstimateRequestService {
             reviewerSummary = "Multiple";
         }
 
+        int approvedItemCount = (int) items.stream()
+            .filter(i -> i.getStatus() == EstimateStatus.APPROVED)
+            .count();
+
         return new EstimateRequestListItem(
             request.getId(),
             request.getTitle(),
@@ -1461,7 +1465,8 @@ public class EstimateRequestService {
             request.getUpdatedAt(),
             request.getCreatedAt(),
             requesterName,
-            reviewerSummary
+            reviewerSummary,
+            approvedItemCount
         );
     }
 

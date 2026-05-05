@@ -41,6 +41,7 @@ function listResponse(items: MockRow[]) {
       submittedAt: r.submittedAt,
       updatedAt: r.submittedAt,
       createdAt: r.submittedAt,
+      approvedItemCount: 0,
     })),
     page: 0,
     size: 25,
