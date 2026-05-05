@@ -122,7 +122,7 @@ public class EstimateRequestService {
         // Apply derived status filter in memory (simpler than complex subqueries for M1 scale)
         Page<EstimateRequestListItem> result = page.map(req -> {
             List<EstimateRequestItem> items = itemsByRequestId.getOrDefault(req.getId(), List.of());
-            return toListItem(req, items, productNames, subNames);
+            return toListItem(req, items, productNames, subNames, Map.of());
         });
 
         // If status filter is set, filter after mapping
@@ -406,10 +406,11 @@ public class EstimateRequestService {
         Map<Long, List<EstimateRequestItem>> itemsByRequestId = loadItemsForRequests(requestIds);
         Map<Long, String> productNames = batchLoadProductNames(itemsByRequestId);
         Map<Long, String> subNames = batchLoadSubNames(itemsByRequestId);
+        Map<Long, String> userNames = batchLoadUserNames(page.getContent(), itemsByRequestId);
 
         return page.map(req -> {
             List<EstimateRequestItem> items = itemsByRequestId.getOrDefault(req.getId(), List.of());
-            return toListItem(req, items, productNames, subNames);
+            return toListItem(req, items, productNames, subNames, userNames);
         });
     }
 
@@ -1394,7 +1395,8 @@ public class EstimateRequestService {
         EstimateRequest request,
         List<EstimateRequestItem> items,
         Map<Long, String> productNames,
-        Map<Long, String> subNames
+        Map<Long, String> subNames,
+        Map<Long, String> userNames
     ) {
         String derivedStatus = getDerivedStatus(items);
 
@@ -1422,6 +1424,23 @@ public class EstimateRequestService {
             .min(OffsetDateTime::compareTo)
             .orElse(null);
 
+        // Requester name — empty map on the self-service surface (myRequests)
+        String requesterName = userNames.getOrDefault(request.getRequesterId(), null);
+
+        // Reviewer summary: collect distinct reviewer IDs across items
+        Set<Long> reviewerIds = items.stream()
+            .map(EstimateRequestItem::getReviewerId)
+            .filter(id -> id != null)
+            .collect(Collectors.toSet());
+        String reviewerSummary;
+        if (reviewerIds.isEmpty()) {
+            reviewerSummary = "Unclaimed";
+        } else if (reviewerIds.size() == 1) {
+            reviewerSummary = userNames.getOrDefault(reviewerIds.iterator().next(), "Unknown");
+        } else {
+            reviewerSummary = "Multiple";
+        }
+
         return new EstimateRequestListItem(
             request.getId(),
             request.getTitle(),
@@ -1431,8 +1450,26 @@ public class EstimateRequestService {
             request.getGoLiveDate(),
             earliestSubmitted,
             request.getUpdatedAt(),
-            request.getCreatedAt()
+            request.getCreatedAt(),
+            requesterName,
+            reviewerSummary
         );
+    }
+
+    private Map<Long, String> batchLoadUserNames(
+        List<EstimateRequest> requests,
+        Map<Long, List<EstimateRequestItem>> itemsByRequestId
+    ) {
+        Set<Long> ids = new HashSet<>();
+        requests.forEach(r -> ids.add(r.getRequesterId()));
+        itemsByRequestId.values().forEach(items ->
+            items.forEach(item -> {
+                if (item.getReviewerId() != null) ids.add(item.getReviewerId());
+            })
+        );
+        if (ids.isEmpty()) return Map.of();
+        return userRepository.findAllById(ids).stream()
+            .collect(Collectors.toMap(User::getId, User::fullName));
     }
 
     private Map<Long, List<EstimateRequestItem>> loadItemsForRequests(List<Long> requestIds) {

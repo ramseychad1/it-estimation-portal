@@ -13,7 +13,6 @@ import { SearchInput } from "../components/SearchInput";
 import { SecondaryButton } from "../components/buttons";
 import { StatusBadge, estimateStatusBadge } from "../components/StatusBadge";
 import { Toggle } from "../components/Toggle";
-import { UserCell } from "../components/UserCell";
 import { useAuth } from "../lib/auth";
 import { isAdmin } from "../lib/permissions";
 import { useDebouncedValue } from "../lib/useDebouncedValue";
@@ -167,11 +166,10 @@ export function ReviewQueuePage() {
       key: "requester",
       header: "Requester",
       width: 180,
-      // The list DTO doesn't include requesterId. The detail page surfaces
-      // the requester name. Carry-over #11: extend list DTO with requesterId
-      // so the queue can render UserCell here too.
-      render: () => (
-        <span className="text-warm-gray-med" style={{ fontSize: 12 }}>—</span>
+      render: (r) => (
+        <span style={{ fontSize: 12 }}>
+          {r.requesterName ?? <span className="text-warm-gray-med">—</span>}
+        </span>
       ),
     },
     {
@@ -187,12 +185,13 @@ export function ReviewQueuePage() {
       key: "reviewer",
       header: "Reviewer",
       width: 160,
-      render: () => (
-        // List DTO doesn't include reviewerId / reviewerStatus today.
-        // Surface the per-actor "You / Other / Unclaimed" affordance on
-        // the detail page; the queue's reviewer column is informational
-        // until the list DTO grows.
-        <span className="text-warm-gray-med" style={{ fontSize: 12 }}>—</span>
+      render: (r) => (
+        <span
+          style={{ fontSize: 12 }}
+          className={r.reviewerSummary === "Unclaimed" ? "text-warm-gray-med" : undefined}
+        >
+          {r.reviewerSummary ?? "—"}
+        </span>
       ),
     },
     {
@@ -376,4 +375,3 @@ export function ReviewQueuePage() {
 // can mock it cheaply if needed.
 import { relativeTime as relTime } from "../lib/relativeTime";
 
-void UserCell;

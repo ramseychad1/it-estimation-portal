@@ -24,5 +24,16 @@ public record EstimateRequestListItem(
     /** Earliest non-null submittedAt across items; null if all items are DRAFT. */
     OffsetDateTime submittedAt,
     OffsetDateTime updatedAt,
-    OffsetDateTime createdAt
+    OffsetDateTime createdAt,
+    /** Full name of the user who created the request. */
+    String requesterName,
+    /**
+     * Reviewer display for the queue row. One of:
+     * <ul>
+     *   <li>"Unclaimed" — no item has a reviewer assigned</li>
+     *   <li>A single reviewer's full name — all claimed items share the same reviewer</li>
+     *   <li>"Multiple" — items are claimed by more than one reviewer</li>
+     * </ul>
+     */
+    String reviewerSummary
 ) {}

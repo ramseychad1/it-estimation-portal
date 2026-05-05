@@ -25,6 +25,10 @@ export interface EstimateRequestListItem {
   submittedAt: string | null;
   updatedAt: string | null;
   createdAt: string | null;
+  /** Full name of the user who submitted the request. Null on the self-service (My Requests) surface. */
+  requesterName: string | null;
+  /** "Unclaimed", a single reviewer's full name, or "Multiple" for multi-reviewer requests. */
+  reviewerSummary: string | null;
 }
 
 export interface EstimateRequestPhaseLineView {
