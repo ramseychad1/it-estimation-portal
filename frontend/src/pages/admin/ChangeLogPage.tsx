@@ -1,4 +1,5 @@
 import { Activity, Download } from "lucide-react";
+import { EmptyState } from "../../components/EmptyState";
 import { useEffect, useMemo, useState } from "react";
 import { PageHeader } from "../../components/PageHeader";
 import { ListToolbar } from "../../components/ListToolbar";
@@ -160,9 +161,27 @@ export function ChangeLogPage() {
         {feedQuery.isLoading && groups.length === 0 ? (
           <div className="text-warm-gray-med text-small py-8 text-center">Loading…</div>
         ) : groups.length === 0 && !isFiltered ? (
-          <EmptyStateNew />
+          <EmptyState
+            icon={Activity}
+            title="No activity yet"
+            description="As you and your team make changes to products, teams, rates, and users, those changes will appear here."
+          />
         ) : groups.length === 0 ? (
-          <EmptyStateFiltered onReset={resetFilters} />
+          <EmptyState
+            variant="inline"
+            title="No changes match your filters"
+            description="Try widening the date range or removing some filters."
+            action={
+              <button
+                type="button"
+                onClick={resetFilters}
+                className="text-near-black bg-transparent border-0 cursor-pointer hover:underline"
+                style={{ fontSize: 13 }}
+              >
+                Reset filters
+              </button>
+            }
+          />
         ) : (
           <>
             <Feed
@@ -235,63 +254,6 @@ function Feed({
         </section>
       ))}
     </>
-  );
-}
-
-function EmptyStateNew() {
-  return (
-    <div
-      className="text-center rounded-lg"
-      style={{
-        padding: "72px 24px",
-        background: "#FBFBFA",
-        border: "1px dashed var(--color-border-strong)",
-      }}
-    >
-      <Activity
-        className="mx-auto mb-3 text-warm-gray-med"
-        style={{ width: 32, height: 32 }}
-        strokeWidth={1.5}
-      />
-      <p className="m-0 text-near-black font-semibold" style={{ fontSize: 14 }}>
-        No activity yet
-      </p>
-      <p
-        className="m-0 mt-1 text-warm-gray-med"
-        style={{ fontSize: 13, maxWidth: 480, marginInline: "auto" }}
-      >
-        As you and your team make changes to products, teams, rates, and users,
-        those changes will appear here.
-      </p>
-    </div>
-  );
-}
-
-function EmptyStateFiltered({ onReset }: { onReset: () => void }) {
-  return (
-    <div
-      className="text-center rounded-md"
-      style={{
-        padding: "32px 24px",
-        background: "#FBFBFA",
-        border: "1px dashed var(--color-border-strong)",
-      }}
-    >
-      <p className="m-0 text-near-black font-semibold" style={{ fontSize: 13 }}>
-        No changes match your filters
-      </p>
-      <p className="m-0 mt-1 text-warm-gray-med" style={{ fontSize: 12 }}>
-        Try widening the date range or removing some filters.
-      </p>
-      <button
-        type="button"
-        onClick={onReset}
-        className="mt-2 text-near-black bg-transparent border-0 cursor-pointer hover:underline"
-        style={{ fontSize: 12 }}
-      >
-        Reset filters
-      </button>
-    </div>
   );
 }
 

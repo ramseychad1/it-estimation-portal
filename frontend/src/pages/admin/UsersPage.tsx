@@ -11,6 +11,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { ApiError } from "../../lib/api";
+import { EmptyState } from "../../components/EmptyState";
 import { PageHeader } from "../../components/PageHeader";
 import { ListToolbar } from "../../components/ListToolbar";
 import { SearchInput } from "../../components/SearchInput";
@@ -409,19 +410,20 @@ export function UsersPage() {
         ariaLabel="Users"
         onRowClick={(r) => void openEdit(r)}
         emptyState={
-          <div className="text-center" style={{ padding: 80, color: "var(--fg-2)" }}>
-            <div className="font-semibold text-near-black" style={{ fontSize: 18 }}>
-              No users match your filters
-            </div>
-            <button
-              type="button"
-              onClick={() => { setSearch(""); setRoleFilter([]); setStatusFilter("ALL"); setPage(0); }}
-              className="text-near-black underline mt-2 bg-transparent border-0 cursor-pointer"
-              style={{ fontSize: 13 }}
-            >
-              Reset filters
-            </button>
-          </div>
+          <EmptyState
+            variant="inline"
+            title="No users match your filters"
+            action={
+              <button
+                type="button"
+                onClick={() => { setSearch(""); setRoleFilter([]); setStatusFilter("ALL"); setPage(0); }}
+                className="text-near-black bg-transparent border-0 cursor-pointer hover:underline"
+                style={{ fontSize: 13 }}
+              >
+                Reset filters
+              </button>
+            }
+          />
         }
       />
 

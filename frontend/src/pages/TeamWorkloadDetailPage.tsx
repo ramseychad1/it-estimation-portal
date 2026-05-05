@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ChevronLeft } from "lucide-react";
+import { EmptyState } from "../components/EmptyState";
 import { PageHeader } from "../components/PageHeader";
 import { StatusBadge } from "../components/StatusBadge";
 import { relativeTime } from "../lib/relativeTime";
@@ -63,7 +64,7 @@ export function TeamWorkloadDetailPage() {
         {/* Members */}
         <Section title="Members" count={detail.members.length}>
           {detail.members.length === 0 ? (
-            <p className="text-warm-gray-med m-0" style={{ fontSize: 13 }}>No members assigned.</p>
+            <EmptyState variant="inline" title="No members assigned" />
           ) : (
             <div className="flex flex-wrap gap-2">
               {detail.members.map((m) => (
@@ -89,7 +90,7 @@ export function TeamWorkloadDetailPage() {
         {/* Products */}
         <Section title="Active products" count={detail.products.length}>
           {detail.products.length === 0 ? (
-            <p className="text-warm-gray-med m-0" style={{ fontSize: 13 }}>No active products assigned.</p>
+            <EmptyState variant="inline" title="No active products assigned" />
           ) : (
             <div className="flex flex-col gap-2">
               {detail.products.map((p) => (
@@ -120,7 +121,7 @@ export function TeamWorkloadDetailPage() {
         {/* Recent approved estimates */}
         <Section title="Recent approved estimates" count={detail.recentApprovedEstimates.length}>
           {detail.recentApprovedEstimates.length === 0 ? (
-            <p className="text-warm-gray-med m-0" style={{ fontSize: 13 }}>No approved estimates yet.</p>
+            <EmptyState variant="inline" title="No approved estimates yet" description="Approved estimate requests for this team's products will appear here." />
           ) : (
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>

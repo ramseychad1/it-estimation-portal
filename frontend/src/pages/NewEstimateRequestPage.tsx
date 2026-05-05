@@ -20,6 +20,7 @@ import {
   TertiaryButton,
 } from "../components/buttons";
 import { useToast } from "../components/Toast";
+import { ApiError } from "../lib/api";
 import { useUnsavedChangesGuard } from "../lib/useUnsavedChangesGuard";
 import { useAuth } from "../lib/auth";
 import { useProductsQuery } from "../lib/queries/products";
@@ -85,6 +86,7 @@ export function NewEstimateRequestPage() {
   const [cancelOpen, setCancelOpen] = useState(false);
   const [itemsReady, setItemsReady] = useState<boolean[]>([]);
   const [itemCounts, setItemCounts] = useState<Array<{ answered: number; total: number }>>([]);
+  const [answerFieldErrors, setAnswerFieldErrors] = useState<Record<number, Record<number, string>>>({});
 
   const itemsLocked = draftId != null;
 
@@ -223,9 +225,11 @@ export function NewEstimateRequestPage() {
       toast.error("Save the draft first.");
       return;
     }
+    let savingItemId: number | null = null;
     try {
       for (const item of localItems) {
         if (item.itemId == null) continue;
+        savingItemId = item.itemId;
         const answersToSave = Object.entries(item.answers)
           .map(([qid, text]) => ({ questionId: Number(qid), answerText: text }))
           .filter((a) => a.answerText.trim() !== "");
@@ -235,10 +239,24 @@ export function NewEstimateRequestPage() {
           body: { answers: answersToSave },
         });
       }
+      setAnswerFieldErrors({});
       setDirty(false);
       if (advanceTo) setStep(advanceTo);
       else flashSaved();
     } catch (err) {
+      if (err instanceof ApiError) {
+        const body = err.body as { fieldErrors?: Record<string, string> };
+        if (body?.fieldErrors && savingItemId != null) {
+          const qErrors: Record<number, string> = {};
+          for (const [key, msg] of Object.entries(body.fieldErrors)) {
+            const m = key.match(/^question:(\d+)$/);
+            if (m) qErrors[Number(m[1])] = msg;
+          }
+          if (Object.keys(qErrors).length > 0) {
+            setAnswerFieldErrors({ [savingItemId]: qErrors });
+          }
+        }
+      }
       toast.error(err instanceof Error ? err.message : "Could not save answers.");
     }
   }
@@ -289,6 +307,7 @@ export function NewEstimateRequestPage() {
         return next;
       });
       setDirty(true);
+      setAnswerFieldErrors({});
     },
     [],
   );
@@ -361,6 +380,7 @@ export function NewEstimateRequestPage() {
           saving={saveItemAnswersMutation.isPending}
           allItemsReady={allItemsReady}
           itemCounts={itemCounts}
+          answerFieldErrors={answerFieldErrors}
           onItemAnswerChange={handleItemAnswerChange}
           onItemReadyChange={handleItemReadyChange}
           onItemCountChange={handleItemCountChange}
@@ -1115,6 +1135,7 @@ interface Step2Props {
   saving: boolean;
   allItemsReady: boolean;
   itemCounts: Array<{ answered: number; total: number }>;
+  answerFieldErrors: Record<number, Record<number, string>>;
   onItemAnswerChange: (itemIndex: number, qid: number, value: string) => void;
   onItemReadyChange: (itemIndex: number, ready: boolean) => void;
   onItemCountChange: (itemIndex: number, answered: number, total: number) => void;
@@ -1130,6 +1151,7 @@ function Step2({
   saving,
   allItemsReady,
   itemCounts,
+  answerFieldErrors,
   onItemAnswerChange,
   onItemReadyChange,
   onItemCountChange,
@@ -1313,6 +1335,7 @@ function Step2({
                 product={product}
                 isOpen={openIndex === i}
                 isDone={!!isDone}
+                fieldErrors={answerFieldErrors[item.itemId ?? -1] ?? {}}
                 onToggle={() => setOpenIndex(openIndex === i ? -1 : i)}
                 onAnswerChange={(qid, value) => onItemAnswerChange(i, qid, value)}
                 onReadyChange={(ready) => onItemReadyChange(i, ready)}
@@ -1352,6 +1375,7 @@ interface ItemSectionProps {
   product: ProductDetail | null;
   isOpen: boolean;
   isDone: boolean;
+  fieldErrors?: Record<number, string>;
   onToggle: () => void;
   onAnswerChange: (qid: number, value: string) => void;
   onReadyChange: (ready: boolean) => void;
@@ -1363,6 +1387,7 @@ function ItemSection({
   product,
   isOpen,
   isDone,
+  fieldErrors = {},
   onToggle,
   onAnswerChange,
   onReadyChange,
@@ -1531,6 +1556,7 @@ function ItemSection({
                     maxLength={8000}
                     rows={3}
                     aria-label={`Answer to: ${q.questionText}`}
+                    error={fieldErrors[q.id]}
                   />
                 </li>
               ))}

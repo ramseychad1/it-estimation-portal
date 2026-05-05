@@ -350,6 +350,53 @@ describe("<NewEstimateRequestPage>", () => {
     });
   });
 
+  it("Step 2: save failure with fieldErrors decorates the offending textarea with aria-invalid", async () => {
+    products = [{ id: 1, name: "Atomic", mode: "ATOMIC" }];
+    questions = [
+      { id: 40, productId: 1, subFeatureId: null, questionText: "Scope?", required: true, active: true },
+    ];
+    drafts.push({
+      id: 600, title: "Error Test", description: null, status: "DRAFT",
+      items: [{ productId: 1, subFeatureId: null, answers: [] }],
+    });
+
+    // Override the answers endpoint to return a 400 with fieldErrors.
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      const u = new URL(url, "http://localhost");
+      const path = u.pathname;
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (path === "/api/auth/me") {
+        return Promise.resolve(jsonResponse({ id: 1, email: "r@local", firstName: "T", lastName: "R", roles: ["Requester"] }));
+      }
+      if (path === "/api/health") return Promise.resolve(jsonResponse({ status: "ok" }));
+      if (path === "/api/catalog/products" && method === "GET") {
+        return Promise.resolve(jsonResponse({ items: [{ id: 1, name: "Atomic", description: null, mode: "ATOMIC", active: true, subFeatureCount: 0, questionCount: 1, createdAt: null, createdBy: null, updatedAt: null, updatedBy: null }], page: 0, size: 100, totalElements: 1, totalPages: 1 }));
+      }
+      if (path.match(/^\/api\/catalog\/products\/\d+\/questions$/) && method === "GET") {
+        return Promise.resolve(jsonResponse([{ id: 40, questionText: "Scope?", helpText: null, required: true, displayOrder: 1, active: true, productId: 1, subFeatureId: null, parentType: "Product", createdAt: null, createdBy: null, updatedAt: null, updatedBy: null }]));
+      }
+      if (path.match(/^\/api\/estimates\/my\/600$/) && method === "GET") {
+        return Promise.resolve(jsonResponse({ id: 600, title: "Error Test", description: null, requesterId: 1, derivedStatus: "DRAFT", createdAt: null, updatedAt: null, items: [{ id: 60001, productId: 1, productName: "Atomic", subFeatureId: null, subFeatureName: null, teamName: null, templateId: null, templateVersionNumber: null, status: "DRAFT", complexity: null, reviewerId: null, reviewerName: null, reviewerStatus: "unclaimed", justification: null, rejectionReason: null, revisionCount: 0, originalProductId: null, originalProductName: null, isReviewable: false, submittedAt: null, reviewedAt: null, approvedBlendedRateId: null, displayOrder: 0, phaseLines: [], answers: [] }] }));
+      }
+      if (path.match(/^\/api\/estimates\/my\/\d+\/items\/\d+\/answers$/) && method === "PUT") {
+        // Simulate backend rejecting because required answer is empty.
+        return Promise.resolve(jsonResponse({ errorCode: "VALIDATION_ERROR", message: "Required answer is missing.", fieldErrors: { "question:40": "Required answer is missing." } }, 400));
+      }
+      return Promise.resolve(new Response(null, { status: 404 }));
+    });
+
+    renderAt("/requests/new?step=2&id=600");
+    const user = userEvent.setup();
+
+    await screen.findByText("Scope?");
+    await user.click(screen.getByRole("button", { name: /Save draft/i }));
+
+    await waitFor(() => {
+      const textarea = screen.getByLabelText(/Answer to: Scope\?/i);
+      expect(textarea).toHaveAttribute("aria-invalid", "true");
+    });
+  });
+
   it("Step 3: Inline confirmation enables Submit and navigates to detail", async () => {
     products = [{ id: 1, name: "Atomic", mode: "ATOMIC" }];
     questions = [

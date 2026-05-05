@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { ChevronDown, ChevronUp, Eye } from "lucide-react";
+import { ChevronDown, ChevronUp, Eye, TrendingUp } from "lucide-react";
+import { EmptyState } from "../../components/EmptyState";
 import { PageHeader } from "../../components/PageHeader";
 import { PrimaryButton } from "../../components/buttons";
 import { StatusBadge } from "../../components/StatusBadge";
@@ -137,20 +138,16 @@ export function BlendedRatesPage() {
         style={{ border: "1px solid var(--color-border)", borderRadius: 6 }}
       >
         {isDay1 ? (
-          <div
-            className="text-center"
-            style={{ padding: 80, color: "var(--fg-2)" }}
-          >
-            <div className="font-semibold text-near-black" style={{ fontSize: 18 }}>
-              No rates set yet
-            </div>
-            <p className="mt-2 text-warm-gray-med" style={{ fontSize: 14, maxWidth: 380, margin: "8px auto 20px" }}>
-              Set the workspace's first onshore and offshore blended rates to start estimating.
-            </p>
-            <PrimaryButton onClick={() => openModalForUpdate(null)}>
-              + Set Initial Rates
-            </PrimaryButton>
-          </div>
+          <EmptyState
+            icon={TrendingUp}
+            title="No rates set yet"
+            description="Set the workspace's first onshore and offshore blended rates to start estimating."
+            action={
+              <PrimaryButton onClick={() => openModalForUpdate(null)}>
+                + Set Initial Rates
+              </PrimaryButton>
+            }
+          />
         ) : (
           <table
             aria-label="Rate history"

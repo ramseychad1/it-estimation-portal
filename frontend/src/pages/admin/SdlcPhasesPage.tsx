@@ -25,6 +25,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { ApiError } from "../../lib/api";
+import { EmptyState } from "../../components/EmptyState";
 import { PageHeader } from "../../components/PageHeader";
 import { ListToolbar } from "../../components/ListToolbar";
 import { SearchInput } from "../../components/SearchInput";
@@ -322,22 +323,20 @@ export function SdlcPhasesPage() {
             {!phasesQuery.isLoading && filteredItems.length === 0 && (
               <tr>
                 <td colSpan={9 - hiddenCols.size} style={{ padding: 0 }}>
-                  <div className="text-center" style={{ padding: 80, color: "var(--fg-2)" }}>
-                    <div className="font-semibold text-near-black" style={{ fontSize: 18 }}>
-                      No phases match your filters
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSearch("");
-                        setStatus("ALL");
-                      }}
-                      className="text-near-black underline mt-2 bg-transparent border-0 cursor-pointer"
-                      style={{ fontSize: 13 }}
-                    >
-                      Reset filters
-                    </button>
-                  </div>
+                  <EmptyState
+                    variant="inline"
+                    title="No phases match your filters"
+                    action={
+                      <button
+                        type="button"
+                        onClick={() => { setSearch(""); setStatus("ALL"); }}
+                        className="text-near-black bg-transparent border-0 cursor-pointer hover:underline"
+                        style={{ fontSize: 13 }}
+                      >
+                        Reset filters
+                      </button>
+                    }
+                  />
                 </td>
               </tr>
             )}
