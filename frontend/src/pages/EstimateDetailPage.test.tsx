@@ -228,7 +228,7 @@ describe("<EstimateDetailPage>", () => {
     expect(await screen.findByRole("button", { name: /Edit answers/i })).toBeInTheDocument();
   });
 
-  it("Submitted state renders the 'awaiting review' banner and the snapshot table", async () => {
+  it("Submitted state renders the 'awaiting review' banner without the estimate table", async () => {
     detail = {
       id: 2,
       title: "Submitted Request",
@@ -259,7 +259,8 @@ describe("<EstimateDetailPage>", () => {
     expect(
       await screen.findByText(/awaiting review/i),
     ).toBeInTheDocument();
-    expect(screen.getByText("Discovery")).toBeInTheDocument();
+    // Estimate grid is intentionally hidden before review — phase names should not appear.
+    expect(screen.queryByText("Discovery")).not.toBeInTheDocument();
     // Edit answers link should NOT appear on Submitted.
     expect(screen.queryByRole("button", { name: /Edit answers/i })).not.toBeInTheDocument();
   });
