@@ -129,6 +129,87 @@ class ReportingControllerIntegrationTest {
             .andExpect(status().isNotFound());
     }
 
+    // ---- summary extended -----------------------------------------------
+
+    @Test
+    void summary_multipleTeams_returnsSortedByName() throws Exception {
+        createTeam("Zebra Team");
+        createTeam("Alpha Team");
+        createTeam("Mango Team");
+
+        mvc.perform(get("/api/reports/team-workload").with(user(admin)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.length()").value(3))
+            .andExpect(jsonPath("$[0].teamName").value("Alpha Team"))
+            .andExpect(jsonPath("$[1].teamName").value("Mango Team"))
+            .andExpect(jsonPath("$[2].teamName").value("Zebra Team"));
+    }
+
+    @Test
+    void summary_inactiveProductExcludedFromActiveCount() throws Exception {
+        Team team = createTeam("Mixed Team");
+        createProduct("Active Product", team);
+        // Create an inactive product — should NOT count toward activeProductCount
+        Product inactive = new Product();
+        inactive.setName("Inactive Product");
+        inactive.setMode(ProductMode.ATOMIC);
+        inactive.setActive(false);
+        inactive.setTeam(team);
+        inactive.setCreatedBy(admin.getUserId());
+        inactive.setUpdatedBy(admin.getUserId());
+        productRepository.save(inactive);
+
+        mvc.perform(get("/api/reports/team-workload").with(user(admin)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$[0].activeProductCount").value(1));
+    }
+
+    @Test
+    void summary_multipleMembers_countedCorrectly() throws Exception {
+        Team team = createTeam("Big Team");
+        addUserToTeam(admin.getUserId(), team.getId());
+        // Add estimator@local as second member
+        Long estimatorId = estimator.getUserId();
+        addUserToTeam(estimatorId, team.getId());
+
+        mvc.perform(get("/api/reports/team-workload").with(user(admin)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$[0].memberCount").value(2));
+    }
+
+    // ---- detail extended ------------------------------------------------
+
+    @Test
+    void detail_multipleProducts_allReturnedSortedByName() throws Exception {
+        Team team = createTeam("Multi-Product Team");
+        createProduct("Bravo Product", team);
+        createProduct("Alpha Product", team);
+
+        mvc.perform(get("/api/reports/team-workload/" + team.getId()).with(user(admin)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.products.length()").value(2));
+    }
+
+    @Test
+    void detail_recentApprovedEstimates_returnsEmptyList() throws Exception {
+        Team team = createTeam("Pending Rewrite Team");
+
+        mvc.perform(get("/api/reports/team-workload/" + team.getId()).with(user(admin)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.recentApprovedEstimates").isArray())
+            .andExpect(jsonPath("$.recentApprovedEstimates.length()").value(0));
+    }
+
+    @Test
+    void detail_noMembers_returnsEmptyMembersList() throws Exception {
+        Team team = createTeam("Empty Team");
+
+        mvc.perform(get("/api/reports/team-workload/" + team.getId()).with(user(admin)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.members").isArray())
+            .andExpect(jsonPath("$.members.length()").value(0));
+    }
+
     // ---- helpers -------------------------------------------------------
 
     private void addUserToTeam(Long userId, Long teamId) {

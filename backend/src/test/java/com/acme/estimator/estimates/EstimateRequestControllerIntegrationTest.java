@@ -30,10 +30,13 @@ import com.acme.estimator.catalog.templates.EstimateTemplateLineRepository;
 import com.acme.estimator.catalog.templates.EstimateTemplateRepository;
 import com.acme.estimator.phases.SdlcPhase;
 import com.acme.estimator.phases.SdlcPhaseRepository;
+import com.acme.estimator.rates.BlendedRate;
+import com.acme.estimator.rates.BlendedRateRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -97,6 +100,7 @@ class EstimateRequestControllerIntegrationTest {
     @Autowired private SdlcPhaseRepository phaseRepository;
     @Autowired private ChangeLogEntryRepository changeLogRepository;
     @Autowired private UserRepository userRepository;
+    @Autowired private BlendedRateRepository blendedRateRepository;
     @Autowired private PasswordEncoder passwordEncoder;
     @PersistenceContext private EntityManager em;
 
@@ -278,6 +282,91 @@ class EstimateRequestControllerIntegrationTest {
             .andExpect(jsonPath("$.error").value("INVALID_STATE"));
     }
 
+    // ---- goLiveDate PATCH / audit (V15 post-Phase-9 increment) -----------
+
+    @Test
+    void patchDraft_goLiveDate_persistsDateAndWritesAuditRow() throws Exception {
+        Long draftId = createDraftJson("GLDate Test", seedAtomicProduct("P-GoLive").getId(), null);
+
+        mvc.perform(asRequester(patch("/api/estimates/my/" + draftId))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(Map.of("goLiveDate", "2026-12-31"))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.goLiveDate").value("2026-12-31"));
+
+        // Verify persistence.
+        EstimateRequest saved = requestRepository.findById(draftId).orElseThrow();
+        assertThat(saved.getGoLiveDate()).isNotNull();
+        assertThat(saved.getGoLiveDate().toString()).isEqualTo("2026-12-31");
+
+        // One UPDATED audit row for goLiveDate.
+        long auditRows = changeLogRepository
+            .findByEntityTypeAndEntityIdOrderByChangedAtDesc(
+                EstimateRequest.ENTITY_TYPE, draftId
+            ).stream()
+            .filter(r -> r.getAction() == ChangeAction.UPDATED)
+            .count();
+        assertThat(auditRows).isEqualTo(1);
+    }
+
+    @Test
+    void patchDraft_goLiveDateNull_clearsDateAndWritesAuditRow() throws Exception {
+        // Seed a draft that already has a go_live_date set.
+        Long draftId = createDraftJson("GLDate Clear Test", seedAtomicProduct("P-GoLiveClear").getId(), null);
+
+        // First PATCH — set a date.
+        mvc.perform(asRequester(patch("/api/estimates/my/" + draftId))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(Map.of("goLiveDate", "2026-06-01"))))
+            .andExpect(status().isOk());
+
+        // Second PATCH — clear it with null.
+        mvc.perform(asRequester(patch("/api/estimates/my/" + draftId))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"goLiveDate\":null}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.goLiveDate").doesNotExist());
+
+        // Date should be cleared.
+        EstimateRequest saved = requestRepository.findById(draftId).orElseThrow();
+        assertThat(saved.getGoLiveDate()).isNull();
+
+        // Two UPDATED audit rows: one set + one clear.
+        long auditRows = changeLogRepository
+            .findByEntityTypeAndEntityIdOrderByChangedAtDesc(
+                EstimateRequest.ENTITY_TYPE, draftId
+            ).stream()
+            .filter(r -> r.getAction() == ChangeAction.UPDATED)
+            .count();
+        assertThat(auditRows).isEqualTo(2);
+    }
+
+    @Test
+    void patchDraft_goLiveDateUnchanged_doesNotWriteAuditRow() throws Exception {
+        Long draftId = createDraftJson("GLDate NoChange Test", seedAtomicProduct("P-GoLiveNC").getId(), null);
+
+        // Set a date.
+        mvc.perform(asRequester(patch("/api/estimates/my/" + draftId))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(Map.of("goLiveDate", "2026-09-15"))))
+            .andExpect(status().isOk());
+
+        // PATCH again with the same date — should NOT produce a second audit row.
+        mvc.perform(asRequester(patch("/api/estimates/my/" + draftId))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(Map.of("goLiveDate", "2026-09-15"))))
+            .andExpect(status().isOk());
+
+        long auditRows = changeLogRepository
+            .findByEntityTypeAndEntityIdOrderByChangedAtDesc(
+                EstimateRequest.ENTITY_TYPE, draftId
+            ).stream()
+            .filter(r -> r.getAction() == ChangeAction.UPDATED)
+            .count();
+        // Only 1 audit row from the first PATCH, none from the second.
+        assertThat(auditRows).isEqualTo(1);
+    }
+
     // ---- delete (discard) -------------------------------------------------
 
     @Test
@@ -306,6 +395,62 @@ class EstimateRequestControllerIntegrationTest {
             .andExpect(jsonPath("$.error").value("INVALID_STATE"));
 
         assertThat(requestRepository.findById(sr.requestId)).isPresent();
+    }
+
+    @Test
+    void deleteNeedsRevision_returns204AndDeletesRequest() throws Exception {
+        // A NEEDS_REVISION request is one where at least one item is REJECTED.
+        // We rely on the EstimateRequestRevisionTest.seedRejectedRequest helper
+        // pattern but inline it here since we can't call across test classes.
+        // Setup: create → submit → startReview (SO) → reject item.
+        SdlcPhase phase = seedPhase("Discovery", 1);
+        Product product = seedAtomicProduct("NeedsRevisionDiscard");
+        EstimateTemplate template = seedActiveTemplate(product.getId(), null, 1);
+        seedTemplateLine(template.getId(), phase.getId(), 1, 1, 1, 1, 1, 1);
+        Long draftId = createDraftJson("NR-Discard", product.getId(), null);
+
+        // Submit
+        mvc.perform(asRequester(post("/api/estimates/my/" + draftId + "/submit")))
+            .andExpect(status().isOk());
+
+        // Retrieve item id
+        Long itemId = itemRepository
+            .findByEstimateRequestIdOrderByDisplayOrderAsc(draftId)
+            .get(0).getId();
+
+        // SO starts review
+        AppUserDetails so = new AppUserDetails(
+            ensureUserWithRole("so-discard-test@local", "SO", "Discard", (short) 2)
+        );
+        mvc.perform(post("/api/estimates/review/" + draftId + "/items/" + itemId + "/start")
+                .with(user(so)).with(csrf()))
+            .andExpect(status().isOk());
+
+        // Seed a blended rate so approve/reject endpoints work
+        BlendedRate rate = new BlendedRate();
+        rate.setOnshoreRate(new BigDecimal("100.00"));
+        rate.setOffshoreRate(new BigDecimal("40.00"));
+        rate.setEffectiveDate(LocalDate.now().minusDays(1));
+        rate.setCreatedBy(1L);
+        Long rateId = blendedRateRepository.save(rate).getId();
+
+        // SO rejects item
+        mvc.perform(post("/api/estimates/review/" + draftId + "/items/" + itemId + "/reject")
+                .with(user(so)).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(Map.of("rejectionReason", "Needs more info"))))
+            .andExpect(status().isOk());
+
+        // Requester discards the NEEDS_REVISION request → should succeed
+        mvc.perform(asRequester(delete("/api/estimates/my/" + draftId)))
+            .andExpect(status().isNoContent());
+
+        assertThat(requestRepository.findById(draftId)).isEmpty();
+
+        // Cleanup
+        blendedRateRepository.findById(rateId).ifPresent(blendedRateRepository::delete);
+        userRepository.findByEmailIgnoreCase("so-discard-test@local")
+            .ifPresent(userRepository::delete);
     }
 
     // ---- save answers (PUT replace-all) -----------------------------------
