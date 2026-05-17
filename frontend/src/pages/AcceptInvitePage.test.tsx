@@ -4,7 +4,6 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { AcceptInvitePage } from "./AcceptInvitePage";
 import { renderWithProviders } from "../test/utils";
-import { ApiError } from "@/lib/api";
 
 const fetchMock = vi.fn();
 vi.stubGlobal("fetch", fetchMock);
@@ -215,8 +214,10 @@ describe("<AcceptInvitePage> — form submission", () => {
     await waitFor(() => {
       const calls = fetchMock.mock.calls;
       const acceptCall = calls.find(
-        ([url, init]: [string, RequestInit]) =>
-          url.includes("abc123") && (init?.method ?? "GET").toUpperCase() === "POST"
+        (args: unknown[]) => {
+          const [url, init] = args as [string, RequestInit];
+          return url.includes("abc123") && (init?.method ?? "GET").toUpperCase() === "POST";
+        }
       );
       expect(acceptCall).toBeDefined();
     });
