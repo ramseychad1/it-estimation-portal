@@ -34,6 +34,7 @@ const COLUMN_DEFS = [
   { key: "requester", label: "Requester" },
   { key: "status", label: "Status" },
   { key: "reviewer", label: "Reviewer" },
+  { key: "questions", label: "Questions" },
   { key: "submittedAt", label: "Submitted" },
 ];
 const REQUIRED_COLS = ["title"];
@@ -202,6 +203,29 @@ export function ReviewQueuePage() {
           {r.reviewerSummary ?? "—"}
         </span>
       ),
+    },
+    {
+      key: "questions",
+      header: "Questions",
+      width: 100,
+      render: (r) => {
+        if (r.totalQuestionsCount === 0) {
+          return <span className="text-warm-gray-med" style={{ fontSize: 12 }}>—</span>;
+        }
+        const allAnswered = r.answeredQuestionsCount >= r.totalQuestionsCount;
+        return (
+          <span
+            style={{ fontSize: 12 }}
+            className={allAnswered ? undefined : "text-warm-gray-med"}
+            title={`${r.answeredQuestionsCount} of ${r.totalQuestionsCount} questions answered`}
+          >
+            {r.answeredQuestionsCount}
+            <span className="text-warm-gray-med">
+              {" / "}{r.totalQuestionsCount}
+            </span>
+          </span>
+        );
+      },
     },
     {
       key: "submittedAt",

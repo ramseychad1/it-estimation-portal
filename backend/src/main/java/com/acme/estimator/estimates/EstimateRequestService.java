@@ -128,10 +128,14 @@ public class EstimateRequestService {
             ? batchLoadUserNames(page.getContent(), itemsByRequestId)
             : Map.of();
 
+        // Batch-load question counts for the "Questions answered" column.
+        Map<Long, Integer> answeredByItemId = batchLoadAnsweredCounts(itemsByRequestId);
+        Map<Long, Integer> totalByItemId = batchLoadTotalQuestionCounts(itemsByRequestId);
+
         // Apply derived status filter in memory (simpler than complex subqueries for M1 scale)
         Page<EstimateRequestListItem> result = page.map(req -> {
             List<EstimateRequestItem> items = itemsByRequestId.getOrDefault(req.getId(), List.of());
-            return toListItem(req, items, productNames, subNames, userNames);
+            return toListItem(req, items, productNames, subNames, userNames, answeredByItemId, totalByItemId);
         });
 
         // If status filter is set, filter after mapping
@@ -416,10 +420,12 @@ public class EstimateRequestService {
         Map<Long, String> productNames = batchLoadProductNames(itemsByRequestId);
         Map<Long, String> subNames = batchLoadSubNames(itemsByRequestId);
         Map<Long, String> userNames = batchLoadUserNames(page.getContent(), itemsByRequestId);
+        Map<Long, Integer> answeredByItemId = batchLoadAnsweredCounts(itemsByRequestId);
+        Map<Long, Integer> totalByItemId = batchLoadTotalQuestionCounts(itemsByRequestId);
 
         return page.map(req -> {
             List<EstimateRequestItem> items = itemsByRequestId.getOrDefault(req.getId(), List.of());
-            return toListItem(req, items, productNames, subNames, userNames);
+            return toListItem(req, items, productNames, subNames, userNames, answeredByItemId, totalByItemId);
         });
     }
 
@@ -1405,7 +1411,9 @@ public class EstimateRequestService {
         List<EstimateRequestItem> items,
         Map<Long, String> productNames,
         Map<Long, String> subNames,
-        Map<Long, String> userNames
+        Map<Long, String> userNames,
+        Map<Long, Integer> answeredByItemId,
+        Map<Long, Integer> totalByItemId
     ) {
         String derivedStatus = getDerivedStatus(items);
 
@@ -1454,6 +1462,14 @@ public class EstimateRequestService {
             .filter(i -> i.getStatus() == EstimateStatus.APPROVED)
             .count();
 
+        // Aggregate question counts across all items on this request.
+        int totalQuestionsCount = items.stream()
+            .mapToInt(i -> totalByItemId.getOrDefault(i.getId(), 0))
+            .sum();
+        int answeredQuestionsCount = items.stream()
+            .mapToInt(i -> answeredByItemId.getOrDefault(i.getId(), 0))
+            .sum();
+
         return new EstimateRequestListItem(
             request.getId(),
             request.getTitle(),
@@ -1466,7 +1482,9 @@ public class EstimateRequestService {
             request.getCreatedAt(),
             requesterName,
             reviewerSummary,
-            approvedItemCount
+            approvedItemCount,
+            totalQuestionsCount,
+            answeredQuestionsCount
         );
     }
 
@@ -1520,6 +1538,60 @@ public class EstimateRequestService {
         Map<Long, String> names = new HashMap<>();
         subFeatureRepository.findAllById(subIds).forEach(s -> names.put(s.getId(), s.getName()));
         return names;
+    }
+
+    /**
+     * Returns a map of itemId → answered-question count.
+     * Uses a single aggregate query over all item IDs on the page.
+     */
+    private Map<Long, Integer> batchLoadAnsweredCounts(
+        Map<Long, List<EstimateRequestItem>> itemsByRequestId
+    ) {
+        Set<Long> itemIds = itemsByRequestId.values().stream()
+            .flatMap(List::stream)
+            .map(EstimateRequestItem::getId)
+            .collect(Collectors.toSet());
+        if (itemIds.isEmpty()) return Map.of();
+        Map<Long, Integer> result = new HashMap<>();
+        for (Object[] row : answerRepository.countByItemIds(itemIds)) {
+            Long itemId = ((Number) row[0]).longValue();
+            int count = ((Number) row[1]).intValue();
+            result.put(itemId, count);
+        }
+        return result;
+    }
+
+    /**
+     * Returns a map of itemId → total active question count.
+     * Each item's count is determined by its product or sub-feature association,
+     * using the existing {@code countByProductIdAndActiveTrue} /
+     * {@code countBySubFeatureIdAndActiveTrue} methods on the question repository.
+     * Results are cached by (productId, subFeatureId) pair so items sharing the
+     * same product on the same page only trigger one count query.
+     */
+    private Map<Long, Integer> batchLoadTotalQuestionCounts(
+        Map<Long, List<EstimateRequestItem>> itemsByRequestId
+    ) {
+        Map<Long, Integer> result = new HashMap<>();
+        // Cache: "P:{productId}" or "SF:{subFeatureId}" → count
+        Map<String, Integer> cache = new HashMap<>();
+        itemsByRequestId.values().stream()
+            .flatMap(List::stream)
+            .forEach(item -> {
+                String cacheKey;
+                int count;
+                if (item.getSubFeatureId() != null) {
+                    cacheKey = "SF:" + item.getSubFeatureId();
+                    count = cache.computeIfAbsent(cacheKey,
+                        k -> (int) questionRepository.countBySubFeatureIdAndActiveTrue(item.getSubFeatureId()));
+                } else {
+                    cacheKey = "P:" + item.getProductId();
+                    count = cache.computeIfAbsent(cacheKey,
+                        k -> (int) questionRepository.countByProductIdAndActiveTrue(item.getProductId()));
+                }
+                result.put(item.getId(), count);
+            });
+        return result;
     }
 
     private static String blankToNull(String s) {

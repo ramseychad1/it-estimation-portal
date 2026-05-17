@@ -37,5 +37,16 @@ public record EstimateRequestListItem(
      */
     String reviewerSummary,
     /** Number of items with status APPROVED. Useful for PARTIALLY_APPROVED progress display. */
-    int approvedItemCount
+    int approvedItemCount,
+    /**
+     * Total number of active critical questions across all items in this request.
+     * 0 when no questions are configured for the chosen product(s).
+     */
+    int totalQuestionsCount,
+    /**
+     * Number of questions that have a saved answer across all items.
+     * Compare with {@link #totalQuestionsCount} to show a "N / M answered" indicator
+     * on the review queue row.
+     */
+    int answeredQuestionsCount
 ) {}

@@ -31,6 +31,10 @@ export interface EstimateRequestListItem {
   reviewerSummary: string | null;
   /** Count of APPROVED items. Used to show "N of M approved" on PARTIALLY_APPROVED rows. */
   approvedItemCount: number;
+  /** Total number of active critical questions across all items. 0 if no questions configured. */
+  totalQuestionsCount: number;
+  /** Number of questions that have a saved answer across all items. */
+  answeredQuestionsCount: number;
 }
 
 export interface EstimateRequestPhaseLineView {
