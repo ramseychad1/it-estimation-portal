@@ -1,6 +1,9 @@
 package com.acme.estimator.estimates;
 
+import com.acme.estimator.auth.AppUserDetails;
 import com.acme.estimator.auth.User;
+import com.acme.estimator.auth.UserRepository;
+import com.acme.estimator.common.ApiException;
 import com.acme.estimator.estimates.dto.AttachmentMeta;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.io.ByteArrayResource;
@@ -25,48 +28,37 @@ import org.springframework.web.multipart.MultipartFile;
 public class DocumentController {
 
     private final DocumentService documentService;
+    private final UserRepository userRepository;
 
-    /**
-     * Upload (or replace) the document for a specific question on a DRAFT item.
-     * Requester must own the parent request.
-     */
     @PostMapping("/estimates/items/{itemId}/answers/{questionId}/document")
     @PreAuthorize("hasAnyRole('REQUESTER','ADMIN')")
     public AttachmentMeta upload(
         @PathVariable Long itemId,
         @PathVariable Long questionId,
         @RequestParam("file") MultipartFile file,
-        @AuthenticationPrincipal User actor
+        @AuthenticationPrincipal AppUserDetails principal
     ) {
-        return documentService.upload(itemId, questionId, file, actor);
+        return documentService.upload(itemId, questionId, file, currentUser(principal));
     }
 
-    /**
-     * Remove the document for a specific question on a DRAFT item.
-     */
     @DeleteMapping("/estimates/items/{itemId}/answers/{questionId}/document")
     @PreAuthorize("hasAnyRole('REQUESTER','ADMIN')")
     public ResponseEntity<Void> delete(
         @PathVariable Long itemId,
         @PathVariable Long questionId,
-        @AuthenticationPrincipal User actor
+        @AuthenticationPrincipal AppUserDetails principal
     ) {
-        documentService.delete(itemId, questionId, actor);
+        documentService.delete(itemId, questionId, currentUser(principal));
         return ResponseEntity.noContent().build();
     }
 
-    /**
-     * Download an attachment. Streams the file as an attachment with the
-     * original filename preserved. Accessible to the request owner, any SO,
-     * and any Admin.
-     */
     @GetMapping("/documents/{attachmentId}/download")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ByteArrayResource> download(
         @PathVariable Long attachmentId,
-        @AuthenticationPrincipal User actor
+        @AuthenticationPrincipal AppUserDetails principal
     ) {
-        AnswerAttachment attachment = documentService.download(attachmentId, actor);
+        AnswerAttachment attachment = documentService.download(attachmentId, currentUser(principal));
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentDisposition(
@@ -80,5 +72,11 @@ public class DocumentController {
             .contentType(MediaType.parseMediaType(attachment.getContentType()))
             .contentLength(attachment.getFileSizeBytes())
             .body(new ByteArrayResource(attachment.getFileData()));
+    }
+
+    private User currentUser(AppUserDetails principal) {
+        if (principal == null) throw ApiException.forbidden("Authenticated user required");
+        return userRepository.findById(principal.getUserId())
+            .orElseThrow(() -> ApiException.forbidden("Authenticated user not found"));
     }
 }
