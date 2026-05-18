@@ -1450,9 +1450,11 @@ function ItemSection({
   const allRequiredAnswered =
     answeredRequired === requiredIds.length && docRequiredMet === docRequiredIds.length;
 
-  const answeredCount = questions.filter(
-    (q) => (item.answers[q.id] ?? "").trim() !== "",
-  ).length;
+  const answeredCount = questions.filter((q) => {
+    const textFilled = (item.answers[q.id] ?? "").trim() !== "";
+    const docMet = !q.documentUploadRequired || !!item.attachments[q.id];
+    return textFilled && docMet;
+  }).length;
 
   async function handleFileSelect(q: QuestionListItem, file: File) {
     if (!item.itemId) return;
@@ -1478,9 +1480,9 @@ function ItemSection({
   }
 
   useEffect(() => {
-    onReadyChange(requiredIds.length === 0 || allRequiredAnswered);
+    onReadyChange(allRequiredAnswered);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allRequiredAnswered, requiredIds.length]);
+  }, [allRequiredAnswered]);
 
   useEffect(() => {
     onCountChange(answeredCount, questions.length);
