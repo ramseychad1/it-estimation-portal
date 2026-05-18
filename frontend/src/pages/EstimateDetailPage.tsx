@@ -1401,17 +1401,8 @@ function ClarificationNeededItemCard({
           )}
         </div>
       </div>
-      {!editMode ? (
-        <ItemAnswerList answers={item.answers} />
-      ) : (
-        <ItemAnswerEditor
-          answers={item.answers}
-          localAnswers={localAnswers}
-          onChange={(qid, text) => setLocalAnswers((prev) => new Map(prev).set(qid, text))}
-        />
-      )}
       {editMode && (
-        <div className="mt-4">
+        <div className="mb-4">
           <label className="block font-medium mb-1" style={{ fontSize: 13 }}>
             Your response to the reviewer
           </label>
@@ -1424,6 +1415,15 @@ function ClarificationNeededItemCard({
             style={{ fontSize: 13, padding: "8px 10px", borderColor: "var(--color-border-strong)", outline: "none", background: "var(--bg-surface)" }}
           />
         </div>
+      )}
+      {!editMode ? (
+        <ItemAnswerList answers={item.answers} />
+      ) : (
+        <ItemAnswerEditor
+          answers={item.answers}
+          localAnswers={localAnswers}
+          onChange={(qid, text) => setLocalAnswers((prev) => new Map(prev).set(qid, text))}
+        />
       )}
       {isOwner && !editMode && (
         <div className="flex items-center mt-4" style={{ gap: 8 }}>
