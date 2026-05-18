@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import * as React from "react";
+import { createElement, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { AlertTriangle, CheckCircle, ChevronDown, Clock, Download, FileText, Info, Pencil, Trash2 } from "lucide-react";
 import { downloadAttachment } from "../lib/api/documents";
@@ -33,6 +34,7 @@ import { useSubFeaturesForProductQuery } from "../lib/queries/subFeatures";
 import { useRatesPageQuery } from "../lib/queries/rates";
 import { useUserDisplay } from "../lib/userDisplay";
 import { relativeTime } from "../lib/relativeTime";
+import type { EstimatePdfProps } from "../components/EstimatePdf";
 import {
   displayedRow,
   offshoreHoursForLines,
@@ -52,6 +54,8 @@ export function EstimateDetailPage() {
   const ratesQuery = useRatesPageQuery({ size: 1 });
   const discardMutation = useDiscardDraftMutation();
   const [discardOpen, setDiscardOpen] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const requesterDisplay = useUserDisplay(detailQuery.data?.requesterId ?? null);
 
   useEffect(() => {
     document.title = detailQuery.data?.title
@@ -95,6 +99,39 @@ export function EstimateDetailPage() {
     </span>
   );
 
+  const currentRate = ratesQuery.data?.current ?? null;
+
+  async function handleExportPdf() {
+    setIsExporting(true);
+    try {
+      const [{ pdf }, { EstimatePdfDocument }] = await Promise.all([
+        import("@react-pdf/renderer"),
+        import("../components/EstimatePdf"),
+      ]);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const el = createElement(EstimatePdfDocument as React.ComponentType<EstimatePdfProps>, {
+        detail,
+        currentRate,
+        generatedAt: new Date().toISOString(),
+        requesterName: requesterDisplay.data?.name,
+      });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const blob = await (pdf as (e: unknown) => { toBlob: () => Promise<Blob> })(el).toBlob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `estimate-${detail.id}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch {
+      toast.error("Could not generate PDF.");
+    } finally {
+      setIsExporting(false);
+    }
+  }
+
   function buildKebab(): KebabMenuItem[] {
     if (!isDraft && !isNeedsRevision) return [];
     return [
@@ -129,7 +166,12 @@ export function EstimateDetailPage() {
       titleSuffix={<StatusBadge variant={variant}>{label}</StatusBadge>}
       subtitle={subtitle}
       actions={
-        buildKebab().length > 0 ? (
+        isApproved ? (
+          <SecondaryButton onClick={() => void handleExportPdf()} disabled={isExporting}>
+            <FileText className="w-3.5 h-3.5" strokeWidth={1.5} />
+            {isExporting ? "Generating…" : "Export PDF"}
+          </SecondaryButton>
+        ) : buildKebab().length > 0 ? (
           <KebabMenu items={buildKebab()} ariaLabel="Request actions" />
         ) : undefined
       }
@@ -152,8 +194,6 @@ export function EstimateDetailPage() {
       onConfirm={confirmDiscard}
     />
   );
-
-  const currentRate = ratesQuery.data?.current ?? null;
 
   // ── NEEDS_REVISION ─────────────────────────────────────────────────────────
   if (isNeedsRevision) {
