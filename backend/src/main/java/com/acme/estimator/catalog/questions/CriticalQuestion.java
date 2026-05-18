@@ -50,6 +50,12 @@ public class CriticalQuestion {
     @Column(name = "required", nullable = false)
     private boolean required = false;
 
+    @Column(name = "document_upload_enabled", nullable = false)
+    private boolean documentUploadEnabled = false;
+
+    @Column(name = "document_upload_required", nullable = false)
+    private boolean documentUploadRequired = false;
+
     @Column(name = "display_order", nullable = false)
     private int displayOrder;
 

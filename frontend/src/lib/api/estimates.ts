@@ -51,11 +51,24 @@ export interface EstimateRequestPhaseLineView {
   offshoreOverride: number | null;
 }
 
+export interface AttachmentMeta {
+  id: number;
+  itemId: number;
+  questionId: number;
+  originalFilename: string;
+  contentType: string;
+  fileSizeBytes: number;
+  uploadedAt: string;
+}
+
 export interface EstimateRequestAnswerView {
   questionId: number;
   questionText: string;
   required: boolean;
+  documentUploadEnabled: boolean;
+  documentUploadRequired: boolean;
   answerText: string;
+  attachment: AttachmentMeta | null;
 }
 
 export type ReviewerStatus = "you" | "other-so" | "unclaimed";

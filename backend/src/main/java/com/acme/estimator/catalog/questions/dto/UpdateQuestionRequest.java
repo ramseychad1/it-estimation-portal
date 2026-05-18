@@ -12,5 +12,7 @@ import jakarta.validation.constraints.Size;
 public record UpdateQuestionRequest(
     @Size(max = 4000) String questionText,
     @Size(max = 4000) String helpText,
-    Boolean required
+    Boolean required,
+    Boolean documentUploadEnabled,
+    Boolean documentUploadRequired
 ) {}

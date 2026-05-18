@@ -19,6 +19,7 @@ import com.acme.estimator.catalog.templates.EstimateTemplateLine;
 import com.acme.estimator.catalog.templates.EstimateTemplateLineRepository;
 import com.acme.estimator.catalog.templates.EstimateTemplateRepository;
 import com.acme.estimator.common.ApiException;
+import com.acme.estimator.estimates.dto.AttachmentMeta;
 import com.acme.estimator.estimates.dto.AnswerInput;
 import com.acme.estimator.estimates.dto.CreateDraftRequest;
 import com.acme.estimator.estimates.dto.CreateItemRequest;
@@ -82,6 +83,7 @@ public class EstimateRequestService {
     private final EstimateTemplateRepository templateRepository;
     private final EstimateTemplateLineRepository templateLineRepository;
     private final SdlcPhaseRepository phaseRepository;
+    private final AnswerAttachmentRepository attachmentRepository;
     private final AuditService auditService;
     private final ChangeLogEntryRepository changeLogRepository;
     private final BlendedRateRepository blendedRateRepository;
@@ -1119,6 +1121,32 @@ public class EstimateRequestService {
             );
         }
 
+        // Document-required coverage
+        Set<Long> uploadedQuestionIds = attachmentRepository
+            .findMetaByItemId(item.getId()).stream()
+            .map(AttachmentMeta::questionId)
+            .collect(Collectors.toSet());
+        Map<Long, String> missingDocsByQuestionId = new HashMap<>();
+        for (CriticalQuestion q : liveQuestions) {
+            if (!q.isDocumentUploadRequired()) continue;
+            if (!uploadedQuestionIds.contains(q.getId())) {
+                missingDocsByQuestionId.put(q.getId(), q.getQuestionText());
+            }
+        }
+        if (!missingDocsByQuestionId.isEmpty()) {
+            Map<String, String> structured = new HashMap<>();
+            missingDocsByQuestionId.forEach(
+                (qid, qtext) -> structured.put("document:" + qid, "Required document upload is missing.")
+            );
+            String first = missingDocsByQuestionId.values().iterator().next();
+            throw new ApiException(
+                org.springframework.http.HttpStatus.BAD_REQUEST,
+                "MISSING_REQUIRED_DOCUMENTS",
+                "Required document uploads are missing: \"" + first + "\".",
+                structured
+            );
+        }
+
         // Active template lookup
         Optional<EstimateTemplate> activeTemplate = (item.getSubFeatureId() != null)
             ? templateRepository.findActiveBySubFeatureId(item.getSubFeatureId())
@@ -1341,6 +1369,9 @@ public class EstimateRequestService {
                 .collect(Collectors.toMap(
                     EstimateRequestQuestionAnswer::getCriticalQuestionId, a -> a
                 ));
+        Map<Long, AttachmentMeta> attachmentsByQuestion =
+            attachmentRepository.findMetaByItemId(item.getId()).stream()
+                .collect(Collectors.toMap(AttachmentMeta::questionId, m -> m));
         List<EstimateRequestAnswerView> answers = new ArrayList<>();
         for (CriticalQuestion q : liveQuestions) {
             EstimateRequestQuestionAnswer row = answerRows.get(q.getId());
@@ -1350,7 +1381,10 @@ public class EstimateRequestService {
                     ? row.getQuestionTextSnapshot()
                     : q.getQuestionText(),
                 q.isRequired(),
-                row == null ? "" : row.getAnswerText()
+                q.isDocumentUploadEnabled(),
+                q.isDocumentUploadRequired(),
+                row == null ? "" : row.getAnswerText(),
+                attachmentsByQuestion.get(q.getId())
             ));
         }
         // Surface answer rows whose question was hard-deleted (defensive)
@@ -1362,7 +1396,10 @@ public class EstimateRequestService {
                     row.getCriticalQuestionId(),
                     row.getQuestionTextSnapshot(),
                     false,
-                    row.getAnswerText()
+                    false,
+                    false,
+                    row.getAnswerText(),
+                    attachmentsByQuestion.get(row.getCriticalQuestionId())
                 ));
             }
         }

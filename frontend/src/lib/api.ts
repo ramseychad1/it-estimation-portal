@@ -28,7 +28,7 @@ export interface ApiOptions extends Omit<RequestInit, "body"> {
   body?: unknown;
 }
 
-function readCookie(name: string): string | undefined {
+export function readCookie(name: string): string | undefined {
   if (typeof document === "undefined" || !document.cookie) return undefined;
   const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const match = document.cookie.match(new RegExp("(?:^|; )" + escaped + "=([^;]*)"));

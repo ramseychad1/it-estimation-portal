@@ -7,5 +7,7 @@ public record CreateQuestionRequest(
     @NotBlank @Size(max = 4000) String questionText,
     @Size(max = 4000) String helpText,
     Boolean required,
-    Boolean active
+    Boolean active,
+    Boolean documentUploadEnabled,
+    Boolean documentUploadRequired
 ) {}

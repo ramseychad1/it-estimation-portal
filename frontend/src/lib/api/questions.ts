@@ -13,6 +13,8 @@ export interface QuestionListItem {
   questionText: string;
   helpText: string | null;
   required: boolean;
+  documentUploadEnabled: boolean;
+  documentUploadRequired: boolean;
   displayOrder: number;
   active: boolean;
   updatedAt: string | null;
@@ -27,6 +29,8 @@ export interface CreateQuestionRequest {
   questionText: string;
   helpText?: string | null;
   required?: boolean;
+  documentUploadEnabled?: boolean;
+  documentUploadRequired?: boolean;
   active?: boolean;
 }
 
@@ -34,6 +38,8 @@ export interface UpdateQuestionRequest {
   questionText?: string;
   helpText?: string | null;
   required?: boolean;
+  documentUploadEnabled?: boolean;
+  documentUploadRequired?: boolean;
 }
 
 export interface ListQuestionsParams {

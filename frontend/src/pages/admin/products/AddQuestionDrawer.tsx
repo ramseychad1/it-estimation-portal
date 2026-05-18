@@ -33,6 +33,8 @@ interface FormValues {
   questionText: string;
   helpText: string;
   required: boolean;
+  documentUploadEnabled: boolean;
+  documentUploadRequired: boolean;
   active: boolean;
 }
 
@@ -41,6 +43,8 @@ function valuesFor(q: QuestionDetail | null | undefined): FormValues {
     questionText: q?.questionText ?? "",
     helpText: q?.helpText ?? "",
     required: q?.required ?? false,
+    documentUploadEnabled: q?.documentUploadEnabled ?? false,
+    documentUploadRequired: q?.documentUploadRequired ?? false,
     active: q?.active ?? true,
   };
 }
@@ -77,6 +81,8 @@ export function AddQuestionDrawer({ open, parent, question, onClose }: AddQuesti
     values.questionText !== initial.questionText ||
     values.helpText !== initial.helpText ||
     values.required !== initial.required ||
+    values.documentUploadEnabled !== initial.documentUploadEnabled ||
+    values.documentUploadRequired !== initial.documentUploadRequired ||
     values.active !== initial.active;
 
   const busy =
@@ -103,13 +109,17 @@ export function AddQuestionDrawer({ open, parent, question, onClose }: AddQuesti
         const textChanged = values.questionText.trim() !== initial.questionText;
         const helpChanged = (values.helpText ?? "").trim() !== (initial.helpText ?? "");
         const requiredChanged = values.required !== initial.required;
-        if (textChanged || helpChanged || requiredChanged) {
+        const docEnabledChanged = values.documentUploadEnabled !== initial.documentUploadEnabled;
+        const docRequiredChanged = values.documentUploadRequired !== initial.documentUploadRequired;
+        if (textChanged || helpChanged || requiredChanged || docEnabledChanged || docRequiredChanged) {
           await updateMutation.mutateAsync({
             id: question.id,
             body: {
               ...(textChanged ? { questionText: values.questionText.trim() } : {}),
               ...(helpChanged ? { helpText: values.helpText.trim() || null } : {}),
               ...(requiredChanged ? { required: values.required } : {}),
+              ...(docEnabledChanged ? { documentUploadEnabled: values.documentUploadEnabled } : {}),
+              ...(docRequiredChanged ? { documentUploadRequired: values.documentUploadRequired } : {}),
             },
           });
         }
@@ -120,6 +130,8 @@ export function AddQuestionDrawer({ open, parent, question, onClose }: AddQuesti
           questionText: values.questionText.trim(),
           helpText: values.helpText.trim() || null,
           required: values.required,
+          documentUploadEnabled: values.documentUploadEnabled,
+          documentUploadRequired: values.documentUploadRequired,
           active: values.active,
         };
         if (parent.kind === "Product") {
@@ -212,6 +224,49 @@ export function AddQuestionDrawer({ open, parent, question, onClose }: AddQuesti
                   label={values.required ? "Requester must answer" : "Optional"}
                   disabled={busy}
                 />
+              </div>
+            )}
+          </FormField>
+
+          <FormField label="Document upload">
+            {(field) => (
+              <div id={field.id} className="flex flex-col gap-2">
+                <Toggle
+                  checked={values.documentUploadEnabled}
+                  onCheckedChange={(next) =>
+                    setValues((v) => ({
+                      ...v,
+                      documentUploadEnabled: next,
+                      documentUploadRequired: next ? v.documentUploadRequired : false,
+                    }))
+                  }
+                  label={values.documentUploadEnabled ? "Requester must upload a file" : "No file upload"}
+                  disabled={busy}
+                />
+                {values.documentUploadEnabled && (
+                  <div className="flex items-center gap-4 pl-1" style={{ fontSize: 13 }}>
+                    <label className="flex items-center gap-1.5 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="docUploadRequired"
+                        checked={!values.documentUploadRequired}
+                        onChange={() => setValues((v) => ({ ...v, documentUploadRequired: false }))}
+                        disabled={busy}
+                      />
+                      Optional
+                    </label>
+                    <label className="flex items-center gap-1.5 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="docUploadRequired"
+                        checked={values.documentUploadRequired}
+                        onChange={() => setValues((v) => ({ ...v, documentUploadRequired: true }))}
+                        disabled={busy}
+                      />
+                      Required
+                    </label>
+                  </div>
+                )}
               </div>
             )}
           </FormField>

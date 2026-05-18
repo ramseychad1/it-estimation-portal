@@ -124,6 +124,8 @@ public class CriticalQuestionService {
         q.setQuestionText(req.questionText().trim());
         q.setHelpText(blankToNull(req.helpText()));
         q.setRequired(req.required() != null && req.required());
+        q.setDocumentUploadEnabled(req.documentUploadEnabled() != null && req.documentUploadEnabled());
+        q.setDocumentUploadRequired(req.documentUploadRequired() != null && req.documentUploadRequired());
         q.setActive(req.active() == null ? true : req.active());
         q.setDisplayOrder(nextOrder);
         q.setCreatedBy(actor.getId());
@@ -149,6 +151,8 @@ public class CriticalQuestionService {
         q.setQuestionText(req.questionText().trim());
         q.setHelpText(blankToNull(req.helpText()));
         q.setRequired(req.required() != null && req.required());
+        q.setDocumentUploadEnabled(req.documentUploadEnabled() != null && req.documentUploadEnabled());
+        q.setDocumentUploadRequired(req.documentUploadRequired() != null && req.documentUploadRequired());
         q.setActive(req.active() == null ? true : req.active());
         q.setDisplayOrder(nextOrder);
         q.setCreatedBy(actor.getId());
@@ -200,6 +204,27 @@ public class CriticalQuestionService {
                 String.valueOf(q.isRequired()), String.valueOf(req.required()), actor
             );
             q.setRequired(req.required());
+            dirty = true;
+        }
+
+        if (req.documentUploadEnabled() != null && req.documentUploadEnabled() != q.isDocumentUploadEnabled()) {
+            auditService.recordUpdated(
+                CriticalQuestion.ENTITY_TYPE, q.getId(), "documentUploadEnabled",
+                String.valueOf(q.isDocumentUploadEnabled()), String.valueOf(req.documentUploadEnabled()), actor
+            );
+            q.setDocumentUploadEnabled(req.documentUploadEnabled());
+            if (!req.documentUploadEnabled()) {
+                q.setDocumentUploadRequired(false);
+            }
+            dirty = true;
+        }
+
+        if (req.documentUploadRequired() != null && req.documentUploadRequired() != q.isDocumentUploadRequired()) {
+            auditService.recordUpdated(
+                CriticalQuestion.ENTITY_TYPE, q.getId(), "documentUploadRequired",
+                String.valueOf(q.isDocumentUploadRequired()), String.valueOf(req.documentUploadRequired()), actor
+            );
+            q.setDocumentUploadRequired(req.documentUploadRequired());
             dirty = true;
         }
 

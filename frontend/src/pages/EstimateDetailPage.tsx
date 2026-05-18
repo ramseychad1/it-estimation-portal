@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { AlertTriangle, CheckCircle, ChevronDown, Clock, FileText, Info, Pencil, Trash2 } from "lucide-react";
+import { AlertTriangle, CheckCircle, ChevronDown, Clock, Download, FileText, Info, Pencil, Trash2 } from "lucide-react";
+import { downloadAttachment } from "../lib/api/documents";
 import { ConfirmModal } from "../components/ConfirmModal";
 import { EntityHeader } from "../components/EntityHeader";
 import { KebabMenu, type KebabMenuItem } from "../components/KebabMenu";
@@ -694,6 +695,17 @@ function ItemAnswerList({ answers }: { answers: EstimateRequestAnswerView[] }) {
           >
             {a.answerText || "Not answered"}
           </p>
+          {a.attachment && (
+            <button
+              type="button"
+              onClick={() => void downloadAttachment(a.attachment!.id, a.attachment!.originalFilename)}
+              className="flex items-center gap-1.5 mt-1.5 hover:underline"
+              style={{ fontSize: 12, color: "var(--fg-2)", background: "none", border: "none", padding: 0, cursor: "pointer" }}
+            >
+              <Download className="w-3 h-3" strokeWidth={2} />
+              {a.attachment.originalFilename}
+            </button>
+          )}
         </li>
       ))}
     </ul>

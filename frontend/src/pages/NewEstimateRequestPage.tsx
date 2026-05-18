@@ -21,6 +21,8 @@ import {
 } from "../components/buttons";
 import { useToast } from "../components/Toast";
 import { ApiError } from "../lib/api";
+import { uploadAnswerDocument, deleteAnswerDocument } from "../lib/api/documents";
+import type { AttachmentMeta } from "../lib/api/estimates";
 import { useUnsavedChangesGuard } from "../lib/useUnsavedChangesGuard";
 import { useAuth } from "../lib/auth";
 import { useProductsQuery } from "../lib/queries/products";
@@ -58,6 +60,7 @@ type LocalItem = {
   subFeatureName: string | null;
   itemId: number | null;
   answers: Record<number, string>;
+  attachments: Record<number, AttachmentMeta>;
 };
 
 // =====================================================================
@@ -106,6 +109,10 @@ export function NewEstimateRequestPage() {
       answers: item.answers.reduce(
         (acc, a) => ({ ...acc, [a.questionId]: a.answerText }),
         {} as Record<number, string>,
+      ),
+      attachments: item.answers.reduce(
+        (acc, a) => (a.attachment ? { ...acc, [a.questionId]: a.attachment } : acc),
+        {} as Record<number, AttachmentMeta>,
       ),
     }));
     setLocalItems(hydrated);
@@ -167,7 +174,7 @@ export function NewEstimateRequestPage() {
   ) {
     setLocalItems((prev) => [
       ...prev,
-      { productId, productName, subFeatureId, subFeatureName, itemId: null, answers: {} },
+      { productId, productName, subFeatureId, subFeatureName, itemId: null, answers: {}, attachments: {} },
     ]);
     setDirty(true);
   }
@@ -312,6 +319,23 @@ export function NewEstimateRequestPage() {
     [],
   );
 
+  const handleItemAttachmentChange = useCallback(
+    (itemIndex: number, qid: number, meta: AttachmentMeta | null) => {
+      setLocalItems((prev) => {
+        const next = [...prev];
+        const current = { ...next[itemIndex].attachments };
+        if (meta) {
+          current[qid] = meta;
+        } else {
+          delete current[qid];
+        }
+        next[itemIndex] = { ...next[itemIndex], attachments: current };
+        return next;
+      });
+    },
+    [],
+  );
+
   const allItemsReady =
     itemsReady.length === localItems.length &&
     localItems.length > 0 &&
@@ -382,6 +406,7 @@ export function NewEstimateRequestPage() {
           itemCounts={itemCounts}
           answerFieldErrors={answerFieldErrors}
           onItemAnswerChange={handleItemAnswerChange}
+          onItemAttachmentChange={handleItemAttachmentChange}
           onItemReadyChange={handleItemReadyChange}
           onItemCountChange={handleItemCountChange}
           onBack={() => setStep(1)}
@@ -1137,6 +1162,7 @@ interface Step2Props {
   itemCounts: Array<{ answered: number; total: number }>;
   answerFieldErrors: Record<number, Record<number, string>>;
   onItemAnswerChange: (itemIndex: number, qid: number, value: string) => void;
+  onItemAttachmentChange: (itemIndex: number, qid: number, meta: AttachmentMeta | null) => void;
   onItemReadyChange: (itemIndex: number, ready: boolean) => void;
   onItemCountChange: (itemIndex: number, answered: number, total: number) => void;
   onBack: () => void;
@@ -1153,6 +1179,7 @@ function Step2({
   itemCounts,
   answerFieldErrors,
   onItemAnswerChange,
+  onItemAttachmentChange,
   onItemReadyChange,
   onItemCountChange,
   onBack,
@@ -1338,6 +1365,7 @@ function Step2({
                 fieldErrors={answerFieldErrors[item.itemId ?? -1] ?? {}}
                 onToggle={() => setOpenIndex(openIndex === i ? -1 : i)}
                 onAnswerChange={(qid, value) => onItemAnswerChange(i, qid, value)}
+                onAttachmentChange={(qid, meta) => onItemAttachmentChange(i, qid, meta)}
                 onReadyChange={(ready) => onItemReadyChange(i, ready)}
                 onCountChange={(answered, total) => onItemCountChange(i, answered, total)}
               />
@@ -1378,6 +1406,7 @@ interface ItemSectionProps {
   fieldErrors?: Record<number, string>;
   onToggle: () => void;
   onAnswerChange: (qid: number, value: string) => void;
+  onAttachmentChange: (qid: number, meta: AttachmentMeta | null) => void;
   onReadyChange: (ready: boolean) => void;
   onCountChange: (answered: number, total: number) => void;
 }
@@ -1390,6 +1419,7 @@ function ItemSection({
   fieldErrors = {},
   onToggle,
   onAnswerChange,
+  onAttachmentChange,
   onReadyChange,
   onCountChange,
 }: ItemSectionProps) {
@@ -1409,15 +1439,43 @@ function ItemSection({
     return (raw ?? []).filter((q) => q.active);
   }, [isContainer, productQuestionsQuery.data, subFeatureQuestionsQuery.data]);
 
+  const [uploadingQids, setUploadingQids] = useState<Set<number>>(new Set());
+
   const requiredIds = questions.filter((q) => q.required).map((q) => q.id);
   const answeredRequired = requiredIds.filter(
     (qid) => (item.answers[qid] ?? "").trim() !== "",
   ).length;
-  const allRequiredAnswered = answeredRequired === requiredIds.length;
+  const docRequiredIds = questions.filter((q) => q.documentUploadRequired).map((q) => q.id);
+  const docRequiredMet = docRequiredIds.filter((qid) => !!item.attachments[qid]).length;
+  const allRequiredAnswered =
+    answeredRequired === requiredIds.length && docRequiredMet === docRequiredIds.length;
 
   const answeredCount = questions.filter(
     (q) => (item.answers[q.id] ?? "").trim() !== "",
   ).length;
+
+  async function handleFileSelect(q: QuestionListItem, file: File) {
+    if (!item.itemId) return;
+    setUploadingQids((prev) => new Set(prev).add(q.id));
+    try {
+      const meta = await uploadAnswerDocument(item.itemId, q.id, file);
+      onAttachmentChange(q.id, meta);
+    } catch {
+      // errors surface to the user at submit time via server validation
+    } finally {
+      setUploadingQids((prev) => { const s = new Set(prev); s.delete(q.id); return s; });
+    }
+  }
+
+  async function handleFileRemove(q: QuestionListItem) {
+    if (!item.itemId) return;
+    try {
+      await deleteAnswerDocument(item.itemId, q.id);
+      onAttachmentChange(q.id, null);
+    } catch {
+      // best-effort
+    }
+  }
 
   useEffect(() => {
     onReadyChange(requiredIds.length === 0 || allRequiredAnswered);
@@ -1558,6 +1616,70 @@ function ItemSection({
                     aria-label={`Answer to: ${q.questionText}`}
                     error={fieldErrors[q.id]}
                   />
+                  {q.documentUploadEnabled && (
+                    <div style={{ marginTop: 8 }}>
+                      {item.attachments[q.id] ? (
+                        <div
+                          className="flex items-center gap-2"
+                          style={{
+                            padding: "6px 10px",
+                            background: "var(--color-warm-gray-light)",
+                            borderRadius: 6,
+                            fontSize: 13,
+                          }}
+                        >
+                          <span className="text-near-black truncate flex-1">
+                            {item.attachments[q.id].originalFilename}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => void handleFileRemove(q)}
+                            className="text-warm-gray-med hover:text-cardinal-red"
+                            aria-label="Remove uploaded file"
+                            style={{ flexShrink: 0 }}
+                          >
+                            <X className="w-3.5 h-3.5" strokeWidth={2} />
+                          </button>
+                        </div>
+                      ) : (
+                        <label
+                          className="flex items-center gap-2 cursor-pointer"
+                          style={{ fontSize: 13, color: "var(--fg-2)" }}
+                        >
+                          <input
+                            type="file"
+                            accept=".pdf,.doc,.docx,.xls,.xlsx"
+                            className="sr-only"
+                            disabled={uploadingQids.has(q.id) || !item.itemId}
+                            onChange={(e) => {
+                              const file = e.currentTarget.files?.[0];
+                              if (file) void handleFileSelect(q, file);
+                              e.currentTarget.value = "";
+                            }}
+                          />
+                          <span
+                            className="inline-flex items-center gap-1 rounded"
+                            style={{
+                              padding: "4px 10px",
+                              border: "1px solid var(--color-border)",
+                              background: "var(--bg-surface)",
+                              fontSize: 12,
+                            }}
+                          >
+                            {uploadingQids.has(q.id) ? "Uploading…" : "Choose file"}
+                          </span>
+                          <span style={{ color: "var(--fg-3)", fontSize: 12 }}>
+                            {q.documentUploadRequired ? (
+                              <span style={{ color: "var(--color-cardinal-red)" }}>Required · </span>
+                            ) : (
+                              "Optional · "
+                            )}
+                            PDF, Word, or Excel · max 10 MB
+                          </span>
+                        </label>
+                      )}
+                    </div>
+                  )}
                 </li>
               ))}
             </ul>

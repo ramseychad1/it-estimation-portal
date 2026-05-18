@@ -4,5 +4,8 @@ public record EstimateRequestAnswerView(
     Long questionId,
     String questionText,
     boolean required,
-    String answerText
+    boolean documentUploadEnabled,
+    boolean documentUploadRequired,
+    String answerText,
+    AttachmentMeta attachment
 ) {}
