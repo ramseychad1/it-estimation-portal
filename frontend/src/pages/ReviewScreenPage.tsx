@@ -735,20 +735,33 @@ function InReviewPanel({
     <div className="flex flex-col" style={{ gap: 16, marginTop: 8 }}>
       {item.clarificationResponse && (
         <div
-          className="rounded-md"
+          className="rounded-md flex flex-col"
           style={{
             background: "rgba(184, 134, 11, 0.07)",
             border: "1px solid rgba(184, 134, 11, 0.3)",
             padding: "12px 16px",
             fontSize: 13,
+            gap: 12,
           }}
         >
-          <div className="font-semibold mb-1" style={{ color: "var(--color-warning)" }}>
-            Requester's clarification response
+          {item.clarificationNote && (
+            <div>
+              <div className="font-semibold mb-1" style={{ color: "var(--color-warning)" }}>
+                Your clarification note
+              </div>
+              <p className="m-0" style={{ color: "var(--fg-2)", fontStyle: "italic", whiteSpace: "pre-wrap" }}>
+                {item.clarificationNote}
+              </p>
+            </div>
+          )}
+          <div>
+            <div className="font-semibold mb-1" style={{ color: "var(--color-warning)" }}>
+              Requester's response
+            </div>
+            <p className="m-0" style={{ color: "var(--fg-1)", whiteSpace: "pre-wrap" }}>
+              {item.clarificationResponse}
+            </p>
           </div>
-          <p className="m-0" style={{ color: "var(--fg-1)", whiteSpace: "pre-wrap" }}>
-            {item.clarificationResponse}
-          </p>
         </div>
       )}
       <div>

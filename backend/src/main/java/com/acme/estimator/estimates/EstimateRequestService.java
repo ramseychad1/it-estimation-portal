@@ -669,7 +669,12 @@ public class EstimateRequestService {
         item.setJustification(null);
         item.setApprovedBlendedRateId(null);
         item.setRejectionReason(null);
-        item.setClarificationNote(null);
+        // clarificationNote intentionally kept when returning from NEEDS_CLARIFICATION
+        // so the reviewer can see their original question alongside the requester's response.
+        // It is overwritten when the SO raises a new clarification request.
+        if (!isNeedsClarification) {
+            item.setClarificationNote(null);
+        }
 
         // Optional product swap
         if (dto.productId() != null && !dto.productId().equals(item.getProductId())) {
