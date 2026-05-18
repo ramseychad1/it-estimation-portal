@@ -60,7 +60,7 @@ type LocalItem = {
   subFeatureName: string | null;
   itemId: number | null;
   answers: Record<number, string>;
-  attachments: Record<number, AttachmentMeta>;
+  attachments: Record<number, AttachmentMeta[]>;
 };
 
 // =====================================================================
@@ -111,8 +111,11 @@ export function NewEstimateRequestPage() {
         {} as Record<number, string>,
       ),
       attachments: item.answers.reduce(
-        (acc, a) => (a.attachment ? { ...acc, [a.questionId]: a.attachment } : acc),
-        {} as Record<number, AttachmentMeta>,
+        (acc, a) =>
+          a.attachments.length > 0
+            ? { ...acc, [a.questionId]: a.attachments }
+            : acc,
+        {} as Record<number, AttachmentMeta[]>,
       ),
     }));
     setLocalItems(hydrated);
@@ -320,14 +323,16 @@ export function NewEstimateRequestPage() {
   );
 
   const handleItemAttachmentChange = useCallback(
-    (itemIndex: number, qid: number, meta: AttachmentMeta | null) => {
+    (itemIndex: number, qid: number, meta: AttachmentMeta | null, removeId?: number) => {
       setLocalItems((prev) => {
         const next = [...prev];
         const current = { ...next[itemIndex].attachments };
         if (meta) {
-          current[qid] = meta;
-        } else {
-          delete current[qid];
+          current[qid] = [...(current[qid] ?? []), meta];
+        } else if (removeId !== undefined) {
+          const filtered = (current[qid] ?? []).filter((a) => a.id !== removeId);
+          if (filtered.length > 0) current[qid] = filtered;
+          else delete current[qid];
         }
         next[itemIndex] = { ...next[itemIndex], attachments: current };
         return next;
@@ -1162,7 +1167,7 @@ interface Step2Props {
   itemCounts: Array<{ answered: number; total: number }>;
   answerFieldErrors: Record<number, Record<number, string>>;
   onItemAnswerChange: (itemIndex: number, qid: number, value: string) => void;
-  onItemAttachmentChange: (itemIndex: number, qid: number, meta: AttachmentMeta | null) => void;
+  onItemAttachmentChange: (itemIndex: number, qid: number, meta: AttachmentMeta | null, removeId?: number) => void;
   onItemReadyChange: (itemIndex: number, ready: boolean) => void;
   onItemCountChange: (itemIndex: number, answered: number, total: number) => void;
   onBack: () => void;
@@ -1365,7 +1370,7 @@ function Step2({
                 fieldErrors={answerFieldErrors[item.itemId ?? -1] ?? {}}
                 onToggle={() => setOpenIndex(openIndex === i ? -1 : i)}
                 onAnswerChange={(qid, value) => onItemAnswerChange(i, qid, value)}
-                onAttachmentChange={(qid, meta) => onItemAttachmentChange(i, qid, meta)}
+                onAttachmentChange={(qid, meta, removeId) => onItemAttachmentChange(i, qid, meta, removeId)}
                 onReadyChange={(ready) => onItemReadyChange(i, ready)}
                 onCountChange={(answered, total) => onItemCountChange(i, answered, total)}
               />
@@ -1406,7 +1411,7 @@ interface ItemSectionProps {
   fieldErrors?: Record<number, string>;
   onToggle: () => void;
   onAnswerChange: (qid: number, value: string) => void;
-  onAttachmentChange: (qid: number, meta: AttachmentMeta | null) => void;
+  onAttachmentChange: (qid: number, meta: AttachmentMeta | null, removeId?: number) => void;
   onReadyChange: (ready: boolean) => void;
   onCountChange: (answered: number, total: number) => void;
 }
@@ -1446,13 +1451,13 @@ function ItemSection({
     (qid) => (item.answers[qid] ?? "").trim() !== "",
   ).length;
   const docRequiredIds = questions.filter((q) => q.documentUploadRequired).map((q) => q.id);
-  const docRequiredMet = docRequiredIds.filter((qid) => !!item.attachments[qid]).length;
+  const docRequiredMet = docRequiredIds.filter((qid) => (item.attachments[qid]?.length ?? 0) > 0).length;
   const allRequiredAnswered =
     answeredRequired === requiredIds.length && docRequiredMet === docRequiredIds.length;
 
   const answeredCount = questions.filter((q) => {
     const textFilled = (item.answers[q.id] ?? "").trim() !== "";
-    const docMet = !q.documentUploadRequired || !!item.attachments[q.id];
+    const docMet = !q.documentUploadRequired || (item.attachments[q.id]?.length ?? 0) > 0;
     return textFilled && docMet;
   }).length;
 
@@ -1469,11 +1474,10 @@ function ItemSection({
     }
   }
 
-  async function handleFileRemove(q: QuestionListItem) {
-    if (!item.itemId) return;
+  async function handleFileRemove(attachmentId: number, qid: number) {
     try {
-      await deleteAnswerDocument(item.itemId, q.id);
-      onAttachmentChange(q.id, null);
+      await deleteAnswerDocument(attachmentId);
+      onAttachmentChange(qid, null, attachmentId);
     } catch {
       // best-effort
     }
@@ -1619,35 +1623,40 @@ function ItemSection({
                     error={fieldErrors[q.id]}
                   />
                   {q.documentUploadEnabled && (
-                    <div style={{ marginTop: 8 }}>
-                      {item.attachments[q.id] ? (
-                        <div
-                          className="flex items-center gap-2"
-                          style={{
-                            padding: "6px 10px",
-                            background: "var(--color-warm-gray-light)",
-                            borderRadius: 6,
-                            fontSize: 13,
-                          }}
-                        >
-                          <span className="text-near-black truncate flex-1">
-                            {item.attachments[q.id].originalFilename}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => void handleFileRemove(q)}
-                            className="text-warm-gray-med hover:text-cardinal-red"
-                            aria-label="Remove uploaded file"
-                            style={{ flexShrink: 0 }}
-                          >
-                            <X className="w-3.5 h-3.5" strokeWidth={2} />
-                          </button>
-                        </div>
-                      ) : (
-                        <label
-                          className="flex items-center gap-2 cursor-pointer"
-                          style={{ fontSize: 13, color: "var(--fg-2)" }}
-                        >
+                    <div style={{ marginTop: 10 }}>
+                      {/* Uploaded file list */}
+                      {(item.attachments[q.id] ?? []).length > 0 && (
+                        <ul className="m-0 p-0 list-none flex flex-col" style={{ gap: 4, marginBottom: 8 }}>
+                          {(item.attachments[q.id] ?? []).map((att) => (
+                            <li
+                              key={att.id}
+                              className="flex items-center gap-2"
+                              style={{
+                                padding: "5px 10px",
+                                background: "var(--color-warm-gray-light)",
+                                borderRadius: 6,
+                                fontSize: 13,
+                              }}
+                            >
+                              <span className="text-near-black truncate flex-1">
+                                {att.originalFilename}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => void handleFileRemove(att.id, q.id)}
+                                className="text-warm-gray-med hover:text-cardinal-red"
+                                aria-label={`Remove ${att.originalFilename}`}
+                                style={{ flexShrink: 0 }}
+                              >
+                                <X className="w-3.5 h-3.5" strokeWidth={2} />
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      {/* Always-visible upload button */}
+                      <div className="flex items-center gap-3">
+                        <label className="cursor-pointer">
                           <input
                             type="file"
                             accept=".pdf,.doc,.docx,.xls,.xlsx"
@@ -1660,26 +1669,27 @@ function ItemSection({
                             }}
                           />
                           <span
-                            className="inline-flex items-center gap-1 rounded"
+                            className="inline-flex items-center gap-1.5 font-medium rounded cursor-pointer"
                             style={{
-                              padding: "4px 10px",
-                              border: "1px solid var(--color-border)",
+                              padding: "6px 14px",
+                              fontSize: 13,
+                              border: "1.5px solid var(--color-near-black)",
                               background: "var(--bg-surface)",
-                              fontSize: 12,
+                              color: "var(--color-near-black)",
+                              opacity: uploadingQids.has(q.id) || !item.itemId ? 0.5 : 1,
                             }}
                           >
                             {uploadingQids.has(q.id) ? "Uploading…" : "Choose file"}
                           </span>
-                          <span style={{ color: "var(--fg-3)", fontSize: 12 }}>
-                            {q.documentUploadRequired ? (
-                              <span style={{ color: "var(--color-cardinal-red)" }}>Required · </span>
-                            ) : (
-                              "Optional · "
-                            )}
-                            PDF, Word, or Excel · max 10 MB
-                          </span>
                         </label>
-                      )}
+                        <span style={{ color: "var(--fg-3)", fontSize: 12 }}>
+                          {q.documentUploadRequired
+                            ? <span style={{ color: "var(--color-cardinal-red)", fontWeight: 500 }}>Required</span>
+                            : <span>Optional</span>
+                          }
+                          {" · "}PDF, Word, or Excel · max 10 MB
+                        </span>
+                      </div>
                     </div>
                   )}
                 </li>
@@ -1943,6 +1953,7 @@ function ItemReviewCard({ item, product, isFirst }: ItemReviewCardProps) {
         >
           {questions.map((q) => {
             const answer = (item.answers[q.id] ?? "").trim();
+            const files = item.attachments[q.id] ?? [];
             return (
               <div
                 key={q.id}
@@ -1964,6 +1975,16 @@ function ItemReviewCard({ item, product, isFirst }: ItemReviewCardProps) {
                 >
                   {answer || "— No answer provided —"}
                 </div>
+                {files.length > 0 && (
+                  <div className="flex flex-col mt-1" style={{ gap: 2 }}>
+                    {files.map((att) => (
+                      <span key={att.id} className="flex items-center gap-1" style={{ fontSize: 12, color: "var(--fg-2)" }}>
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                        {att.originalFilename}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
             );
           })}

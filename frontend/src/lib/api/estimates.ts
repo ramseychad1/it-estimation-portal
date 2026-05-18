@@ -68,7 +68,7 @@ export interface EstimateRequestAnswerView {
   documentUploadEnabled: boolean;
   documentUploadRequired: boolean;
   answerText: string;
-  attachment: AttachmentMeta | null;
+  attachments: AttachmentMeta[];
 }
 
 export type ReviewerStatus = "you" | "other-so" | "unclaimed";

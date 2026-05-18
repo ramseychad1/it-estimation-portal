@@ -29,8 +29,9 @@ public class DocumentService {
     private final EstimateRequestRepository requestRepository;
 
     /**
-     * Upload (or replace) the attachment for a specific item + question.
-     * Only the request owner may upload, and only while the item is in DRAFT.
+     * Upload a new attachment for a specific item + question.
+     * Multiple files per question are allowed. Only the request owner may
+     * upload, and only while the item is in DRAFT.
      */
     @Transactional
     public AttachmentMeta upload(Long itemId, Long questionId, MultipartFile file, User actor) {
@@ -45,10 +46,7 @@ public class DocumentService {
             throw ApiException.badRequest("Could not read uploaded file.");
         }
 
-        AnswerAttachment attachment = attachmentRepository
-            .findByItemIdAndQuestionId(itemId, questionId)
-            .orElseGet(AnswerAttachment::new);
-
+        AnswerAttachment attachment = new AnswerAttachment();
         attachment.setItemId(itemId);
         attachment.setQuestionId(questionId);
         attachment.setOriginalFilename(file.getOriginalFilename() != null
@@ -62,12 +60,17 @@ public class DocumentService {
         return toMeta(saved);
     }
 
-    /** Remove the attachment. Only the request owner may delete, only while DRAFT. */
+    /**
+     * Remove a specific attachment by its ID. Only the request owner may
+     * delete, and only while the item is in DRAFT.
+     */
     @Transactional
-    public void delete(Long itemId, Long questionId, User actor) {
-        EstimateRequestItem item = loadItem(itemId);
+    public void delete(Long attachmentId, User actor) {
+        AnswerAttachment attachment = attachmentRepository.findById(attachmentId)
+            .orElseThrow(() -> ApiException.notFound("Attachment " + attachmentId + " not found."));
+        EstimateRequestItem item = loadItem(attachment.getItemId());
         assertOwnerAndDraft(item, actor);
-        attachmentRepository.deleteByItemIdAndQuestionId(itemId, questionId);
+        attachmentRepository.deleteById(attachmentId);
     }
 
     /**

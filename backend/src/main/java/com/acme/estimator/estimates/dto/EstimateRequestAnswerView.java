@@ -1,5 +1,7 @@
 package com.acme.estimator.estimates.dto;
 
+import java.util.List;
+
 public record EstimateRequestAnswerView(
     Long questionId,
     String questionText,
@@ -7,5 +9,5 @@ public record EstimateRequestAnswerView(
     boolean documentUploadEnabled,
     boolean documentUploadRequired,
     String answerText,
-    AttachmentMeta attachment
+    List<AttachmentMeta> attachments
 ) {}

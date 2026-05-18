@@ -30,6 +30,7 @@ public class DocumentController {
     private final DocumentService documentService;
     private final UserRepository userRepository;
 
+    /** Upload a new attachment for a question on a DRAFT item. Multiple files allowed. */
     @PostMapping("/estimates/items/{itemId}/answers/{questionId}/document")
     @PreAuthorize("hasAnyRole('REQUESTER','ADMIN')")
     public AttachmentMeta upload(
@@ -41,17 +42,18 @@ public class DocumentController {
         return documentService.upload(itemId, questionId, file, currentUser(principal));
     }
 
-    @DeleteMapping("/estimates/items/{itemId}/answers/{questionId}/document")
+    /** Delete a specific attachment by ID. Only the request owner may delete, only in DRAFT. */
+    @DeleteMapping("/documents/{attachmentId}")
     @PreAuthorize("hasAnyRole('REQUESTER','ADMIN')")
     public ResponseEntity<Void> delete(
-        @PathVariable Long itemId,
-        @PathVariable Long questionId,
+        @PathVariable Long attachmentId,
         @AuthenticationPrincipal AppUserDetails principal
     ) {
-        documentService.delete(itemId, questionId, currentUser(principal));
+        documentService.delete(attachmentId, currentUser(principal));
         return ResponseEntity.noContent().build();
     }
 
+    /** Stream the file to the browser. Accessible to the request owner, any SO, and any Admin. */
     @GetMapping("/documents/{attachmentId}/download")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ByteArrayResource> download(

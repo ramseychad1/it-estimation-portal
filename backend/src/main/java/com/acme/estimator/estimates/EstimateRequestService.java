@@ -1122,14 +1122,13 @@ public class EstimateRequestService {
         }
 
         // Document-required coverage
-        Set<Long> uploadedQuestionIds = attachmentRepository
-            .findMetaByItemId(item.getId()).stream()
-            .map(AttachmentMeta::questionId)
-            .collect(Collectors.toSet());
+        Map<Long, List<AttachmentMeta>> uploadedByQuestion =
+            attachmentRepository.findMetaByItemId(item.getId()).stream()
+                .collect(Collectors.groupingBy(AttachmentMeta::questionId));
         Map<Long, String> missingDocsByQuestionId = new HashMap<>();
         for (CriticalQuestion q : liveQuestions) {
             if (!q.isDocumentUploadRequired()) continue;
-            if (!uploadedQuestionIds.contains(q.getId())) {
+            if (uploadedByQuestion.getOrDefault(q.getId(), List.of()).isEmpty()) {
                 missingDocsByQuestionId.put(q.getId(), q.getQuestionText());
             }
         }
@@ -1369,9 +1368,9 @@ public class EstimateRequestService {
                 .collect(Collectors.toMap(
                     EstimateRequestQuestionAnswer::getCriticalQuestionId, a -> a
                 ));
-        Map<Long, AttachmentMeta> attachmentsByQuestion =
+        Map<Long, List<AttachmentMeta>> attachmentsByQuestion =
             attachmentRepository.findMetaByItemId(item.getId()).stream()
-                .collect(Collectors.toMap(AttachmentMeta::questionId, m -> m));
+                .collect(Collectors.groupingBy(AttachmentMeta::questionId));
         List<EstimateRequestAnswerView> answers = new ArrayList<>();
         for (CriticalQuestion q : liveQuestions) {
             EstimateRequestQuestionAnswer row = answerRows.get(q.getId());
@@ -1384,7 +1383,7 @@ public class EstimateRequestService {
                 q.isDocumentUploadEnabled(),
                 q.isDocumentUploadRequired(),
                 row == null ? "" : row.getAnswerText(),
-                attachmentsByQuestion.get(q.getId())
+                attachmentsByQuestion.getOrDefault(q.getId(), List.of())
             ));
         }
         // Surface answer rows whose question was hard-deleted (defensive)
@@ -1399,7 +1398,7 @@ public class EstimateRequestService {
                     false,
                     false,
                     row.getAnswerText(),
-                    attachmentsByQuestion.get(row.getCriticalQuestionId())
+                    attachmentsByQuestion.getOrDefault(row.getCriticalQuestionId(), List.of())
                 ));
             }
         }

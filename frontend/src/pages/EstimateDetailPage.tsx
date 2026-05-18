@@ -695,16 +695,21 @@ function ItemAnswerList({ answers }: { answers: EstimateRequestAnswerView[] }) {
           >
             {a.answerText || "Not answered"}
           </p>
-          {a.attachment && (
-            <button
-              type="button"
-              onClick={() => void downloadAttachment(a.attachment!.id, a.attachment!.originalFilename)}
-              className="flex items-center gap-1.5 mt-1.5 hover:underline"
-              style={{ fontSize: 12, color: "var(--fg-2)", background: "none", border: "none", padding: 0, cursor: "pointer" }}
-            >
-              <Download className="w-3 h-3" strokeWidth={2} />
-              {a.attachment.originalFilename}
-            </button>
+          {a.attachments.length > 0 && (
+            <div className="flex flex-col mt-1.5" style={{ gap: 4 }}>
+              {a.attachments.map((att) => (
+                <button
+                  key={att.id}
+                  type="button"
+                  onClick={() => void downloadAttachment(att.id, att.originalFilename)}
+                  className="flex items-center gap-1.5 hover:underline"
+                  style={{ fontSize: 12, color: "var(--fg-2)", background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "left" }}
+                >
+                  <Download className="w-3 h-3 shrink-0" strokeWidth={2} />
+                  {att.originalFilename}
+                </button>
+              ))}
+            </div>
           )}
         </li>
       ))}
