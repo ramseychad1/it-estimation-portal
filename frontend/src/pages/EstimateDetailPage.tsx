@@ -1435,7 +1435,7 @@ function ClarificationNeededItemCard({
       )}
       {isOwner && editMode && (
         <div className="flex items-center mt-4" style={{ gap: 8 }}>
-          <PrimaryButton onClick={submitResponse} disabled={reviseMutation.isPending}>
+          <PrimaryButton onClick={submitResponse} disabled={reviseMutation.isPending || localResponse.trim() === ""}>
             {reviseMutation.isPending ? "Submitting…" : "Submit response"}
           </PrimaryButton>
           <SecondaryButton onClick={() => setChangeProductOpen(true)}>Change product</SecondaryButton>
