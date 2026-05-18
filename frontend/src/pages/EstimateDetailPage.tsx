@@ -305,6 +305,13 @@ function RequestSummaryCard({ detail }: { detail: EstimateRequestDetail }) {
     .sort()
     .at(0);
 
+  const itemsWithFiles = detail.items
+    .map((it) => ({
+      label: it.subFeatureName ? `${it.productName} · ${it.subFeatureName}` : it.productName,
+      files: it.answers.flatMap((a) => a.attachments),
+    }))
+    .filter((g) => g.files.length > 0);
+
   return (
     <Card title="Summary">
       <div className="flex flex-col" style={{ gap: 14 }}>
@@ -350,6 +357,46 @@ function RequestSummaryCard({ detail }: { detail: EstimateRequestDetail }) {
             <KV label="Submitted">{relativeTime(allSubmitted)}</KV>
           )}
         </div>
+        {itemsWithFiles.length > 0 && (
+          <div>
+            <div className="text-warm-gray-med uppercase font-medium" style={{ fontSize: 11, letterSpacing: "0.04em", marginBottom: 8 }}>
+              Files
+            </div>
+            <div className="flex flex-col" style={{ gap: 10 }}>
+              {itemsWithFiles.map((group) => (
+                <div key={group.label}>
+                  {itemsWithFiles.length > 1 && (
+                    <div className="text-near-black font-medium" style={{ fontSize: 13, marginBottom: 4 }}>
+                      {group.label}
+                    </div>
+                  )}
+                  <div className="flex flex-col" style={{ gap: 4 }}>
+                    {group.files.map((att) => (
+                      <button
+                        key={att.id}
+                        type="button"
+                        onClick={() => void downloadAttachment(att.id, att.originalFilename)}
+                        className="flex items-center gap-1.5 hover:underline"
+                        style={{
+                          fontSize: 13,
+                          color: "var(--color-cardinal-red)",
+                          background: "none",
+                          border: "none",
+                          padding: 0,
+                          cursor: "pointer",
+                          textAlign: "left",
+                        }}
+                      >
+                        <Download className="w-3.5 h-3.5 shrink-0" strokeWidth={1.5} />
+                        {att.originalFilename}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </Card>
   );
