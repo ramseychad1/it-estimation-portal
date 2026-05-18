@@ -87,6 +87,10 @@ export function EditUserDrawer({
     return <Drawer open={open} onClose={onClose} title="Edit user">{null}</Drawer>;
   }
 
+  const REQUESTER_ROLE_ID = 4;
+  const isRequesterOnly =
+    values.roleIds.length > 0 && values.roleIds.every((id) => id === REQUESTER_ROLE_ID);
+
   const isLastAdmin =
     user.invitationStatus === "ACTIVE"
     && user.roles.includes("Admin")
@@ -324,39 +328,43 @@ export function EditUserDrawer({
             Teams
           </div>
           <p className="text-warm-gray-med mt-0 mb-2" style={{ fontSize: 12 }}>
-            Assign this user to one or more teams for organizational reporting.
+            {isRequesterOnly
+              ? "Teams are used for Solution Owner and Estimator reporting. Requesters don't need team assignment."
+              : "Assign this user to one or more teams for organizational reporting."}
           </p>
-          {teamsQuery.data?.items.length === 0 && (
+          {!isRequesterOnly && teamsQuery.data?.items.length === 0 && (
             <p className="text-warm-gray-med italic" style={{ fontSize: 12 }}>No active teams configured.</p>
           )}
-          <div className="flex flex-col gap-1">
-            {(teamsQuery.data?.items ?? []).map((team) => {
-              const checked = values.teamIds.includes(team.id);
-              return (
-                <label
-                  key={team.id}
-                  className="flex items-center gap-2 cursor-pointer"
-                  style={{ fontSize: 13 }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    disabled={busy}
-                    onChange={() => {
-                      setValues((v) => ({
-                        ...v,
-                        teamIds: checked
-                          ? v.teamIds.filter((id) => id !== team.id)
-                          : [...v.teamIds, team.id],
-                      }));
-                    }}
-                    className="accent-near-black"
-                  />
-                  <span className="text-near-black">{team.name}</span>
-                </label>
-              );
-            })}
-          </div>
+          {!isRequesterOnly && (
+            <div className="flex flex-col gap-1">
+              {(teamsQuery.data?.items ?? []).map((team) => {
+                const checked = values.teamIds.includes(team.id);
+                return (
+                  <label
+                    key={team.id}
+                    className="flex items-center gap-2 cursor-pointer"
+                    style={{ fontSize: 13 }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      disabled={busy}
+                      onChange={() => {
+                        setValues((v) => ({
+                          ...v,
+                          teamIds: checked
+                            ? v.teamIds.filter((id) => id !== team.id)
+                            : [...v.teamIds, team.id],
+                        }));
+                      }}
+                      className="accent-near-black"
+                    />
+                    <span className="text-near-black">{team.name}</span>
+                  </label>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {fieldError.form && (

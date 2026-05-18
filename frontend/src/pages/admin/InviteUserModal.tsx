@@ -55,6 +55,10 @@ export function InviteUserModal({ open, onClose, onCreated, prefillAdmin = false
     setFieldError({});
   }, [open, prefillAdmin]);
 
+  const REQUESTER_ROLE_ID = 4;
+  const isRequesterOnly =
+    values.roleIds.length > 0 && values.roleIds.every((id) => id === REQUESTER_ROLE_ID);
+
   const isValid =
     values.email.trim().length > 0 &&
     values.firstName.trim().length > 0 &&
@@ -178,36 +182,40 @@ export function InviteUserModal({ open, onClose, onCreated, prefillAdmin = false
                   Teams <span className="text-warm-gray-med font-normal">(optional)</span>
                 </div>
                 <p className="text-warm-gray-med m-0 mb-2" style={{ fontSize: 12 }}>
-                  Assign the invited user to teams for organizational reporting.
+                  {isRequesterOnly
+                    ? "Teams are used for Solution Owner and Estimator reporting. Requesters don't need team assignment."
+                    : "Assign the invited user to teams for organizational reporting."}
                 </p>
-                {teamsQuery.data?.items.length === 0 && (
+                {!isRequesterOnly && teamsQuery.data?.items.length === 0 && (
                   <p className="text-warm-gray-med italic" style={{ fontSize: 12 }}>No active teams configured.</p>
                 )}
-                <div className="flex flex-col gap-1">
-                  {(teamsQuery.data?.items ?? []).map((team) => {
-                    const checked = teamIds.includes(team.id);
-                    return (
-                      <label
-                        key={team.id}
-                        className="flex items-center gap-2 cursor-pointer"
-                        style={{ fontSize: 13 }}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          disabled={busy}
-                          onChange={() =>
-                            setTeamIds((ids) =>
-                              checked ? ids.filter((id) => id !== team.id) : [...ids, team.id]
-                            )
-                          }
-                          className="accent-near-black"
-                        />
-                        <span className="text-near-black">{team.name}</span>
-                      </label>
-                    );
-                  })}
-                </div>
+                {!isRequesterOnly && (
+                  <div className="flex flex-col gap-1">
+                    {(teamsQuery.data?.items ?? []).map((team) => {
+                      const checked = teamIds.includes(team.id);
+                      return (
+                        <label
+                          key={team.id}
+                          className="flex items-center gap-2 cursor-pointer"
+                          style={{ fontSize: 13 }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            disabled={busy}
+                            onChange={() =>
+                              setTeamIds((ids) =>
+                                checked ? ids.filter((id) => id !== team.id) : [...ids, team.id]
+                              )
+                            }
+                            className="accent-near-black"
+                          />
+                          <span className="text-near-black">{team.name}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               <button
