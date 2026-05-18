@@ -96,8 +96,10 @@ function makeDraftDetail(d: MockDraft) {
             questionText: q?.questionText ?? "",
             required: q?.required ?? false,
             answerText: a.answerText,
+            attachments: [],
           };
         }),
+        clarificationNote: null,
       };
     }),
   };

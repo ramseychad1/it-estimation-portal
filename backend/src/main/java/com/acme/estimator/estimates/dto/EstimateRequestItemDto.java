@@ -52,5 +52,8 @@ public record EstimateRequestItemDto(
      * True when the authenticated user is an SO on this item's team and the
      * item is in an actionable state. Populated only on reviewer-facing reads.
      */
-    boolean isReviewable
+    boolean isReviewable,
+    // ---- Phase 10 fields ------------------------------------------------
+    /** SO's clarification question; non-null only when status is NEEDS_CLARIFICATION. */
+    String clarificationNote
 ) {}

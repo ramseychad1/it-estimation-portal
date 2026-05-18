@@ -96,6 +96,13 @@ public class EstimateRequestItem {
     private String rejectionReason;
 
     /**
+     * SO's question to the requester when requesting clarification.
+     * Set on NEEDS_CLARIFICATION, cleared when the requester resubmits.
+     */
+    @Column(name = "clarification_note")
+    private String clarificationNote;
+
+    /**
      * Incremented each time the requester submits a revision for this item.
      * Displayed in the Revision History tab.
      */

@@ -40,6 +40,10 @@ export interface RejectItemRequest {
   rejectionReason: string;
 }
 
+export interface RequestClarificationRequest {
+  clarificationNote: string;
+}
+
 function toQuery(params: Record<string, unknown>): string {
   const usp = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) {
@@ -100,4 +104,12 @@ export function sendBackItem(
   body: SendBackRequest,
 ): Promise<EstimateRequestDetail> {
   return api(`/estimates/admin/${requestId}/items/${itemId}/send-back`, { method: "POST", body });
+}
+
+export function requestClarification(
+  requestId: number,
+  itemId: number,
+  body: RequestClarificationRequest,
+): Promise<EstimateRequestDetail> {
+  return api(`/estimates/review/${requestId}/items/${itemId}/request-clarification`, { method: "POST", body });
 }

@@ -5,11 +5,13 @@ import {
   listReviewQueue,
   rejectItem,
   releaseItemReview,
+  requestClarification,
   sendBackItem,
   startItemReview,
   type ApproveItemRequest,
   type ListReviewQueueParams,
   type RejectItemRequest,
+  type RequestClarificationRequest,
   type SendBackRequest,
 } from "../api/reviews";
 import { adminDeleteRequest } from "../api/estimates";
@@ -119,6 +121,22 @@ export function useSendBackItemMutation() {
       itemId: number;
       body: SendBackRequest;
     }) => sendBackItem(requestId, itemId, body),
+    onSuccess: (_data, { requestId }) => invalidateAfterTransition(qc, requestId),
+  });
+}
+
+export function useRequestClarificationMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      requestId,
+      itemId,
+      body,
+    }: {
+      requestId: number;
+      itemId: number;
+      body: RequestClarificationRequest;
+    }) => requestClarification(requestId, itemId, body),
     onSuccess: (_data, { requestId }) => invalidateAfterTransition(qc, requestId),
   });
 }

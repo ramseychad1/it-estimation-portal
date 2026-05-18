@@ -7,7 +7,9 @@ export type EstimateStatus =
   | "SUBMITTED"
   | "IN_REVIEW"
   | "APPROVED"
-  | "REJECTED";
+  | "REJECTED"
+  | "NEEDS_CLARIFICATION"
+  | "RECALLED";
 
 export type Complexity = "LOW" | "MED" | "HIGH";
 
@@ -100,6 +102,8 @@ export interface EstimateRequestItemDto {
   originalProductId: number | null;
   originalProductName: string | null;
   isReviewable: boolean;
+  /** SO's clarification question; non-null only when status is NEEDS_CLARIFICATION. */
+  clarificationNote: string | null;
 }
 
 // Updated: parent-level detail with items[]
@@ -245,6 +249,13 @@ export function reviseAndResubmitItem(
 
 export function dropItem(id: number, itemId: number): Promise<void> {
   return api(`/estimates/my/${id}/items/${itemId}`, { method: "DELETE" });
+}
+
+export function recallItem(
+  id: number,
+  itemId: number,
+): Promise<EstimateRequestDetail> {
+  return api(`/estimates/my/${id}/items/${itemId}/recall`, { method: "POST" });
 }
 
 // ---- Admin delete (hard delete, audit logged) -------------------------

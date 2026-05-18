@@ -6,6 +6,7 @@ import {
   getMyRequest,
   listMyRequestHistory,
   listMyRequests,
+  recallItem,
   reviseAndResubmitItem,
   saveDraftAnswers,
   saveDraftItemAnswers,
@@ -123,6 +124,14 @@ export function useDropItemMutation() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, itemId }: { id: number; itemId: number }) => dropItem(id, itemId),
+    onSuccess: (_data, { id }) => invalidateDetail(qc, id),
+  });
+}
+
+export function useRecallItemMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, itemId }: { id: number; itemId: number }) => recallItem(id, itemId),
     onSuccess: (_data, { id }) => invalidateDetail(qc, id),
   });
 }

@@ -10,6 +10,7 @@ import com.acme.estimator.estimates.dto.EstimateRequestDetail;
 import com.acme.estimator.estimates.dto.EstimateRequestListItem;
 import com.acme.estimator.estimates.dto.ListReviewQueueFilter;
 import com.acme.estimator.estimates.dto.RejectItemRequest;
+import com.acme.estimator.estimates.dto.RequestClarificationRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -110,6 +111,16 @@ public class EstimateReviewController {
         @AuthenticationPrincipal AppUserDetails principal
     ) {
         return service.rejectItem(requestId, itemId, body, currentUser(principal));
+    }
+
+    @PostMapping("/{requestId}/items/{itemId}/request-clarification")
+    public EstimateRequestDetail requestClarification(
+        @PathVariable Long requestId,
+        @PathVariable Long itemId,
+        @Valid @RequestBody RequestClarificationRequest body,
+        @AuthenticationPrincipal AppUserDetails principal
+    ) {
+        return service.requestClarification(requestId, itemId, body, currentUser(principal));
     }
 
     private User currentUser(AppUserDetails principal) {

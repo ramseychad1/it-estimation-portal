@@ -1,7 +1,7 @@
 import * as React from "react";
 import { createElement, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { AlertTriangle, CheckCircle, ChevronDown, Clock, Download, FileText, Info, Pencil, Trash2 } from "lucide-react";
+import { AlertTriangle, CheckCircle, ChevronDown, Clock, Download, FileText, Info, Pencil, RotateCcw, Trash2 } from "lucide-react";
 import { downloadAttachment } from "../lib/api/documents";
 import { ConfirmModal } from "../components/ConfirmModal";
 import { EntityHeader } from "../components/EntityHeader";
@@ -27,6 +27,7 @@ import {
   useDropItemMutation,
   useMyRequestHistoryQuery,
   useMyRequestQuery,
+  useRecallItemMutation,
   useReviseAndResubmitMutation,
 } from "../lib/queries/estimates";
 import { useProductsQuery } from "../lib/queries/products";
@@ -83,6 +84,8 @@ export function EstimateDetailPage() {
   const isSubmitted = detail.derivedStatus === "SUBMITTED";
   const isInReview = detail.derivedStatus === "IN_REVIEW";
   const isNeedsRevision = detail.derivedStatus === "NEEDS_REVISION";
+  const isNeedsClarification = detail.derivedStatus === "NEEDS_CLARIFICATION";
+  const isRecalled = detail.derivedStatus === "RECALLED";
   const isApproved = detail.derivedStatus === "APPROVED";
   const isPartiallyApproved = detail.derivedStatus === "PARTIALLY_APPROVED";
 
@@ -133,7 +136,7 @@ export function EstimateDetailPage() {
   }
 
   function buildKebab(): KebabMenuItem[] {
-    if (!isDraft && !isNeedsRevision) return [];
+    if (!isDraft && !isNeedsRevision && !isNeedsClarification && !isRecalled) return [];
     return [
       {
         label: "Discard",
@@ -224,6 +227,66 @@ export function EstimateDetailPage() {
     );
   }
 
+  // ── NEEDS_CLARIFICATION — SO is waiting on requester ────────────────────────
+  if (isNeedsClarification) {
+    return (
+      <>
+        {header}
+        <div className="flex flex-col" style={{ gap: 16, marginTop: 24 }}>
+          {detail.description && (
+            <Card title="Description">
+              <p className="m-0 text-near-black" style={{ fontSize: 14 }}>{detail.description}</p>
+            </Card>
+          )}
+          {detail.items.map((it) =>
+            it.status === "NEEDS_CLARIFICATION" ? (
+              <ClarificationNeededItemCard
+                key={it.id}
+                item={it}
+                requestId={detail.id}
+                onDiscardRequested={() => setDiscardOpen(true)}
+              />
+            ) : (
+              <SubmittedItemCard key={it.id} item={it} requestId={detail.id} />
+            )
+          )}
+          <ActivityCard history={historyQuery.data ?? []} loading={historyQuery.isLoading} />
+        </div>
+        {discardModal}
+      </>
+    );
+  }
+
+  // ── RECALLED — requester pulled back at least one item ───────────────────────
+  if (isRecalled) {
+    return (
+      <>
+        {header}
+        <div className="flex flex-col" style={{ gap: 16, marginTop: 24 }}>
+          {detail.description && (
+            <Card title="Description">
+              <p className="m-0 text-near-black" style={{ fontSize: 14 }}>{detail.description}</p>
+            </Card>
+          )}
+          {detail.items.map((it) =>
+            it.status === "RECALLED" ? (
+              <RecalledItemCard
+                key={it.id}
+                item={it}
+                requestId={detail.id}
+                onDiscardRequested={() => setDiscardOpen(true)}
+              />
+            ) : (
+              <SubmittedItemCard key={it.id} item={it} requestId={detail.id} />
+            )
+          )}
+          <ActivityCard history={historyQuery.data ?? []} loading={historyQuery.isLoading} />
+        </div>
+        {discardModal}
+      </>
+    );
+  }
+
   // ── SUBMITTED / IN_REVIEW — confirmation view, no estimate grid ────────────
   if (isSubmitted || isInReview) {
     return (
@@ -233,7 +296,7 @@ export function EstimateDetailPage() {
           <RequestSummaryCard detail={detail} />
           <PendingReviewPanel status={detail.derivedStatus} />
           {detail.items.map((it) => (
-            <SubmittedItemCard key={it.id} item={it} />
+            <SubmittedItemCard key={it.id} item={it} requestId={detail.id} />
           ))}
           <ActivityCard history={historyQuery.data ?? []} loading={historyQuery.isLoading} />
         </div>
@@ -475,14 +538,40 @@ function PendingReviewPanel({ status }: { status: string }) {
   );
 }
 
-// ── Per-item card: SUBMITTED / IN_REVIEW (read-only confirmation) ──────────
+// ── Per-item card: SUBMITTED / IN_REVIEW (read-only confirmation, optional recall) ──
 
-function SubmittedItemCard({ item }: { item: EstimateRequestItemDto }) {
+function SubmittedItemCard({ item, requestId }: { item: EstimateRequestItemDto; requestId?: number }) {
+  const toast = useToast();
+  const recallMutation = useRecallItemMutation();
+  const [recallOpen, setRecallOpen] = useState(false);
+
   const title = item.subFeatureName
     ? `${item.productName} · ${item.subFeatureName}`
     : item.productName;
 
   const { variant, label } = estimateStatusBadge(item.status);
+  const canRecall = requestId != null && (item.status === "SUBMITTED" || item.status === "IN_REVIEW");
+  const isInReviewItem = item.status === "IN_REVIEW";
+
+  const kebabItems: KebabMenuItem[] = canRecall ? [
+    {
+      label: "Recall item",
+      icon: <RotateCcw className="w-3.5 h-3.5" strokeWidth={1.5} />,
+      destructive: false,
+      onSelect: () => setRecallOpen(true),
+    },
+  ] : [];
+
+  function confirmRecall() {
+    if (!requestId) return;
+    recallMutation.mutate(
+      { id: requestId, itemId: item.id },
+      {
+        onSuccess: () => { setRecallOpen(false); toast.success("Item recalled."); },
+        onError: () => toast.error("Could not recall that item."),
+      },
+    );
+  }
 
   return (
     <Card
@@ -493,10 +582,32 @@ function SubmittedItemCard({ item }: { item: EstimateRequestItemDto }) {
             <span className="text-warm-gray-med" style={{ fontSize: 12 }}>{item.teamName}</span>
           )}
           <StatusBadge variant={variant}>{label}</StatusBadge>
+          {canRecall && <KebabMenu items={kebabItems} ariaLabel="Item actions" />}
         </div>
       }
     >
       <ItemAnswerList answers={item.answers} />
+      <ConfirmModal
+        open={recallOpen}
+        title="Recall this item?"
+        body={
+          <div style={{ fontSize: 13 }}>
+            <p className="m-0 text-warm-gray-med">
+              This item will be returned to a recalled state where you can edit and resubmit it.
+            </p>
+            {isInReviewItem && (
+              <p className="m-0 mt-2 text-near-black" style={{ fontWeight: 500 }}>
+                This item is currently under review. Recalling it will release the reviewer's claim.
+              </p>
+            )}
+          </div>
+        }
+        confirmLabel="Recall item"
+        cancelLabel="Keep submitted"
+        destructive={false}
+        onCancel={() => setRecallOpen(false)}
+        onConfirm={confirmRecall}
+      />
     </Card>
   );
 }
@@ -1178,6 +1289,306 @@ function ItemRevisionCard({ item, requestId, currentRate, onDiscardRequested }: 
   );
 }
 
+// ── Per-item card: NEEDS_CLARIFICATION ────────────────────────────────────
+
+function ClarificationNeededItemCard({
+  item,
+  requestId,
+  onDiscardRequested,
+}: {
+  item: EstimateRequestItemDto;
+  requestId: number;
+  onDiscardRequested: () => void;
+}) {
+  const toast = useToast();
+  const reviseMutation = useReviseAndResubmitMutation();
+  const dropMutation = useDropItemMutation();
+
+  const [editMode, setEditMode] = useState(false);
+  const [localAnswers, setLocalAnswers] = useState<Map<number, string>>(() =>
+    new Map(item.answers.map((a) => [a.questionId, a.answerText])),
+  );
+  const [changeProductOpen, setChangeProductOpen] = useState(false);
+  const [selectedProductId, setSelectedProductId] = useState<number>(item.productId);
+  const [selectedSubFeatureId, setSelectedSubFeatureId] = useState<number | null>(item.subFeatureId);
+  const [dropConfirmOpen, setDropConfirmOpen] = useState(false);
+  const [lastItemError, setLastItemError] = useState(false);
+
+  useEffect(() => {
+    if (!editMode) {
+      setLocalAnswers(new Map(item.answers.map((a) => [a.questionId, a.answerText])));
+      setSelectedProductId(item.productId);
+      setSelectedSubFeatureId(item.subFeatureId);
+    }
+  }, [item.id, item.status, editMode]);
+
+  const { variant: statusVariant, label: statusLabel } = estimateStatusBadge(item.status);
+  const itemTitle = item.subFeatureName ? `${item.productName} · ${item.subFeatureName}` : item.productName;
+
+  function submitResponse() {
+    const answers: AnswerInput[] = item.answers.map((a) => ({
+      questionId: a.questionId,
+      answerText: localAnswers.get(a.questionId) ?? "",
+    }));
+    const body: ReviseAndResubmitRequest = {
+      ...(selectedProductId !== item.productId && { productId: selectedProductId }),
+      ...(selectedSubFeatureId !== item.subFeatureId && { subFeatureId: selectedSubFeatureId }),
+      answers,
+    };
+    reviseMutation.mutate(
+      { id: requestId, itemId: item.id, body },
+      {
+        onSuccess: () => { setEditMode(false); toast.success("Response submitted."); },
+        onError: () => toast.error("Could not submit response."),
+      },
+    );
+  }
+
+  function confirmDrop() {
+    dropMutation.mutate(
+      { id: requestId, itemId: item.id },
+      {
+        onSuccess: () => { setDropConfirmOpen(false); toast.success("Item dropped."); },
+        onError: (err) => {
+          if (err instanceof ApiError && err.status === 409) {
+            setLastItemError(true);
+          } else {
+            toast.error("Could not drop that item.");
+            setDropConfirmOpen(false);
+          }
+        },
+      },
+    );
+  }
+
+  const kebabItems: KebabMenuItem[] = [
+    {
+      label: "Drop item",
+      icon: <Trash2 className="w-3.5 h-3.5" strokeWidth={1.5} />,
+      destructive: true,
+      onSelect: () => { setLastItemError(false); setDropConfirmOpen(true); },
+    },
+  ];
+
+  return (
+    <Card title={itemTitle} headerRight={<StatusBadge variant={statusVariant}>{statusLabel}</StatusBadge>}>
+      <div
+        className="rounded-md mb-4 flex items-start"
+        style={{ background: "rgba(184, 134, 11, 0.07)", border: "1px solid rgba(184, 134, 11, 0.35)", padding: "12px 14px", fontSize: 13, gap: 10 }}
+      >
+        <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" style={{ color: "var(--color-warning)" }} strokeWidth={1.5} />
+        <div>
+          <p className="m-0 font-semibold" style={{ color: "var(--color-warning)" }}>
+            {item.reviewerName ?? "The reviewer"} is requesting clarification
+          </p>
+          {item.clarificationNote && (
+            <blockquote
+              className="m-0 mt-2"
+              style={{ borderLeft: "3px solid rgba(184, 134, 11, 0.5)", paddingLeft: 10, fontStyle: "italic", color: "var(--fg-1)" }}
+            >
+              {item.clarificationNote}
+            </blockquote>
+          )}
+        </div>
+      </div>
+      {!editMode ? (
+        <ItemAnswerList answers={item.answers} />
+      ) : (
+        <ItemAnswerEditor
+          answers={item.answers}
+          localAnswers={localAnswers}
+          onChange={(qid, text) => setLocalAnswers((prev) => new Map(prev).set(qid, text))}
+        />
+      )}
+      {!editMode && (
+        <div className="flex items-center mt-4" style={{ gap: 8 }}>
+          <PrimaryButton onClick={() => { setLocalAnswers(new Map(item.answers.map((a) => [a.questionId, a.answerText]))); setEditMode(true); }}>
+            Respond to clarification
+          </PrimaryButton>
+          <KebabMenu items={kebabItems} ariaLabel="Item actions" />
+        </div>
+      )}
+      {editMode && (
+        <div className="flex items-center mt-4" style={{ gap: 8 }}>
+          <PrimaryButton onClick={submitResponse} disabled={reviseMutation.isPending}>
+            {reviseMutation.isPending ? "Submitting…" : "Submit response"}
+          </PrimaryButton>
+          <SecondaryButton onClick={() => setChangeProductOpen(true)}>Change product</SecondaryButton>
+          <SecondaryButton onClick={() => setEditMode(false)} disabled={reviseMutation.isPending}>Cancel</SecondaryButton>
+        </div>
+      )}
+      <ProductPickerModal
+        open={changeProductOpen}
+        currentProductId={selectedProductId}
+        currentSubFeatureId={selectedSubFeatureId}
+        onConfirm={(productId, subFeatureId) => { setSelectedProductId(productId); setSelectedSubFeatureId(subFeatureId); setChangeProductOpen(false); }}
+        onCancel={() => setChangeProductOpen(false)}
+      />
+      <ConfirmModal
+        open={dropConfirmOpen}
+        title={lastItemError ? "Cannot drop last item" : "Drop this item?"}
+        body={
+          <p className="m-0 text-warm-gray-med" style={{ fontSize: 13 }}>
+            {lastItemError
+              ? "This is the only remaining item. Discard the entire request instead?"
+              : "This item will be permanently removed from the request. This can't be undone."}
+          </p>
+        }
+        confirmLabel={lastItemError ? "Discard request" : "Drop item"}
+        cancelLabel={lastItemError ? "Keep item" : "Cancel"}
+        destructive
+        onCancel={() => { setDropConfirmOpen(false); setLastItemError(false); }}
+        onConfirm={lastItemError ? () => { setDropConfirmOpen(false); setLastItemError(false); onDiscardRequested(); } : confirmDrop}
+        width={440}
+      />
+    </Card>
+  );
+}
+
+// ── Per-item card: RECALLED ────────────────────────────────────────────────
+
+function RecalledItemCard({
+  item,
+  requestId,
+  onDiscardRequested,
+}: {
+  item: EstimateRequestItemDto;
+  requestId: number;
+  onDiscardRequested: () => void;
+}) {
+  const toast = useToast();
+  const reviseMutation = useReviseAndResubmitMutation();
+  const dropMutation = useDropItemMutation();
+
+  const [editMode, setEditMode] = useState(false);
+  const [localAnswers, setLocalAnswers] = useState<Map<number, string>>(() =>
+    new Map(item.answers.map((a) => [a.questionId, a.answerText])),
+  );
+  const [changeProductOpen, setChangeProductOpen] = useState(false);
+  const [selectedProductId, setSelectedProductId] = useState<number>(item.productId);
+  const [selectedSubFeatureId, setSelectedSubFeatureId] = useState<number | null>(item.subFeatureId);
+  const [dropConfirmOpen, setDropConfirmOpen] = useState(false);
+  const [lastItemError, setLastItemError] = useState(false);
+
+  useEffect(() => {
+    if (!editMode) {
+      setLocalAnswers(new Map(item.answers.map((a) => [a.questionId, a.answerText])));
+      setSelectedProductId(item.productId);
+      setSelectedSubFeatureId(item.subFeatureId);
+    }
+  }, [item.id, item.status, editMode]);
+
+  const { variant: statusVariant, label: statusLabel } = estimateStatusBadge(item.status);
+  const itemTitle = item.subFeatureName ? `${item.productName} · ${item.subFeatureName}` : item.productName;
+
+  function submitResubmit() {
+    const answers: AnswerInput[] = item.answers.map((a) => ({
+      questionId: a.questionId,
+      answerText: localAnswers.get(a.questionId) ?? "",
+    }));
+    const body: ReviseAndResubmitRequest = {
+      ...(selectedProductId !== item.productId && { productId: selectedProductId }),
+      ...(selectedSubFeatureId !== item.subFeatureId && { subFeatureId: selectedSubFeatureId }),
+      answers,
+    };
+    reviseMutation.mutate(
+      { id: requestId, itemId: item.id, body },
+      {
+        onSuccess: () => { setEditMode(false); toast.success("Item resubmitted."); },
+        onError: () => toast.error("Could not resubmit item."),
+      },
+    );
+  }
+
+  function confirmDrop() {
+    dropMutation.mutate(
+      { id: requestId, itemId: item.id },
+      {
+        onSuccess: () => { setDropConfirmOpen(false); toast.success("Item dropped."); },
+        onError: (err) => {
+          if (err instanceof ApiError && err.status === 409) {
+            setLastItemError(true);
+          } else {
+            toast.error("Could not drop that item.");
+            setDropConfirmOpen(false);
+          }
+        },
+      },
+    );
+  }
+
+  const kebabItems: KebabMenuItem[] = [
+    {
+      label: "Drop item",
+      icon: <Trash2 className="w-3.5 h-3.5" strokeWidth={1.5} />,
+      destructive: true,
+      onSelect: () => { setLastItemError(false); setDropConfirmOpen(true); },
+    },
+  ];
+
+  return (
+    <Card title={itemTitle} headerRight={<StatusBadge variant={statusVariant}>{statusLabel}</StatusBadge>}>
+      <div
+        className="rounded-md mb-4 flex items-center"
+        style={{ background: "var(--color-warm-gray-light)", border: "1px solid var(--color-border-strong)", padding: "10px 12px", fontSize: 13, color: "var(--fg-2)", gap: 8 }}
+      >
+        <Info className="w-3.5 h-3.5 flex-shrink-0" strokeWidth={1.5} />
+        <span>You recalled this item. Update your answers and resubmit when ready.</span>
+      </div>
+      {!editMode ? (
+        <ItemAnswerList answers={item.answers} />
+      ) : (
+        <ItemAnswerEditor
+          answers={item.answers}
+          localAnswers={localAnswers}
+          onChange={(qid, text) => setLocalAnswers((prev) => new Map(prev).set(qid, text))}
+        />
+      )}
+      {!editMode && (
+        <div className="flex items-center mt-4" style={{ gap: 8 }}>
+          <PrimaryButton onClick={() => { setLocalAnswers(new Map(item.answers.map((a) => [a.questionId, a.answerText]))); setEditMode(true); }}>
+            Edit & resubmit
+          </PrimaryButton>
+          <KebabMenu items={kebabItems} ariaLabel="Item actions" />
+        </div>
+      )}
+      {editMode && (
+        <div className="flex items-center mt-4" style={{ gap: 8 }}>
+          <PrimaryButton onClick={submitResubmit} disabled={reviseMutation.isPending}>
+            {reviseMutation.isPending ? "Submitting…" : "Resubmit"}
+          </PrimaryButton>
+          <SecondaryButton onClick={() => setChangeProductOpen(true)}>Change product</SecondaryButton>
+          <SecondaryButton onClick={() => setEditMode(false)} disabled={reviseMutation.isPending}>Cancel</SecondaryButton>
+        </div>
+      )}
+      <ProductPickerModal
+        open={changeProductOpen}
+        currentProductId={selectedProductId}
+        currentSubFeatureId={selectedSubFeatureId}
+        onConfirm={(productId, subFeatureId) => { setSelectedProductId(productId); setSelectedSubFeatureId(subFeatureId); setChangeProductOpen(false); }}
+        onCancel={() => setChangeProductOpen(false)}
+      />
+      <ConfirmModal
+        open={dropConfirmOpen}
+        title={lastItemError ? "Cannot drop last item" : "Drop this item?"}
+        body={
+          <p className="m-0 text-warm-gray-med" style={{ fontSize: 13 }}>
+            {lastItemError
+              ? "This is the only remaining item. Discard the entire request instead?"
+              : "This item will be permanently removed from the request. This can't be undone."}
+          </p>
+        }
+        confirmLabel={lastItemError ? "Discard request" : "Drop item"}
+        cancelLabel={lastItemError ? "Keep item" : "Cancel"}
+        destructive
+        onCancel={() => { setDropConfirmOpen(false); setLastItemError(false); }}
+        onConfirm={lastItemError ? () => { setDropConfirmOpen(false); setLastItemError(false); onDiscardRequested(); } : confirmDrop}
+        width={440}
+      />
+    </Card>
+  );
+}
+
 function ItemAnswerEditor({
   answers,
   localAnswers,
@@ -1360,9 +1771,18 @@ function complexityLabel(c: "LOW" | "MED" | "HIGH"): string {
 
 function actionLabel(action: string): string {
   switch (action) {
-    case "CREATED": return "Created";
-    case "UPDATED": return "Updated";
-    case "DELETED": return "Discarded";
+    case "CREATED":  return "Created";
+    case "UPDATED":  return "Updated";
+    case "DELETED":  return "Discarded";
+    case "SUBMITTED": return "Submitted";
+    case "REVIEW_STARTED": return "Review started";
+    case "REVIEW_RELEASED": return "Review released";
+    case "APPROVED":  return "Approved";
+    case "REJECTED":  return "Rejected";
+    case "SENT_BACK": return "Sent back for revision";
+    case "ITEM_CLARIFICATION_REQUESTED": return "Clarification requested";
+    case "ITEM_CLARIFICATION_ANSWERED":  return "Clarification answered";
+    case "ITEM_RECALLED": return "Recalled";
     default: return action;
   }
 }

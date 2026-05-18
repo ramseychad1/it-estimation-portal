@@ -63,5 +63,14 @@ public enum ChangeAction {
     /** Requester removed a rejected item from the request entirely. */
     ITEM_DROPPED,
     /** Admin sent an approved item back to SUBMITTED (per-item safety valve). */
-    ITEM_SENT_BACK
+    ITEM_SENT_BACK,
+
+    // ---- Clarification + Recall workflow (Phase 10) -----------------------
+
+    /** SO requested clarification from the requester before continuing review. */
+    ITEM_CLARIFICATION_REQUESTED,
+    /** Requester responded to the SO's clarification request and resubmitted. */
+    ITEM_CLARIFICATION_ANSWERED,
+    /** Requester recalled an item from SUBMITTED or IN_REVIEW back to editable state. */
+    ITEM_RECALLED
 }

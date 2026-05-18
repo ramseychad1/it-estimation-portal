@@ -106,7 +106,8 @@ function detailResponse(d: MockDetail) {
         approvedBlendedRateId: d.approvedBlendedRateId ?? null,
         displayOrder: 0,
         phaseLines: d.phaseLines,
-        answers: d.answers,
+        answers: d.answers.map((a) => ({ ...a, attachments: [] })),
+        clarificationNote: null,
       },
     ],
   });

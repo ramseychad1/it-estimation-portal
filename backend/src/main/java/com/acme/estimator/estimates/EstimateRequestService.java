@@ -327,11 +327,14 @@ public class EstimateRequestService {
         List<EstimateRequestItem> items = itemRepository
             .findByEstimateRequestIdOrderByDisplayOrderAsc(id);
         String derivedStatus = getDerivedStatus(items);
-        if (!"DRAFT".equals(derivedStatus) && !"NEEDS_REVISION".equals(derivedStatus)) {
+        if (!"DRAFT".equals(derivedStatus)
+                && !"NEEDS_REVISION".equals(derivedStatus)
+                && !"NEEDS_CLARIFICATION".equals(derivedStatus)
+                && !"RECALLED".equals(derivedStatus)) {
             throw new ApiException(
                 org.springframework.http.HttpStatus.CONFLICT,
                 "INVALID_STATE",
-                "Only Draft or Rejected requests can be discarded."
+                "Only Draft, Rejected, Clarification-needed, or Recalled requests can be discarded."
             );
         }
         Long requestId = request.getId();
@@ -639,13 +642,19 @@ public class EstimateRequestService {
         EstimateRequest request = requireOwnedRequest(requestId, requester);
         EstimateRequestItem item = requireItemOnRequest(requestId, itemId);
 
-        if (item.getStatus() != EstimateStatus.REJECTED) {
+        boolean isNeedsClarification = item.getStatus() == EstimateStatus.NEEDS_CLARIFICATION;
+        boolean isRecalled = item.getStatus() == EstimateStatus.RECALLED;
+        if (item.getStatus() != EstimateStatus.REJECTED
+                && !isNeedsClarification && !isRecalled) {
             throw new ApiException(
                 org.springframework.http.HttpStatus.CONFLICT,
                 "INVALID_STATE",
-                "Only Rejected items can be revised and resubmitted."
+                "Only Rejected, Clarification-needed, or Recalled items can be revised and resubmitted."
             );
         }
+
+        // Preserve reviewer for clarification responses so the item goes back to IN_REVIEW.
+        Long preservedReviewerId = isNeedsClarification ? item.getReviewerId() : null;
 
         // Clear review state
         item.setReviewerId(null);
@@ -654,6 +663,7 @@ public class EstimateRequestService {
         item.setJustification(null);
         item.setApprovedBlendedRateId(null);
         item.setRejectionReason(null);
+        item.setClarificationNote(null);
 
         // Optional product swap
         if (dto.productId() != null && !dto.productId().equals(item.getProductId())) {
@@ -697,7 +707,11 @@ public class EstimateRequestService {
             item.setSubFeatureId(newSubFeatureId);
         }
 
-        item.setRevisionCount(item.getRevisionCount() + 1);
+        // Only increment revision count for REJECTED flows — clarification and recall
+        // are not substantive re-estimates.
+        if (!isNeedsClarification && !isRecalled) {
+            item.setRevisionCount(item.getRevisionCount() + 1);
+        }
 
         // Update answers if provided (replace-all)
         if (dto.answers() != null) {
@@ -710,18 +724,33 @@ public class EstimateRequestService {
 
         // Re-validate and re-snapshot (sets status → SUBMITTED, stamps submittedAt)
         submitItem(item);
-        itemRepository.save(item);
 
         Product product = productRepository.findById(item.getProductId()).orElse(null);
         String productName = product == null ? "item" : product.getName();
-        auditService.recordAction(
-            EstimateRequest.ENTITY_TYPE, requestId, ChangeAction.ITEM_REVISED, requester,
-            "Revised '" + productName + "' in '" + request.getTitle() + "'"
-        );
-        auditService.recordAction(
-            EstimateRequest.ENTITY_TYPE, requestId, ChangeAction.ITEM_RESUBMITTED, requester,
-            "Resubmitted '" + productName + "' in '" + request.getTitle() + "'"
-        );
+
+        if (isNeedsClarification) {
+            // Route directly back to IN_REVIEW for the same SO.
+            item.setStatus(EstimateStatus.IN_REVIEW);
+            item.setReviewerId(preservedReviewerId);
+            itemRepository.save(item);
+            auditService.recordAction(
+                EstimateRequest.ENTITY_TYPE, requestId, ChangeAction.ITEM_CLARIFICATION_ANSWERED,
+                requester,
+                "Responded to clarification for '" + productName + "' in '" + request.getTitle() + "'"
+            );
+        } else {
+            itemRepository.save(item);
+            if (!isRecalled) {
+                auditService.recordAction(
+                    EstimateRequest.ENTITY_TYPE, requestId, ChangeAction.ITEM_REVISED, requester,
+                    "Revised '" + productName + "' in '" + request.getTitle() + "'"
+                );
+            }
+            auditService.recordAction(
+                EstimateRequest.ENTITY_TYPE, requestId, ChangeAction.ITEM_RESUBMITTED, requester,
+                "Resubmitted '" + productName + "' in '" + request.getTitle() + "'"
+            );
+        }
         return toDetail(request, requester);
     }
 
@@ -734,11 +763,12 @@ public class EstimateRequestService {
         EstimateRequest request = requireOwnedRequest(requestId, requester);
         EstimateRequestItem item = requireItemOnRequest(requestId, itemId);
 
-        if (item.getStatus() != EstimateStatus.REJECTED) {
+        if (item.getStatus() != EstimateStatus.REJECTED
+                && item.getStatus() != EstimateStatus.RECALLED) {
             throw new ApiException(
                 org.springframework.http.HttpStatus.CONFLICT,
                 "INVALID_STATE",
-                "Only Rejected items can be dropped."
+                "Only Rejected or Recalled items can be dropped."
             );
         }
 
@@ -817,6 +847,85 @@ public class EstimateRequestService {
         return toDetail(request, actor);
     }
 
+    /**
+     * SO requests clarification from the requester on an IN_REVIEW item.
+     * The item transitions to NEEDS_CLARIFICATION; reviewer_id stays set so the
+     * item routes back to the same SO when the requester resubmits.
+     */
+    @Transactional
+    public EstimateRequestDetail requestClarification(
+        Long requestId, Long itemId,
+        com.acme.estimator.estimates.dto.RequestClarificationRequest req,
+        User actor
+    ) {
+        EstimateRequest request = requestRepository.findById(requestId)
+            .orElseThrow(() -> ApiException.notFound("Estimate request " + requestId + " not found."));
+        EstimateRequestItem item = requireItemInReviewByActor(requestId, itemId, actor);
+
+        String note = req.clarificationNote() == null ? "" : req.clarificationNote().trim();
+        if (note.isEmpty()) {
+            throw ApiException.badRequest("A clarification note is required.");
+        }
+
+        item.setStatus(EstimateStatus.NEEDS_CLARIFICATION);
+        item.setClarificationNote(note);
+        // reviewer_id intentionally kept — item routes back to this SO on resubmit
+        itemRepository.save(item);
+
+        Product product = productRepository.findById(item.getProductId()).orElse(null);
+        String productName = product == null ? "item" : product.getName();
+        String preview = note.length() > 100 ? note.substring(0, 100) + "…" : note;
+        auditService.recordAction(
+            EstimateRequest.ENTITY_TYPE, requestId, ChangeAction.ITEM_CLARIFICATION_REQUESTED,
+            actor,
+            "Requested clarification for '" + productName + "' in '" + request.getTitle()
+                + "'. Note: " + preview
+        );
+        return toDetail(request, actor);
+    }
+
+    /**
+     * Requester recalls an item from SUBMITTED or IN_REVIEW back to RECALLED state.
+     * If the item was IN_REVIEW, the reviewer's claim is released and recorded in the audit log.
+     */
+    @Transactional
+    public EstimateRequestDetail recallItem(Long requestId, Long itemId, User requester) {
+        EstimateRequest request = requireOwnedRequest(requestId, requester);
+        EstimateRequestItem item = requireItemOnRequest(requestId, itemId);
+
+        if (item.getStatus() != EstimateStatus.SUBMITTED
+                && item.getStatus() != EstimateStatus.IN_REVIEW) {
+            throw new ApiException(
+                org.springframework.http.HttpStatus.CONFLICT,
+                "INVALID_STATE",
+                "Only Submitted or In Review items can be recalled."
+            );
+        }
+
+        String auditNote = "Recalled '" + productName(item) + "' from '"
+            + request.getTitle() + "'";
+        if (item.getStatus() == EstimateStatus.IN_REVIEW && item.getReviewerId() != null) {
+            String reviewerName = userRepository.findById(item.getReviewerId())
+                .map(User::fullName).orElse("a reviewer");
+            auditNote += " (was in review by " + reviewerName + ")";
+        }
+
+        item.setStatus(EstimateStatus.RECALLED);
+        item.setReviewerId(null);
+        item.setSubmittedAt(null);
+        itemRepository.save(item);
+
+        auditService.recordAction(
+            EstimateRequest.ENTITY_TYPE, requestId, ChangeAction.ITEM_RECALLED, requester, auditNote
+        );
+        return toDetail(request, requester);
+    }
+
+    private String productName(EstimateRequestItem item) {
+        return productRepository.findById(item.getProductId())
+            .map(Product::getName).orElse("item");
+    }
+
     @Transactional
     public void deleteRequest(Long requestId, User actor) {
         EstimateRequest request = requestRepository.findById(requestId)
@@ -835,8 +944,10 @@ public class EstimateRequestService {
      * <ol>
      *   <li>No items → DRAFT
      *   <li>All APPROVED → APPROVED
+     *   <li>Any NEEDS_CLARIFICATION → NEEDS_CLARIFICATION (SO is waiting on requester)
      *   <li>Any REJECTED → NEEDS_REVISION
-     *   <li>Any APPROVED (but not all, and none REJECTED) → PARTIALLY_APPROVED
+     *   <li>Any RECALLED → RECALLED (requester pulled back at least one item)
+     *   <li>Any APPROVED (but not all, none of the above) → PARTIALLY_APPROVED
      *   <li>Any IN_REVIEW → IN_REVIEW
      *   <li>All SUBMITTED → SUBMITTED
      *   <li>Otherwise (mixed DRAFT + other, or all DRAFT) → DRAFT
@@ -846,8 +957,13 @@ public class EstimateRequestService {
         if (items.isEmpty()) return "DRAFT";
         boolean allApproved = items.stream().allMatch(i -> i.getStatus() == EstimateStatus.APPROVED);
         if (allApproved) return "APPROVED";
+        boolean anyNeedsClarification = items.stream()
+            .anyMatch(i -> i.getStatus() == EstimateStatus.NEEDS_CLARIFICATION);
+        if (anyNeedsClarification) return "NEEDS_CLARIFICATION";
         boolean anyRejected = items.stream().anyMatch(i -> i.getStatus() == EstimateStatus.REJECTED);
         if (anyRejected) return "NEEDS_REVISION";
+        boolean anyRecalled = items.stream().anyMatch(i -> i.getStatus() == EstimateStatus.RECALLED);
+        if (anyRecalled) return "RECALLED";
         boolean anyApproved = items.stream().anyMatch(i -> i.getStatus() == EstimateStatus.APPROVED);
         if (anyApproved) return "PARTIALLY_APPROVED";
         boolean anyInReview = items.stream().anyMatch(i -> i.getStatus() == EstimateStatus.IN_REVIEW);
@@ -1438,7 +1554,8 @@ public class EstimateRequestService {
             item.getRevisionCount(),
             item.getOriginalProductId(),
             originalProductName,
-            isReviewable
+            isReviewable,
+            item.getClarificationNote()
         );
     }
 

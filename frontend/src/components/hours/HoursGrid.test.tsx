@@ -46,15 +46,18 @@ describe("<HoursGrid>", () => {
     ]);
     render(<HoursGrid phases={PHASES} values={values} onChange={vi.fn()} />);
 
-    // Onshore L column = 10 + 1 = 11; Onshore M = 22; etc.
-    expect(screen.getByLabelText("Onshore L total")).toHaveTextContent("11");
-    expect(screen.getByLabelText("Onshore M total")).toHaveTextContent("22");
-    expect(screen.getByLabelText("Onshore H total")).toHaveTextContent("33");
-    expect(screen.getByLabelText("Offshore L total")).toHaveTextContent("8");
-    expect(screen.getByLabelText("Offshore M total")).toHaveTextContent("10");
-    expect(screen.getByLabelText("Offshore H total")).toHaveTextContent("12");
-    // Grid grand total = 11+22+33+8+10+12 = 96.
-    expect(screen.getByLabelText("Grid total hours")).toHaveTextContent("96");
+    // Per-complexity footer rows: "Low", "Med", "High".
+    // Active columns get aria-label "{Complexity} {ColLabel} total"
+    expect(screen.getByLabelText("Low Onshore L total")).toHaveTextContent("11");
+    expect(screen.getByLabelText("Med Onshore M total")).toHaveTextContent("22");
+    expect(screen.getByLabelText("High Onshore H total")).toHaveTextContent("33");
+    expect(screen.getByLabelText("Low Offshore L total")).toHaveTextContent("8");
+    expect(screen.getByLabelText("Med Offshore M total")).toHaveTextContent("10");
+    expect(screen.getByLabelText("High Offshore H total")).toHaveTextContent("12");
+    // Each complexity row also has a total hours label.
+    expect(screen.getByLabelText("Low total hours")).toHaveTextContent("19");   // 11 + 8
+    expect(screen.getByLabelText("Med total hours")).toHaveTextContent("32");   // 22 + 10
+    expect(screen.getByLabelText("High total hours")).toHaveTextContent("45");  // 33 + 12
   });
 });
 

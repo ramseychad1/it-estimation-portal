@@ -28,7 +28,9 @@ export type StatusBadgeVariant =
   | "approved"
   | "rejected"
   | "partially-approved"
-  | "needs-revision";
+  | "needs-revision"
+  | "needs-clarification"
+  | "recalled";
 
 interface StatusBadgeProps {
   variant: StatusBadgeVariant;
@@ -110,6 +112,18 @@ const VARIANT_STYLES: Record<StatusBadgeVariant, React.CSSProperties> = {
     color: "var(--color-cardinal-red)",
     borderColor: "rgba(228, 31, 53, 0.3)",
   },
+  // Amber tone: action required but the SO is waiting, not rejecting.
+  "needs-clarification": {
+    background: "rgba(184, 134, 11, 0.07)",
+    color: "var(--color-warning)",
+    borderColor: "rgba(184, 134, 11, 0.35)",
+  },
+  // Neutral muted: requestor voluntarily pulled back, no urgency signal.
+  recalled: {
+    background: "var(--color-warm-gray-light)",
+    color: "var(--fg-2)",
+    borderColor: "var(--color-border-strong)",
+  },
 };
 
 /**
@@ -128,8 +142,10 @@ export function estimateStatusBadge(status: string): {
     case "APPROVED":           return { variant: "approved",           label: "Approved" };
     case "REJECTED":           return { variant: "rejected",           label: "Rejected" };
     case "PARTIALLY_APPROVED": return { variant: "partially-approved", label: "Partially approved" };
-    case "NEEDS_REVISION":     return { variant: "needs-revision",     label: "Needs revision" };
-    default:                   return { variant: "neutral",            label: status };
+    case "NEEDS_REVISION":        return { variant: "needs-revision",        label: "Needs revision" };
+    case "NEEDS_CLARIFICATION":   return { variant: "needs-clarification",   label: "Clarification needed" };
+    case "RECALLED":              return { variant: "recalled",              label: "Recalled" };
+    default:                      return { variant: "neutral",               label: status };
   }
 }
 

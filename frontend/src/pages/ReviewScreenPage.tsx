@@ -29,6 +29,7 @@ import {
   useReleaseItemReviewMutation,
   useApproveItemMutation,
   useRejectItemMutation,
+  useRequestClarificationMutation,
   useSendBackItemMutation,
   useReviewDetailQuery,
 } from "../lib/queries/reviews";
@@ -167,6 +168,8 @@ function ItemReviewCard({
   const [rejectText, setRejectText] = useState("");
   const [sendBackOpen, setSendBackOpen] = useState(false);
   const [sendBackReason, setSendBackReason] = useState("");
+  const [clarifyOpen, setClarifyOpen] = useState(false);
+  const [clarifyNote, setClarifyNote] = useState("");
 
   // Re-hydrate local state when the item's status changes (e.g., after start/release).
   useEffect(() => {
@@ -180,6 +183,7 @@ function ItemReviewCard({
   const releaseMutation = useReleaseItemReviewMutation();
   const approveMutation = useApproveItemMutation();
   const rejectMutation = useRejectItemMutation();
+  const clarifyMutation = useRequestClarificationMutation();
   const sendBackMutation = useSendBackItemMutation();
 
   const isMyReview = item.status === "IN_REVIEW" && item.reviewerStatus === "you";
@@ -288,6 +292,21 @@ function ItemReviewCard({
     );
   }
 
+  function performClarify() {
+    clarifyMutation.mutate(
+      { requestId, itemId: item.id, body: { clarificationNote: clarifyNote.trim() } },
+      {
+        onSuccess: () => {
+          toast.success("Clarification request sent to the requester.");
+          setClarifyOpen(false);
+          setClarifyNote("");
+        },
+        onError: (err) =>
+          toast.error(err instanceof Error ? err.message : "Couldn't send clarification request."),
+      },
+    );
+  }
+
   const productLabel = item.subFeatureName
     ? `${item.productName} · ${item.subFeatureName}`
     : item.productName;
@@ -358,7 +377,16 @@ function ItemReviewCard({
               setRejectText(justification);
               setRejectOpen(true);
             }}
+            onClarifyClick={() => setClarifyOpen(true)}
           />
+        )}
+
+        {item.status === "NEEDS_CLARIFICATION" && (
+          <AwaitingClarificationPanel clarificationNote={item.clarificationNote ?? ""} item={item} />
+        )}
+
+        {item.status === "RECALLED" && (
+          <RecalledByRequesterPanel />
         )}
 
         {(item.status === "APPROVED" || item.status === "REJECTED") && (
@@ -436,6 +464,31 @@ function ItemReviewCard({
         destructive
         onCancel={() => setSendBackOpen(false)}
         onConfirm={performSendBack}
+      />
+
+      {/* Request clarification */}
+      <ConfirmModal
+        open={clarifyOpen}
+        title="Request clarification?"
+        body={
+          <div>
+            <p className="text-body text-warm-gray-med m-0 mb-3">
+              The requester will see your note and be prompted to update their
+              answers before resubmitting. The item comes back to you once they respond.
+            </p>
+            <Textarea
+              label="What do you need from the requester?"
+              rows={4}
+              value={clarifyNote}
+              onChange={(e) => setClarifyNote(e.currentTarget.value)}
+              maxLength={2000}
+            />
+          </div>
+        }
+        confirmLabel="Send"
+        cancelLabel="Cancel"
+        onCancel={() => { setClarifyOpen(false); setClarifyNote(""); }}
+        onConfirm={performClarify}
       />
     </>
   );
@@ -653,6 +706,7 @@ function InReviewPanel({
   isMyReview,
   onApproveClick,
   onRejectClick,
+  onClarifyClick,
 }: {
   item: EstimateRequestItemDto;
   phases: PhaseMeta[];
@@ -668,6 +722,7 @@ function InReviewPanel({
   isMyReview: boolean;
   onApproveClick: () => void;
   onRejectClick: () => void;
+  onClarifyClick: () => void;
 }) {
   const disabled = !isMyReview;
   const totalHrs = totalHours(snapshot, overrides, complexity);
@@ -763,13 +818,18 @@ function InReviewPanel({
         </div>
       </div>
 
-      <div className="flex items-center justify-end" style={{ gap: 8 }}>
-        <DestructiveButton onClick={onRejectClick} disabled={disabled}>
-          Reject
-        </DestructiveButton>
-        <PrimaryButton onClick={onApproveClick} disabled={approveDisabled}>
-          Approve
-        </PrimaryButton>
+      <div className="flex items-center justify-between" style={{ gap: 8 }}>
+        <SecondaryButton onClick={onClarifyClick} disabled={disabled}>
+          Request clarification
+        </SecondaryButton>
+        <div className="flex items-center" style={{ gap: 8 }}>
+          <DestructiveButton onClick={onRejectClick} disabled={disabled}>
+            Reject
+          </DestructiveButton>
+          <PrimaryButton onClick={onApproveClick} disabled={approveDisabled}>
+            Approve
+          </PrimaryButton>
+        </div>
       </div>
     </div>
   );
@@ -914,6 +974,76 @@ function TerminalItemPanel({
           )}
         </>
       )}
+    </div>
+  );
+}
+
+function AwaitingClarificationPanel({
+  clarificationNote,
+  item,
+}: {
+  clarificationNote: string;
+  item: EstimateRequestItemDto;
+}) {
+  return (
+    <div className="flex flex-col" style={{ gap: 12, marginTop: 8 }}>
+      <div
+        className="rounded-md"
+        style={{
+          background: "rgba(184, 134, 11, 0.07)",
+          border: "1px solid rgba(184, 134, 11, 0.3)",
+          padding: "12px 16px",
+          fontSize: 13,
+          color: "var(--fg-1)",
+        }}
+      >
+        <div className="font-semibold" style={{ marginBottom: 4 }}>
+          Awaiting requester response
+        </div>
+        <p className="m-0 text-warm-gray-med" style={{ fontSize: 13 }}>
+          You requested clarification from the requester. Once they respond, this
+          item will return to your review queue.
+        </p>
+      </div>
+      {clarificationNote && (
+        <div>
+          <SectionLabel>Your clarification note</SectionLabel>
+          <blockquote
+            className="m-0 mt-1"
+            style={{
+              borderLeft: "4px solid rgba(184, 134, 11, 0.45)",
+              paddingLeft: 12,
+              fontStyle: "italic",
+              fontSize: 14,
+              color: "var(--fg-1)",
+            }}
+          >
+            {clarificationNote}
+          </blockquote>
+        </div>
+      )}
+      {item.answers.length > 0 && <QuestionsSection answers={item.answers} />}
+    </div>
+  );
+}
+
+function RecalledByRequesterPanel() {
+  return (
+    <div
+      className="rounded-md mt-2"
+      style={{
+        background: "var(--color-warm-gray-light)",
+        border: "1px solid var(--color-border-strong)",
+        padding: "10px 12px",
+        fontSize: 13,
+        color: "var(--fg-1)",
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+      }}
+    >
+      <Info className="w-3.5 h-3.5 flex-shrink-0" strokeWidth={1.5} />
+      <span>The requester recalled this item. It is no longer in the review queue.</span>
     </div>
   );
 }
@@ -1232,8 +1362,11 @@ function actionLabel(action: string): string {
     case "APPROVED":        return "Approved";
     case "REJECTED":        return "Rejected";
     case "SENT_BACK":       return "Sent back";
-    case "DELETED":         return "Discarded";
-    default:                return action;
+    case "DELETED":                       return "Discarded";
+    case "ITEM_CLARIFICATION_REQUESTED":  return "Clarification requested";
+    case "ITEM_CLARIFICATION_ANSWERED":   return "Clarification answered";
+    case "ITEM_RECALLED":                 return "Item recalled";
+    default:                              return action;
   }
 }
 

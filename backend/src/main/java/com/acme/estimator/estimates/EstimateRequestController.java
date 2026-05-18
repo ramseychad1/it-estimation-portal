@@ -150,7 +150,7 @@ public class EstimateRequestController {
         return service.reviseAndResubmitItem(id, itemId, body, currentUser(principal));
     }
 
-    /** Drop a single REJECTED item from the request. Returns the updated request. */
+    /** Drop a single REJECTED or RECALLED item from the request. Returns the updated request. */
     @DeleteMapping("/{id}/items/{itemId}")
     public EstimateRequestDetail dropItem(
         @PathVariable Long id,
@@ -158,6 +158,16 @@ public class EstimateRequestController {
         @AuthenticationPrincipal AppUserDetails principal
     ) {
         return service.dropItem(id, itemId, currentUser(principal));
+    }
+
+    /** Requester recalls a SUBMITTED or IN_REVIEW item back to editable RECALLED state. */
+    @PostMapping("/{id}/items/{itemId}/recall")
+    public EstimateRequestDetail recallItem(
+        @PathVariable Long id,
+        @PathVariable Long itemId,
+        @AuthenticationPrincipal AppUserDetails principal
+    ) {
+        return service.recallItem(id, itemId, currentUser(principal));
     }
 
     @GetMapping("/{id}/history")

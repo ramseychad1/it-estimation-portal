@@ -11,5 +11,9 @@ public enum EstimateStatus {
     SUBMITTED,
     IN_REVIEW,
     APPROVED,
-    REJECTED
+    REJECTED,
+    /** SO requested clarification from the requester. Item stays assigned to the SO. */
+    NEEDS_CLARIFICATION,
+    /** Requester pulled the item back from SUBMITTED or IN_REVIEW. Returns to editable state. */
+    RECALLED
 }
