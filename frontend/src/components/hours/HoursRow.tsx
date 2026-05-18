@@ -1,6 +1,6 @@
 import { forwardRef, useImperativeHandle, useRef } from "react";
 import { Undo2 } from "lucide-react";
-import { COLUMNS, fmtCost, fmtHrs, GRID_COLS, GRID_COLS_NO_COST, rowSum, type RowKey, type RowValues } from "./columns";
+import { COLUMNS, GRID_COLS, GRID_COLS_NO_COST, type RowKey, type RowValues } from "./columns";
 import { HoursCell, type HoursCellHandle } from "./HoursCell";
 import { ReadOnlyCell } from "./ReadOnlyCell";
 
@@ -25,12 +25,9 @@ interface HoursRowProps {
   onPasteAt?: (colIndex: number, rows: (number | null)[][]) => void;
   disabled?: boolean;
   reviewer?: ReviewerCellMeta;
-  /** When provided, renders a "Total $" cell using Med complexity (template-editor)
-   *  or the reviewer's chosen complexity column. */
+  /** Controls which gridTemplateColumns is used so body rows stay aligned with the footer. */
   onshoreRate?: number;
   offshoreRate?: number;
-  /** Which complexity column to use for the cost cell. Defaults to "Med". */
-  costComplexity?: "Low" | "Med" | "High";
 }
 
 export interface ReviewerCellMeta {
@@ -67,7 +64,7 @@ export interface ReviewerCellMeta {
  */
 export const HoursRow = forwardRef<HoursRowHandle, HoursRowProps>(function HoursRow(
   { phase, values, onChange, errors, onMoveVertical, onPasteAt, disabled, reviewer,
-    onshoreRate, offshoreRate, costComplexity = "Med" },
+    onshoreRate, offshoreRate },
   ref,
 ) {
   const showCost = onshoreRate != null && offshoreRate != null;
@@ -196,26 +193,6 @@ export const HoursRow = forwardRef<HoursRowHandle, HoursRowProps>(function Hours
         );
       })}
 
-      <span
-        className="text-warm-gray-med tabular-nums"
-        style={{ fontSize: 12, textAlign: "right" }}
-        aria-label={`Total hours: ${fmtHrs(rowSum(values))}`}
-      >
-        {fmtHrs(rowSum(values))}
-      </span>
-
-      {showCost && (
-        <span
-          className="text-warm-gray-med tabular-nums"
-          style={{ fontSize: 12, textAlign: "right" }}
-          aria-label={`Total cost at ${costComplexity}`}
-        >
-          {fmtCost(
-            values[`onshore${costComplexity}` as RowKey] * onshoreRate! +
-            values[`offshore${costComplexity}` as RowKey] * offshoreRate!,
-          )}
-        </span>
-      )}
     </div>
   );
 });

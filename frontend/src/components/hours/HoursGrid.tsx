@@ -170,7 +170,7 @@ export function HoursGrid(props: HoursGridProps) {
           );
         })}
         <span style={{ textAlign: "right" }}>Total Hrs</span>
-        {showCost && <span style={{ textAlign: "right" }}>Total $</span>}
+        {showCost && <span style={{ textAlign: "right" }}>Est. Cost</span>}
       </div>
 
       {/* Body */}
@@ -213,7 +213,6 @@ export function HoursGrid(props: HoursGridProps) {
             disabled={disabled}
             onshoreRate={onshoreRate}
             offshoreRate={offshoreRate}
-            costComplexity="Med"
             onChange={(key, next) => {
               if (isReviewer) {
                 const r = props as ReviewerProps;
@@ -238,104 +237,86 @@ export function HoursGrid(props: HoursGridProps) {
         );
       })}
 
-      {/* Grand total */}
-      <div
-        role="row"
-        className="grid items-center"
-        style={{
-          gridTemplateColumns: gridCols,
-          gap: 8,
-          padding: "10px 12px",
-          fontSize: 13,
-          fontWeight: 600,
-          color: "var(--color-near-black)",
-          background: "var(--color-warm-gray-light)",
-          borderTop: "1px solid var(--color-border-strong)",
-        }}
-      >
-        <span className="uppercase" style={{ fontSize: 11, letterSpacing: "0.06em" }}>
-          Grand total
-        </span>
-        {COLUMNS.map((col) => {
-          const highlighted = reviewerEditableKeys?.has(col.key) ?? false;
-          return (
+      {/* Per-complexity summary rows — Low / Med / High */}
+      {([
+        { label: "Low",  onsKey: "onshoreLow"  as RowKey, offKey: "offshoreLow"  as RowKey },
+        { label: "Med",  onsKey: "onshoreMed"  as RowKey, offKey: "offshoreMed"  as RowKey },
+        { label: "High", onsKey: "onshoreHigh" as RowKey, offKey: "offshoreHigh" as RowKey },
+      ] as const).map(({ label, onsKey, offKey }, i) => {
+        const onsHrs = grandTotals[onsKey];
+        const offHrs = grandTotals[offKey];
+        const totalHrs = onsHrs + offHrs;
+        const isReviewerActive = reviewerEditableKeys?.has(onsKey) ?? false;
+        return (
+          <div
+            key={label}
+            role="row"
+            className="grid items-center"
+            style={{
+              gridTemplateColumns: gridCols,
+              gap: 8,
+              padding: "9px 12px",
+              fontSize: 13,
+              fontWeight: 600,
+              color: "var(--color-near-black)",
+              background: isReviewerActive
+                ? "rgba(187,221,230,0.18)"
+                : "var(--color-warm-gray-light)",
+              borderTop: i === 0
+                ? "2px solid var(--color-border-strong)"
+                : "1px solid var(--color-border-strong)",
+            }}
+          >
             <span
-              key={col.key}
-              className="tabular-nums"
+              className="uppercase"
               style={{
-                textAlign: "right",
-                background: highlighted ? "var(--color-light-blue-soft)" : undefined,
-                padding: highlighted ? "2px 4px" : undefined,
-                borderRadius: highlighted ? 3 : undefined,
+                fontSize: 11,
+                letterSpacing: "0.06em",
+                color: isReviewerActive ? "var(--color-near-black)" : "var(--color-warm-gray-med)",
+                fontWeight: isReviewerActive ? 700 : 600,
               }}
-              aria-label={`${col.label} total`}
             >
-              {fmtHrs(grandTotals[col.key])}
+              {label}
             </span>
-          );
-        })}
-        <span
-          className="tabular-nums"
-          style={{ textAlign: "right" }}
-          aria-label="Grid total hours"
-        >
-          {fmtHrs(COLUMNS.reduce((sum, c) => sum + grandTotals[c.key], 0))}
-        </span>
-      </div>
-
-      {/* Estimate Total $ — per-column cost breakdown, only when rates are available */}
-      {showCost && (
-        <div
-          role="row"
-          className="grid items-center"
-          style={{
-            gridTemplateColumns: gridCols,
-            gap: 8,
-            padding: "10px 12px",
-            fontSize: 12,
-            fontWeight: 600,
-            color: "var(--color-near-black)",
-            background: "var(--color-warm-gray-light)",
-            borderTop: "1px solid var(--color-border-strong)",
-          }}
-        >
-          <span className="uppercase" style={{ fontSize: 11, letterSpacing: "0.06em" }}>
-            Estimate Total $
-          </span>
-          {COLUMNS.map((col) => {
-            const rate = col.group === "onshore" ? onshoreRate! : offshoreRate!;
-            return (
+            {COLUMNS.map((col) => {
+              const isActive = col.key === onsKey || col.key === offKey;
+              return (
+                <span
+                  key={col.key}
+                  className="tabular-nums"
+                  style={{
+                    textAlign: "right",
+                    color: isActive ? "var(--color-near-black)" : "var(--color-warm-gray-med)",
+                    background: isActive ? "var(--color-light-blue-soft)" : undefined,
+                    padding: isActive ? "2px 4px" : undefined,
+                    borderRadius: isActive ? 3 : undefined,
+                    fontWeight: isActive ? 700 : 400,
+                  }}
+                  aria-label={isActive ? `${label} ${col.label} total` : undefined}
+                >
+                  {isActive ? fmtHrs(grandTotals[col.key]) : "—"}
+                </span>
+              );
+            })}
+            <span
+              className="tabular-nums"
+              style={{ textAlign: "right", fontWeight: isReviewerActive ? 700 : 600 }}
+              aria-label={`${label} total hours`}
+            >
+              {fmtHrs(totalHrs)}
+            </span>
+            {showCost && (
               <span
-                key={col.key}
                 className="tabular-nums"
-                style={{ textAlign: "right" }}
-                aria-label={`${col.label} estimated cost`}
+                style={{ textAlign: "right", fontWeight: 600 }}
+                aria-label={`${label} estimated cost`}
               >
-                {fmtCost(grandTotals[col.key] * rate)}
+                {fmtCost(onsHrs * onshoreRate! + offHrs * offshoreRate!)}
               </span>
-            );
-          })}
-          <span
-            className="tabular-nums"
-            style={{ textAlign: "right" }}
-            aria-label="Estimate total hours"
-          >
-            {fmtHrs(COLUMNS.reduce((sum, c) => sum + grandTotals[c.key], 0))}
-          </span>
-          <span
-            className="tabular-nums"
-            style={{ textAlign: "right" }}
-            aria-label="Estimate total cost"
-          >
-            {fmtCost(
-              COLUMNS.reduce((sum, col) => {
-                const rate = col.group === "onshore" ? onshoreRate! : offshoreRate!;
-                return sum + grandTotals[col.key] * rate;
-              }, 0),
             )}
-          </span>
-        </div>
-      )}
+          </div>
+        );
+      })}
     </div>
   );
 }
