@@ -5,13 +5,7 @@
    Never hard-code hex values in components — use these vars.
    ========================================================================= */
 
-@font-face {
-  font-family: "Inter";
-  font-style: normal;
-  font-weight: 100 900;
-  font-display: swap;
-  src: url("https://fonts.gstatic.com/s/inter/v18/UcCO3FwrK3iLTeHuS_nVMrMxCp50ojIa1ZL7W0Q5nw.woff2") format("woff2");
-}
+@import "@fontsource-variable/inter";
 
 :root {
   /* ---- Color: brand ---------------------------------------------------- */
