@@ -712,6 +712,34 @@ function ProjectSummary({
   );
 }
 
+// ── Shared page chrome ────────────────────────────────────────────────────────
+
+function PageHeader({ requestId }: { requestId: number }) {
+  return (
+    <View style={s.headerBand}>
+      <Text style={s.headerWordmark}>IT Estimation Portal</Text>
+      <View style={s.headerRight}>
+        <Text style={s.headerTitle}>ESTIMATE REPORT</Text>
+        <Text style={s.headerSubtitle}>Request #{requestId}</Text>
+      </View>
+    </View>
+  );
+}
+
+function PageFooter({ generatedAt }: { generatedAt: string }) {
+  return (
+    <View style={s.footer} fixed>
+      <Text style={s.footerText}>IT Estimation Portal  ·  Confidential  ·  Internal Use Only</Text>
+      <Text
+        style={s.footerText}
+        render={({ pageNumber, totalPages }) =>
+          `Generated ${fmtDate(generatedAt)}  ·  Page ${pageNumber} of ${totalPages}`
+        }
+      />
+    </View>
+  );
+}
+
 // ── Main document ─────────────────────────────────────────────────────────────
 
 export interface EstimatePdfProps {
@@ -750,17 +778,10 @@ export function EstimatePdfDocument({
       author="IT Estimation Portal"
       creator="IT Estimation Portal"
     >
+      {/* ── Page 1: Cover / Project Summary ── */}
       <Page size="LETTER" style={s.page}>
-        {/* ── Header band (fixed across all pages) ── */}
-        <View style={s.headerBand} fixed>
-          <Text style={s.headerWordmark}>IT Estimation Portal</Text>
-          <View style={s.headerRight}>
-            <Text style={s.headerTitle}>ESTIMATE REPORT</Text>
-            <Text style={s.headerSubtitle}>Request #{detail.id}</Text>
-          </View>
-        </View>
+        <PageHeader requestId={detail.id} />
 
-        {/* ── Body ── */}
         <View style={s.body}>
           {/* Metadata */}
           <View style={s.metaBlock}>
@@ -816,33 +837,29 @@ export function EstimatePdfDocument({
             )}
           </View>
 
-          {/* Per-item sections */}
-          {approvedItems.map((item, idx) => (
+          {/* Project Summary always on page 1 */}
+          <ProjectSummary items={approvedItems} rate={currentRate} />
+        </View>
+
+        <PageFooter generatedAt={generatedAt} />
+      </Page>
+
+      {/* ── One page per approved item ── */}
+      {approvedItems.map((item, idx) => (
+        <Page key={item.id} size="LETTER" style={s.page}>
+          <PageHeader requestId={detail.id} />
+
+          <View style={s.body}>
             <ItemSection
-              key={item.id}
               item={item}
               index={idx + 1}
               rate={currentRate}
             />
-          ))}
+          </View>
 
-          {/* Project summary (only when there are multiple items) */}
-          {approvedItems.length > 1 && (
-            <ProjectSummary items={approvedItems} rate={currentRate} />
-          )}
-        </View>
-
-        {/* ── Page footer (fixed) ── */}
-        <View style={s.footer} fixed>
-          <Text style={s.footerText}>IT Estimation Portal  ·  Confidential  ·  Internal Use Only</Text>
-          <Text
-            style={s.footerText}
-            render={({ pageNumber, totalPages }) =>
-              `Generated ${fmtDate(generatedAt)}  ·  Page ${pageNumber} of ${totalPages}`
-            }
-          />
-        </View>
-      </Page>
+          <PageFooter generatedAt={generatedAt} />
+        </Page>
+      ))}
     </Document>
   );
 }
