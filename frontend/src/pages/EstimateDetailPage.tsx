@@ -33,6 +33,7 @@ import {
 import { useProductsQuery } from "../lib/queries/products";
 import { useSubFeaturesForProductQuery } from "../lib/queries/subFeatures";
 import { useRatesPageQuery } from "../lib/queries/rates";
+import { useAuth } from "../lib/auth";
 import { useUserDisplay } from "../lib/userDisplay";
 import { relativeTime } from "../lib/relativeTime";
 import type { EstimatePdfProps } from "../components/EstimatePdf";
@@ -78,6 +79,8 @@ export function EstimateDetailPage() {
   }
 
   const detail = detailQuery.data;
+  const { user: currentUser } = useAuth();
+  const isOwner = currentUser != null && currentUser.id === detail.requesterId;
   const { variant, label } = estimateStatusBadge(detail.derivedStatus);
 
   const isDraft = detail.derivedStatus === "DRAFT";
@@ -244,10 +247,11 @@ export function EstimateDetailPage() {
                 key={it.id}
                 item={it}
                 requestId={detail.id}
+                isOwner={isOwner}
                 onDiscardRequested={() => setDiscardOpen(true)}
               />
             ) : (
-              <SubmittedItemCard key={it.id} item={it} requestId={detail.id} />
+              <SubmittedItemCard key={it.id} item={it} requestId={detail.id} isOwner={isOwner} />
             )
           )}
           <ActivityCard history={historyQuery.data ?? []} loading={historyQuery.isLoading} />
@@ -274,10 +278,11 @@ export function EstimateDetailPage() {
                 key={it.id}
                 item={it}
                 requestId={detail.id}
+                isOwner={isOwner}
                 onDiscardRequested={() => setDiscardOpen(true)}
               />
             ) : (
-              <SubmittedItemCard key={it.id} item={it} requestId={detail.id} />
+              <SubmittedItemCard key={it.id} item={it} requestId={detail.id} isOwner={isOwner} />
             )
           )}
           <ActivityCard history={historyQuery.data ?? []} loading={historyQuery.isLoading} />
@@ -296,7 +301,7 @@ export function EstimateDetailPage() {
           <RequestSummaryCard detail={detail} />
           <PendingReviewPanel status={detail.derivedStatus} />
           {detail.items.map((it) => (
-            <SubmittedItemCard key={it.id} item={it} requestId={detail.id} />
+            <SubmittedItemCard key={it.id} item={it} requestId={detail.id} isOwner={isOwner} />
           ))}
           <ActivityCard history={historyQuery.data ?? []} loading={historyQuery.isLoading} />
         </div>
@@ -540,7 +545,7 @@ function PendingReviewPanel({ status }: { status: string }) {
 
 // ── Per-item card: SUBMITTED / IN_REVIEW (read-only confirmation, optional recall) ──
 
-function SubmittedItemCard({ item, requestId }: { item: EstimateRequestItemDto; requestId?: number }) {
+function SubmittedItemCard({ item, requestId, isOwner = false }: { item: EstimateRequestItemDto; requestId?: number; isOwner?: boolean }) {
   const toast = useToast();
   const recallMutation = useRecallItemMutation();
   const [recallOpen, setRecallOpen] = useState(false);
@@ -550,7 +555,7 @@ function SubmittedItemCard({ item, requestId }: { item: EstimateRequestItemDto; 
     : item.productName;
 
   const { variant, label } = estimateStatusBadge(item.status);
-  const canRecall = requestId != null && (item.status === "SUBMITTED" || item.status === "IN_REVIEW");
+  const canRecall = isOwner && requestId != null && (item.status === "SUBMITTED" || item.status === "IN_REVIEW");
   const isInReviewItem = item.status === "IN_REVIEW";
 
   const kebabItems: KebabMenuItem[] = canRecall ? [
@@ -1294,10 +1299,12 @@ function ItemRevisionCard({ item, requestId, currentRate, onDiscardRequested }: 
 function ClarificationNeededItemCard({
   item,
   requestId,
+  isOwner,
   onDiscardRequested,
 }: {
   item: EstimateRequestItemDto;
   requestId: number;
+  isOwner: boolean;
   onDiscardRequested: () => void;
 }) {
   const toast = useToast();
@@ -1400,7 +1407,7 @@ function ClarificationNeededItemCard({
           onChange={(qid, text) => setLocalAnswers((prev) => new Map(prev).set(qid, text))}
         />
       )}
-      {!editMode && (
+      {isOwner && !editMode && (
         <div className="flex items-center mt-4" style={{ gap: 8 }}>
           <PrimaryButton onClick={() => { setLocalAnswers(new Map(item.answers.map((a) => [a.questionId, a.answerText]))); setEditMode(true); }}>
             Respond to clarification
@@ -1408,7 +1415,7 @@ function ClarificationNeededItemCard({
           <KebabMenu items={kebabItems} ariaLabel="Item actions" />
         </div>
       )}
-      {editMode && (
+      {isOwner && editMode && (
         <div className="flex items-center mt-4" style={{ gap: 8 }}>
           <PrimaryButton onClick={submitResponse} disabled={reviseMutation.isPending}>
             {reviseMutation.isPending ? "Submitting…" : "Submit response"}
@@ -1450,10 +1457,12 @@ function ClarificationNeededItemCard({
 function RecalledItemCard({
   item,
   requestId,
+  isOwner,
   onDiscardRequested,
 }: {
   item: EstimateRequestItemDto;
   requestId: number;
+  isOwner: boolean;
   onDiscardRequested: () => void;
 }) {
   const toast = useToast();
@@ -1533,7 +1542,7 @@ function RecalledItemCard({
         style={{ background: "var(--color-warm-gray-light)", border: "1px solid var(--color-border-strong)", padding: "10px 12px", fontSize: 13, color: "var(--fg-2)", gap: 8 }}
       >
         <Info className="w-3.5 h-3.5 flex-shrink-0" strokeWidth={1.5} />
-        <span>You recalled this item. Update your answers and resubmit when ready.</span>
+        <span>{isOwner ? "You recalled this item. Update your answers and resubmit when ready." : "The requester recalled this item."}</span>
       </div>
       {!editMode ? (
         <ItemAnswerList answers={item.answers} />
@@ -1544,7 +1553,7 @@ function RecalledItemCard({
           onChange={(qid, text) => setLocalAnswers((prev) => new Map(prev).set(qid, text))}
         />
       )}
-      {!editMode && (
+      {isOwner && !editMode && (
         <div className="flex items-center mt-4" style={{ gap: 8 }}>
           <PrimaryButton onClick={() => { setLocalAnswers(new Map(item.answers.map((a) => [a.questionId, a.answerText]))); setEditMode(true); }}>
             Edit & resubmit
@@ -1552,7 +1561,7 @@ function RecalledItemCard({
           <KebabMenu items={kebabItems} ariaLabel="Item actions" />
         </div>
       )}
-      {editMode && (
+      {isOwner && editMode && (
         <div className="flex items-center mt-4" style={{ gap: 8 }}>
           <PrimaryButton onClick={submitResubmit} disabled={reviseMutation.isPending}>
             {reviseMutation.isPending ? "Submitting…" : "Resubmit"}
