@@ -861,6 +861,56 @@ function CollapsibleApprovedItemCard({
           {isApproved && item.complexity && currentRate && (
             <CostSummary lines={item.phaseLines} complexity={item.complexity} currentRate={currentRate} />
           )}
+          {item.answers.length > 0 && (
+            <div className="mt-4">
+              <SectionLabel>Questions &amp; Answers</SectionLabel>
+              <div className="mt-2">
+                <ItemAnswerList answers={item.answers} />
+              </div>
+            </div>
+          )}
+          {item.clarificationNote && (
+            <div className="mt-4">
+              <SectionLabel>Clarification</SectionLabel>
+              <div
+                className="mt-2 rounded-md overflow-hidden"
+                style={{ border: "1px solid var(--color-warm-gray-light)" }}
+              >
+                <div
+                  style={{
+                    padding: "10px 12px",
+                    background: "rgba(184,134,11,0.04)",
+                    borderBottom: item.clarificationResponse
+                      ? "1px solid var(--color-warm-gray-light)"
+                      : undefined,
+                  }}
+                >
+                  <div
+                    className="text-warm-gray-med font-medium uppercase"
+                    style={{ fontSize: 11, letterSpacing: "0.04em", marginBottom: 4 }}
+                  >
+                    Reviewer's question
+                  </div>
+                  <p className="m-0" style={{ fontSize: 13, fontStyle: "italic", color: "var(--fg-1)" }}>
+                    {item.clarificationNote}
+                  </p>
+                </div>
+                {item.clarificationResponse && (
+                  <div style={{ padding: "10px 12px" }}>
+                    <div
+                      className="text-warm-gray-med font-medium uppercase"
+                      style={{ fontSize: 11, letterSpacing: "0.04em", marginBottom: 4 }}
+                    >
+                      Requester's response
+                    </div>
+                    <p className="m-0 text-near-black" style={{ fontSize: 13, whiteSpace: "pre-wrap" }}>
+                      {item.clarificationResponse}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </section>

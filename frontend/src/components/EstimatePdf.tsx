@@ -640,6 +640,23 @@ function ItemSection({
           ))}
         </View>
       )}
+
+      {/* Clarification exchange */}
+      {item.clarificationNote && (
+        <View style={s.qaBlock}>
+          <Text style={s.qaSectionLabel}>Clarification Exchange</Text>
+          <View style={s.qaItem}>
+            <Text style={s.questionText}>Reviewer's Question</Text>
+            <Text style={s.justificationText}>{item.clarificationNote}</Text>
+          </View>
+          {item.clarificationResponse && (
+            <View style={s.qaItem}>
+              <Text style={s.questionText}>Requester's Response</Text>
+              <Text style={s.answerText}>{item.clarificationResponse}</Text>
+            </View>
+          )}
+        </View>
+      )}
     </View>
   );
 }
