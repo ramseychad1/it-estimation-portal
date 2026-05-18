@@ -108,6 +108,7 @@ function detailResponse(d: MockDetail) {
         phaseLines: d.phaseLines,
         answers: d.answers.map((a) => ({ ...a, attachments: [] })),
         clarificationNote: null,
+        clarificationResponse: null,
       },
     ],
   });

@@ -657,6 +657,12 @@ public class EstimateRequestService {
         Long preservedReviewerId = isNeedsClarification ? item.getReviewerId() : null;
 
         // Clear review state
+        // Save clarification response before clearing review state
+        if (isNeedsClarification && dto.clarificationResponse() != null) {
+            String response = dto.clarificationResponse().trim();
+            item.setClarificationResponse(response.isEmpty() ? null : response);
+        }
+
         item.setReviewerId(null);
         item.setReviewedAt(null);
         item.setComplexity(null);
@@ -869,6 +875,7 @@ public class EstimateRequestService {
 
         item.setStatus(EstimateStatus.NEEDS_CLARIFICATION);
         item.setClarificationNote(note);
+        item.setClarificationResponse(null); // clear any previous response
         // reviewer_id intentionally kept — item routes back to this SO on resubmit
         itemRepository.save(item);
 
@@ -1555,7 +1562,8 @@ public class EstimateRequestService {
             item.getOriginalProductId(),
             originalProductName,
             isReviewable,
-            item.getClarificationNote()
+            item.getClarificationNote(),
+            item.getClarificationResponse()
         );
     }
 

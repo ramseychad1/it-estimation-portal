@@ -104,6 +104,8 @@ export interface EstimateRequestItemDto {
   isReviewable: boolean;
   /** SO's clarification question; non-null only when status is NEEDS_CLARIFICATION. */
   clarificationNote: string | null;
+  /** Requester's free-form reply; non-null once the requester has responded. */
+  clarificationResponse: string | null;
 }
 
 // Updated: parent-level detail with items[]
@@ -237,6 +239,8 @@ export interface ReviseAndResubmitRequest {
   productId?: number | null;
   subFeatureId?: number | null;
   answers?: AnswerInput[];
+  /** Requester's free-form reply to the SO's clarification note. */
+  clarificationResponse?: string | null;
 }
 
 export function reviseAndResubmitItem(

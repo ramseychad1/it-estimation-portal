@@ -103,6 +103,14 @@ public class EstimateRequestItem {
     private String clarificationNote;
 
     /**
+     * Requester's free-form reply when responding to a clarification request.
+     * Saved on resubmit so the reviewer can read it when the item re-enters IN_REVIEW.
+     * Cleared when the SO raises a new clarification request.
+     */
+    @Column(name = "clarification_response")
+    private String clarificationResponse;
+
+    /**
      * Incremented each time the requester submits a revision for this item.
      * Displayed in the Revision History tab.
      */

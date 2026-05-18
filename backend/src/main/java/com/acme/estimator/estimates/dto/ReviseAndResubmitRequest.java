@@ -19,5 +19,7 @@ import java.util.List;
 public record ReviseAndResubmitRequest(
     Long productId,
     Long subFeatureId,
-    @Valid List<AnswerInput> answers
+    @Valid List<AnswerInput> answers,
+    /** Requester's free-form reply to the SO's clarification note. Optional. */
+    String clarificationResponse
 ) {}

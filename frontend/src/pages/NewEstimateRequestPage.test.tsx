@@ -100,6 +100,7 @@ function makeDraftDetail(d: MockDraft) {
           };
         }),
         clarificationNote: null,
+        clarificationResponse: null,
       };
     }),
   };

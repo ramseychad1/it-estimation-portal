@@ -733,6 +733,24 @@ function InReviewPanel({
 
   return (
     <div className="flex flex-col" style={{ gap: 16, marginTop: 8 }}>
+      {item.clarificationResponse && (
+        <div
+          className="rounded-md"
+          style={{
+            background: "rgba(184, 134, 11, 0.07)",
+            border: "1px solid rgba(184, 134, 11, 0.3)",
+            padding: "12px 16px",
+            fontSize: 13,
+          }}
+        >
+          <div className="font-semibold mb-1" style={{ color: "var(--color-warning)" }}>
+            Requester's clarification response
+          </div>
+          <p className="m-0" style={{ color: "var(--fg-1)", whiteSpace: "pre-wrap" }}>
+            {item.clarificationResponse}
+          </p>
+        </div>
+      )}
       <div>
         <SectionLabel>Complexity</SectionLabel>
         <div className="mt-2">

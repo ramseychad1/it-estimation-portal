@@ -55,5 +55,7 @@ public record EstimateRequestItemDto(
     boolean isReviewable,
     // ---- Phase 10 fields ------------------------------------------------
     /** SO's clarification question; non-null only when status is NEEDS_CLARIFICATION. */
-    String clarificationNote
+    String clarificationNote,
+    /** Requester's reply to the clarification; non-null once the requester has responded. */
+    String clarificationResponse
 ) {}

@@ -1315,6 +1315,7 @@ function ClarificationNeededItemCard({
   const [localAnswers, setLocalAnswers] = useState<Map<number, string>>(() =>
     new Map(item.answers.map((a) => [a.questionId, a.answerText])),
   );
+  const [localResponse, setLocalResponse] = useState("");
   const [changeProductOpen, setChangeProductOpen] = useState(false);
   const [selectedProductId, setSelectedProductId] = useState<number>(item.productId);
   const [selectedSubFeatureId, setSelectedSubFeatureId] = useState<number | null>(item.subFeatureId);
@@ -1324,6 +1325,7 @@ function ClarificationNeededItemCard({
   useEffect(() => {
     if (!editMode) {
       setLocalAnswers(new Map(item.answers.map((a) => [a.questionId, a.answerText])));
+      setLocalResponse("");
       setSelectedProductId(item.productId);
       setSelectedSubFeatureId(item.subFeatureId);
     }
@@ -1341,6 +1343,7 @@ function ClarificationNeededItemCard({
       ...(selectedProductId !== item.productId && { productId: selectedProductId }),
       ...(selectedSubFeatureId !== item.subFeatureId && { subFeatureId: selectedSubFeatureId }),
       answers,
+      ...(localResponse.trim() && { clarificationResponse: localResponse.trim() }),
     };
     reviseMutation.mutate(
       { id: requestId, itemId: item.id, body },
@@ -1407,9 +1410,24 @@ function ClarificationNeededItemCard({
           onChange={(qid, text) => setLocalAnswers((prev) => new Map(prev).set(qid, text))}
         />
       )}
+      {editMode && (
+        <div className="mt-4">
+          <label className="block font-medium mb-1" style={{ fontSize: 13 }}>
+            Your response to the reviewer
+          </label>
+          <textarea
+            value={localResponse}
+            onChange={(e) => setLocalResponse(e.target.value)}
+            rows={4}
+            placeholder="Explain your response or any changes you've made…"
+            className="w-full rounded border resize-y"
+            style={{ fontSize: 13, padding: "8px 10px", borderColor: "var(--color-border-strong)", outline: "none", background: "var(--bg-surface)" }}
+          />
+        </div>
+      )}
       {isOwner && !editMode && (
         <div className="flex items-center mt-4" style={{ gap: 8 }}>
-          <PrimaryButton onClick={() => { setLocalAnswers(new Map(item.answers.map((a) => [a.questionId, a.answerText]))); setEditMode(true); }}>
+          <PrimaryButton onClick={() => { setLocalAnswers(new Map(item.answers.map((a) => [a.questionId, a.answerText]))); setLocalResponse(""); setEditMode(true); }}>
             Respond to clarification
           </PrimaryButton>
           <KebabMenu items={kebabItems} ariaLabel="Item actions" />

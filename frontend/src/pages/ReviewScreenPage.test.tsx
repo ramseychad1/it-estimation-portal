@@ -89,6 +89,7 @@ function fullDetail(d: MockDetail) {
           { questionId: 100, questionText: "How many users?", required: true, answerText: "50000", attachments: [] },
         ],
         clarificationNote: null,
+        clarificationResponse: null,
         isReviewable: d.isReviewable,
         rejectionReason: d.rejectionReason,
         revisionCount: d.revisionCount,

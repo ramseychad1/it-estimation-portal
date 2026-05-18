@@ -259,6 +259,7 @@ CREATE TABLE estimate_request_items (
     original_product_id      BIGINT,
     -- Phase 10: clarification/recall
     clarification_note       TEXT,
+    clarification_response   TEXT,
     created_at               TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at               TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT estimate_request_items_pk PRIMARY KEY (id),
