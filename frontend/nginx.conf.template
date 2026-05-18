@@ -48,6 +48,10 @@ server {
         # Don't let nginx eat 4xx/5xx response bodies — the SPA needs
         # the JSON error payload from Spring Boot's ApiException handler.
         proxy_intercept_errors off;
+        # Allow file uploads up to 11 MB (matches Spring Boot multipart limit).
+        # nginx defaults to 1 MB; without this it returns 413 before the
+        # request reaches Spring.
+        client_max_body_size 11m;
     }
 
     # SPA fallback. /index.html is always served fresh so a deploy that
