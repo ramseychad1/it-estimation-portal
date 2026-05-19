@@ -691,10 +691,60 @@ function Step1({
             gap: "20px 24px",
           }}
         >
+          {/* Client */}
+          <div>
+            <label
+              htmlFor="request-client"
+              className="block text-near-black font-medium"
+              style={{ fontSize: 13, marginBottom: 4 }}
+            >
+              Client <span className="text-cardinal-red">*</span>
+            </label>
+            <ComboboxInput
+              id="request-client"
+              placeholder="Search clients…"
+              options={clients.map((c) => ({ id: c.id, label: c.name }))}
+              value={clientId}
+              onChange={onClientChange}
+              onClear={onClientClear}
+              onCreateNew={onOpenNewClientModal}
+              createNewLabel="New client"
+              required
+            />
+          </div>
+
+          {/* Program */}
+          <div>
+            <label
+              htmlFor="request-program"
+              className="block text-near-black font-medium"
+              style={{ fontSize: 13, marginBottom: 4 }}
+            >
+              Program <span className="text-cardinal-red">*</span>
+              {clientId == null && (
+                <span className="text-warm-gray-med font-normal" style={{ marginLeft: 6 }}>
+                  (select a client first)
+                </span>
+              )}
+            </label>
+            <ComboboxInput
+              id="request-program"
+              placeholder="Search programs…"
+              options={programs.map((p) => ({ id: p.id, label: p.name }))}
+              value={programId}
+              onChange={onProgramChange}
+              onClear={onProgramClear}
+              onCreateNew={onOpenNewProgramModal}
+              createNewLabel="New program"
+              disabled={clientId == null}
+              required
+            />
+          </div>
+
           <div>
             <TextInput
               id="request-title"
-              label="Estimate name"
+              label="Estimate title"
               value={title}
               onChange={(e) => onTitleChange(e.currentTarget.value)}
               maxLength={255}
@@ -706,7 +756,7 @@ function Step1({
               className="block text-near-black font-medium"
               style={{ fontSize: 13, marginBottom: 4 }}
             >
-              Go-live date <span className="text-cardinal-red">*</span>
+              Requested go live <span className="text-cardinal-red">*</span>
             </label>
             <input
               type="date"
@@ -808,56 +858,6 @@ function Step1({
                 </label>
               ))}
             </div>
-          </div>
-
-          {/* Client */}
-          <div>
-            <label
-              htmlFor="request-client"
-              className="block text-near-black font-medium"
-              style={{ fontSize: 13, marginBottom: 4 }}
-            >
-              Client <span className="text-cardinal-red">*</span>
-            </label>
-            <ComboboxInput
-              id="request-client"
-              placeholder="Search clients…"
-              options={clients.map((c) => ({ id: c.id, label: c.name }))}
-              value={clientId}
-              onChange={onClientChange}
-              onClear={onClientClear}
-              onCreateNew={onOpenNewClientModal}
-              createNewLabel="New client"
-              required
-            />
-          </div>
-
-          {/* Program */}
-          <div>
-            <label
-              htmlFor="request-program"
-              className="block text-near-black font-medium"
-              style={{ fontSize: 13, marginBottom: 4 }}
-            >
-              Program <span className="text-cardinal-red">*</span>
-              {clientId == null && (
-                <span className="text-warm-gray-med font-normal" style={{ marginLeft: 6 }}>
-                  (select a client first)
-                </span>
-              )}
-            </label>
-            <ComboboxInput
-              id="request-program"
-              placeholder="Search programs…"
-              options={programs.map((p) => ({ id: p.id, label: p.name }))}
-              value={programId}
-              onChange={onProgramChange}
-              onClear={onProgramClear}
-              onCreateNew={onOpenNewProgramModal}
-              createNewLabel="New program"
-              disabled={clientId == null}
-              required
-            />
           </div>
         </div>
       </section>
@@ -2072,7 +2072,7 @@ function Step3({
         >
           <KVRow label="Name" value={title} />
           {description && <KVRow label="Description" value={description} />}
-          <KVRow label="Go-live date" value={formattedDate ?? "Unknown"} />
+          <KVRow label="Requested go live" value={formattedDate ?? "Unknown"} />
           {clientName && <KVRow label="Client" value={clientName} />}
           {programName && <KVRow label="Program" value={programName} />}
           {categoryName && <KVRow label="Category" value={categoryName} />}
