@@ -265,9 +265,12 @@ class AdminSendBackControllerIntegrationTest {
     }
 
     private Long createDraft(String title, Long productId) throws Exception {
-        String body = json.writeValueAsString(
-            Map.of("title", title, "items", List.of(Map.of("productId", productId)))
-        );
+        var bodyMap = new java.util.HashMap<String, Object>();
+        bodyMap.put("title", title);
+        bodyMap.put("categoryId", 1);
+        bodyMap.put("programTypeIds", List.of(1));
+        bodyMap.put("items", List.of(Map.of("productId", productId)));
+        String body = json.writeValueAsString(bodyMap);
         String resp = mvc.perform(post("/api/estimates/my")
                 .with(user(requester)).with(csrf())
                 .contentType(MediaType.APPLICATION_JSON).content(body))

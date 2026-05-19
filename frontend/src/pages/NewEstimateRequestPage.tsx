@@ -39,8 +39,12 @@ import {
   useSubmitRequestMutation,
   useUpdateDraftMutation,
 } from "../lib/queries/estimates";
+import { useActiveCategoriesQuery } from "../lib/queries/categories";
+import { useActiveProgramTypesQuery } from "../lib/queries/programTypes";
 import type { ProductDetail } from "../lib/api/products";
 import type { QuestionListItem } from "../lib/api/questions";
+import type { CategoryDto } from "../lib/api/categories";
+import type { ProgramTypeDto } from "../lib/api/programTypes";
 
 const STEPS = ["Products", "Questions", "Review"];
 
@@ -82,6 +86,8 @@ export function NewEstimateRequestPage() {
   const [description, setDescription] = useState("");
   const [goLiveDate, setGoLiveDate] = useState("");
   const [goLiveDateUnknown, setGoLiveDateUnknown] = useState(false);
+  const [categoryId, setCategoryId] = useState<number | null>(null);
+  const [programTypeIds, setProgramTypeIds] = useState<number[]>([]);
   const [localItems, setLocalItems] = useState<LocalItem[]>([]);
   const [dirty, setDirty] = useState(false);
   const [draftId, setDraftId] = useState<number | null>(urlId);
@@ -100,6 +106,8 @@ export function NewEstimateRequestPage() {
     setDescription(d.description ?? "");
     setGoLiveDate(d.goLiveDate ?? "");
     setGoLiveDateUnknown(false);
+    setCategoryId(d.categoryId ?? null);
+    setProgramTypeIds(d.programTypeIds ?? []);
     const hydrated = d.items.map((item) => ({
       productId: item.productId,
       productName: item.productName,
@@ -132,6 +140,8 @@ export function NewEstimateRequestPage() {
 
   const productsQuery = useProductsQuery({ status: "ACTIVE", size: 100 });
   const products = productsQuery.data?.items ?? [];
+  const categoriesQuery = useActiveCategoriesQuery();
+  const programTypesQuery = useActiveProgramTypesQuery();
 
   const createMutation = useCreateDraftMutation();
   const updateMutation = useUpdateDraftMutation();
@@ -202,6 +212,8 @@ export function NewEstimateRequestPage() {
           title: title.trim(),
           description: description.trim() || null,
           goLiveDate: resolvedGoLiveDate,
+          categoryId: categoryId!,
+          programTypeIds,
           items: localItems.map((item) => ({
             productId: item.productId,
             subFeatureId: item.subFeatureId ?? null,
@@ -219,6 +231,8 @@ export function NewEstimateRequestPage() {
             title: title.trim(),
             description: description.trim() || null,
             goLiveDate: resolvedGoLiveDate,
+            categoryId: categoryId ?? undefined,
+            programTypeIds: programTypeIds.length > 0 ? programTypeIds : undefined,
           },
         });
       }
@@ -348,6 +362,12 @@ export function NewEstimateRequestPage() {
 
   const requesterName = user ? `${user.firstName} ${user.lastName}` : "";
 
+  const resolvedCategoryName =
+    (categoriesQuery.data ?? []).find((c) => c.id === categoryId)?.name ?? null;
+  const resolvedProgramTypeNames = (programTypesQuery.data ?? [])
+    .filter((pt) => programTypeIds.includes(pt.id))
+    .map((pt) => pt.name);
+
   return (
     <>
       <PageHeader
@@ -369,6 +389,10 @@ export function NewEstimateRequestPage() {
           description={description}
           goLiveDate={goLiveDate}
           goLiveDateUnknown={goLiveDateUnknown}
+          categoryId={categoryId}
+          programTypeIds={programTypeIds}
+          categories={categoriesQuery.data ?? []}
+          programTypes={programTypesQuery.data ?? []}
           localItems={localItems}
           products={products}
           itemsLocked={itemsLocked}
@@ -392,12 +416,25 @@ export function NewEstimateRequestPage() {
             if (unknown) setGoLiveDate("");
             setDirty(true);
           }}
+          onCategoryChange={(id) => {
+            setCategoryId(id);
+            setDirty(true);
+          }}
+          onProgramTypesChange={(ids) => {
+            setProgramTypeIds(ids);
+            setDirty(true);
+          }}
           onAddItem={addItem}
           onRemoveItem={removeItem}
           onCancel={() => setCancelOpen(true)}
           onSaveDraft={() => void ensureDraftThen()}
           onContinue={() => void ensureDraftThen(2)}
-          continueDisabled={title.trim() === "" || localItems.length === 0}
+          continueDisabled={
+            title.trim() === "" ||
+            localItems.length === 0 ||
+            categoryId == null ||
+            programTypeIds.length === 0
+          }
         />
       )}
 
@@ -426,6 +463,8 @@ export function NewEstimateRequestPage() {
           description={description}
           goLiveDate={goLiveDate}
           goLiveDateUnknown={goLiveDateUnknown}
+          categoryName={resolvedCategoryName}
+          programTypeNames={resolvedProgramTypeNames}
           localItems={localItems}
           products={products}
           requesterName={requesterName}
@@ -478,6 +517,10 @@ interface Step1Props {
   description: string;
   goLiveDate: string;
   goLiveDateUnknown: boolean;
+  categoryId: number | null;
+  programTypeIds: number[];
+  categories: CategoryDto[];
+  programTypes: ProgramTypeDto[];
   localItems: LocalItem[];
   products: ProductDetail[];
   itemsLocked: boolean;
@@ -487,6 +530,8 @@ interface Step1Props {
   onDescriptionChange: (v: string) => void;
   onGoLiveDateChange: (date: string) => void;
   onGoLiveDateUnknownChange: (unknown: boolean) => void;
+  onCategoryChange: (id: number | null) => void;
+  onProgramTypesChange: (ids: number[]) => void;
   onAddItem: (
     productId: number,
     productName: string,
@@ -505,6 +550,10 @@ function Step1({
   description,
   goLiveDate,
   goLiveDateUnknown,
+  categoryId,
+  programTypeIds,
+  categories,
+  programTypes,
   localItems,
   products,
   itemsLocked,
@@ -514,6 +563,8 @@ function Step1({
   onDescriptionChange,
   onGoLiveDateChange,
   onGoLiveDateUnknownChange,
+  onCategoryChange,
+  onProgramTypesChange,
   onAddItem,
   onRemoveItem,
   onCancel,
@@ -597,6 +648,70 @@ function Step1({
               onChange={(e) => onDescriptionChange(e.currentTarget.value)}
               maxLength={4000}
             />
+          </div>
+          {/* Category */}
+          <div>
+            <label
+              htmlFor="request-category"
+              className="block text-near-black font-medium"
+              style={{ fontSize: 13, marginBottom: 4 }}
+            >
+              Category <span className="text-cardinal-red">*</span>
+            </label>
+            <select
+              id="request-category"
+              value={categoryId ?? ""}
+              onChange={(e) => onCategoryChange(e.currentTarget.value ? Number(e.currentTarget.value) : null)}
+              className="w-full rounded-md border border-border bg-white text-body text-near-black h-8 px-3 focus:outline-none focus:border-warm-gray-med focus:ring-2 focus:ring-light-blue"
+              style={{ fontSize: 13 }}
+              required
+            >
+              <option value="">Select a category…</option>
+              {categories.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          {/* Program Types */}
+          <div>
+            <span
+              className="block text-near-black font-medium"
+              style={{ fontSize: 13, marginBottom: 6 }}
+            >
+              Program type <span className="text-cardinal-red">*</span>{" "}
+              <span className="text-warm-gray-med font-normal">(select all that apply)</span>
+            </span>
+            <div className="flex flex-col gap-2">
+              {programTypes.map((pt) => (
+                <label
+                  key={pt.id}
+                  className="inline-flex items-center cursor-pointer"
+                  style={{ gap: 8, fontSize: 13 }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={programTypeIds.includes(pt.id)}
+                    onChange={(e) => {
+                      if (e.currentTarget.checked) {
+                        onProgramTypesChange([...programTypeIds, pt.id]);
+                      } else {
+                        onProgramTypesChange(programTypeIds.filter((id) => id !== pt.id));
+                      }
+                    }}
+                    className="rounded border-border"
+                    style={{
+                      width: 14,
+                      height: 14,
+                      accentColor: "var(--color-near-black)",
+                      flexShrink: 0,
+                    }}
+                  />
+                  <span className="text-near-black">{pt.name}</span>
+                </label>
+              ))}
+            </div>
           </div>
         </div>
       </section>
@@ -1711,6 +1826,8 @@ interface Step3Props {
   description: string;
   goLiveDate: string;
   goLiveDateUnknown: boolean;
+  categoryName: string | null;
+  programTypeNames: string[];
   localItems: LocalItem[];
   products: ProductDetail[];
   requesterName: string;
@@ -1727,6 +1844,8 @@ function Step3({
   description,
   goLiveDate,
   goLiveDateUnknown,
+  categoryName,
+  programTypeNames,
   localItems,
   products,
   requesterName,
@@ -1804,6 +1923,10 @@ function Step3({
           <KVRow label="Name" value={title} />
           {description && <KVRow label="Description" value={description} />}
           <KVRow label="Go-live date" value={formattedDate ?? "Unknown"} />
+          {categoryName && <KVRow label="Category" value={categoryName} />}
+          {programTypeNames.length > 0 && (
+            <KVRow label="Program type" value={programTypeNames.join(", ")} />
+          )}
           {requesterName && <KVRow label="Requested by" value={requesterName} />}
         </div>
       </ReviewSection>

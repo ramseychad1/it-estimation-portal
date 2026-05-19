@@ -51,6 +51,10 @@ public class EstimateRequest {
     @Column(name = "go_live_date")
     private LocalDate goLiveDate;
 
+    /** Required classification — single category per request. */
+    @Column(name = "category_id", nullable = false)
+    private Long categoryId;
+
     /** Locked once the Draft is created. */
     @Column(name = "requester_id", nullable = false, updatable = false)
     private Long requesterId;

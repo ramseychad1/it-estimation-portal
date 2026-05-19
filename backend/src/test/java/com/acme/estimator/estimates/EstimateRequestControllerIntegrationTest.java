@@ -188,6 +188,8 @@ class EstimateRequestControllerIntegrationTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(json.writeValueAsString(Map.of(
                     "title", "Member Portal v2",
+                    "categoryId", 1,
+                    "programTypeIds", List.of(1),
                     "items", List.of(Map.of("productId", product.getId()))
                 ))))
             .andExpect(status().isCreated())
@@ -205,6 +207,8 @@ class EstimateRequestControllerIntegrationTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(json.writeValueAsString(Map.of(
                     "title", "R",
+                    "categoryId", 1,
+                    "programTypeIds", List.of(1),
                     "items", List.of(Map.of("productId", container.getId()))
                 ))))
             .andExpect(status().isBadRequest())
@@ -222,6 +226,8 @@ class EstimateRequestControllerIntegrationTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(json.writeValueAsString(Map.of(
                     "title", "R",
+                    "categoryId", 1,
+                    "programTypeIds", List.of(1),
                     "items", List.of(Map.of("productId", atomic.getId(), "subFeatureId", sub.getId()))
                 ))))
             .andExpect(status().isBadRequest());
@@ -237,6 +243,8 @@ class EstimateRequestControllerIntegrationTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(json.writeValueAsString(Map.of(
                     "title", "R",
+                    "categoryId", 1,
+                    "programTypeIds", List.of(1),
                     "items", List.of(Map.of("productId", inactive.getId()))
                 ))))
             .andExpect(status().isBadRequest())
@@ -662,7 +670,11 @@ class EstimateRequestControllerIntegrationTest {
         var item = new java.util.HashMap<String, Object>();
         item.put("productId", productId);
         if (subFeatureId != null) item.put("subFeatureId", subFeatureId);
-        var body = Map.of("title", title, "items", List.of(item));
+        var body = new java.util.HashMap<String, Object>();
+        body.put("title", title);
+        body.put("categoryId", 1);
+        body.put("programTypeIds", List.of(1));
+        body.put("items", List.of(item));
         String jsonBody = this.json.writeValueAsString(body);
         String responseBody = mvc.perform(post("/api/estimates/my").with(user(actor)).with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)

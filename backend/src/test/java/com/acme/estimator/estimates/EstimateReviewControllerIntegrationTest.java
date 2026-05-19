@@ -415,7 +415,11 @@ class EstimateReviewControllerIntegrationTest {
         var item = new java.util.HashMap<String, Object>();
         item.put("productId", productId);
         if (subFeatureId != null) item.put("subFeatureId", subFeatureId);
-        var body = Map.of("title", title, "items", List.of(item));
+        var body = new java.util.HashMap<String, Object>();
+        body.put("title", title);
+        body.put("categoryId", 1);
+        body.put("programTypeIds", List.of(1));
+        body.put("items", List.of(item));
         String responseBody = mvc.perform(post("/api/estimates/my")
                 .with(user(requester)).with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)

@@ -15,10 +15,14 @@ import java.util.List;
  * specific product (and optional sub-feature for CONTAINER products).
  * The same product may not appear twice in the list (enforced at the service
  * layer, mirroring the database partial-unique-index constraint).
+ *
+ * <p>V21: categoryId (required) and programTypeIds (required, ≥1) added.
  */
 public record CreateDraftRequest(
     @NotBlank @Size(max = 255) String title,
     @Size(max = 4000) String description,
     LocalDate goLiveDate,
+    @NotNull Long categoryId,
+    @NotNull @NotEmpty List<Long> programTypeIds,
     @NotNull @NotEmpty @Valid List<CreateItemRequest> items
 ) {}

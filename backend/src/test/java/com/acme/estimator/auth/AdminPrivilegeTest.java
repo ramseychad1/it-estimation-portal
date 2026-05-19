@@ -170,6 +170,8 @@ class AdminPrivilegeTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(json.writeValueAsString(Map.of(
                     "title", "Admin's own draft",
+                    "categoryId", 1,
+                    "programTypeIds", List.of(1),
                     "items", List.of(Map.of("productId", ctx.product.getId()))
                 ))))
             .andExpect(status().isCreated())
@@ -316,6 +318,8 @@ class AdminPrivilegeTest {
     private Long createDraftAs(AppUserDetails as, String title, Long productId) throws Exception {
         var body = Map.of(
             "title", title,
+            "categoryId", 1,
+            "programTypeIds", List.of(1),
             "items", List.of(Map.of("productId", productId))
         );
         String responseBody = mvc.perform(post("/api/estimates/my")

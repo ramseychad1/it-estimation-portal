@@ -121,6 +121,10 @@ export interface EstimateRequestDetail {
   createdAt: string | null;
   updatedAt: string | null;
   items: EstimateRequestItemDto[];
+  categoryId: number | null;
+  categoryName: string | null;
+  programTypeIds: number[];
+  programTypeNames: string[];
 }
 
 // For creating a new item in the draft
@@ -129,12 +133,13 @@ export interface CreateItemRequest {
   subFeatureId?: number | null;
 }
 
-// Updated: items array instead of flat productId/subFeatureId
 export interface CreateDraftRequest {
   title: string;
   description?: string | null;
   /** ISO date string "YYYY-MM-DD", or null if "Unknown at this time". */
   goLiveDate?: string | null;
+  categoryId: number;
+  programTypeIds: number[];
   items: CreateItemRequest[];
 }
 
@@ -143,6 +148,8 @@ export interface UpdateDraftRequest {
   description?: string | null;
   /** Always included so the server can distinguish "clear to null" from "omit". */
   goLiveDate?: string | null;
+  categoryId?: number | null;
+  programTypeIds?: number[] | null;
 }
 
 export interface AnswerInput {

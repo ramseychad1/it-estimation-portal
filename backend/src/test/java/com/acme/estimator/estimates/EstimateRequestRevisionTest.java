@@ -266,10 +266,12 @@ class EstimateRequestRevisionTest {
         seedTemplateWithLine(p1.getId(), phase.getId());
         seedTemplateWithLine(p2.getId(), phase.getId());
 
-        String body = json.writeValueAsString(Map.of(
-            "title", "Drop Test",
-            "items", List.of(Map.of("productId", p1.getId()), Map.of("productId", p2.getId()))
-        ));
+        var dropBodyMap = new java.util.HashMap<String, Object>();
+        dropBodyMap.put("title", "Drop Test");
+        dropBodyMap.put("categoryId", 1);
+        dropBodyMap.put("programTypeIds", List.of(1));
+        dropBodyMap.put("items", List.of(Map.of("productId", p1.getId()), Map.of("productId", p2.getId())));
+        String body = json.writeValueAsString(dropBodyMap);
         String resp = mvc.perform(post("/api/estimates/my")
                 .with(user(requester)).with(csrf())
                 .contentType(MediaType.APPLICATION_JSON).content(body))
@@ -453,9 +455,12 @@ class EstimateRequestRevisionTest {
     }
 
     private Long createDraft(String title, Long productId) throws Exception {
-        String body = json.writeValueAsString(
-            Map.of("title", title, "items", List.of(Map.of("productId", productId)))
-        );
+        var bodyMap = new java.util.HashMap<String, Object>();
+        bodyMap.put("title", title);
+        bodyMap.put("categoryId", 1);
+        bodyMap.put("programTypeIds", List.of(1));
+        bodyMap.put("items", List.of(Map.of("productId", productId)));
+        String body = json.writeValueAsString(bodyMap);
         String resp = mvc.perform(post("/api/estimates/my")
                 .with(user(requester)).with(csrf())
                 .contentType(MediaType.APPLICATION_JSON).content(body))

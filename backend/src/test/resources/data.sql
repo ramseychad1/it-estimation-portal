@@ -30,3 +30,22 @@ INSERT INTO user_roles (user_id, role_id) VALUES (2, 2), (2, 3);
 -- id explicitly, so subsequent JPA save() calls would collide on id=1. Push
 -- the sequence past the highest seeded id.
 ALTER TABLE users ALTER COLUMN id RESTART WITH 3;
+
+-- V21: seed program_types and categories so integration tests can reference them.
+INSERT INTO program_types (id, name, display_order) VALUES
+    (1, 'APS Only',     1),
+    (2, 'SHPS Only',    2),
+    (3, 'APS+SHPS',     3),
+    (4, 'APS+SHPS+3PL', 4),
+    (5, 'Test Program', 5);
+ALTER TABLE program_types ALTER COLUMN id RESTART WITH 6;
+
+INSERT INTO categories (id, name, display_order) VALUES
+    (1, 'RFP',                       1),
+    (2, 'Implementation',            2),
+    (3, 'Statement of Work (COGS)',  3),
+    (4, 'Enhancement',               4),
+    (5, 'Product',                   5),
+    (6, 'IT Support',                6),
+    (7, 'Test Category',             7);
+ALTER TABLE categories ALTER COLUMN id RESTART WITH 8;

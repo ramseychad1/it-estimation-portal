@@ -6,9 +6,13 @@ import com.acme.estimator.audit.ChangeLogEntry;
 import com.acme.estimator.audit.ChangeLogEntryRepository;
 import com.acme.estimator.auth.User;
 import com.acme.estimator.auth.UserRepository;
+import com.acme.estimator.catalog.categories.Category;
+import com.acme.estimator.catalog.categories.CategoryRepository;
 import com.acme.estimator.catalog.products.Product;
 import com.acme.estimator.catalog.products.ProductMode;
 import com.acme.estimator.catalog.products.ProductRepository;
+import com.acme.estimator.catalog.programtypes.ProgramType;
+import com.acme.estimator.catalog.programtypes.ProgramTypeRepository;
 import java.util.stream.Stream;
 import com.acme.estimator.catalog.questions.CriticalQuestion;
 import com.acme.estimator.catalog.questions.CriticalQuestionRepository;
@@ -77,6 +81,7 @@ public class EstimateRequestService {
     private final EstimateRequestItemRepository itemRepository;
     private final EstimateRequestPhaseLineRepository phaseLineRepository;
     private final EstimateRequestQuestionAnswerRepository answerRepository;
+    private final EstimateRequestProgramTypeRepository requestProgramTypeRepository;
     private final ProductRepository productRepository;
     private final SubFeatureRepository subFeatureRepository;
     private final CriticalQuestionRepository questionRepository;
@@ -88,6 +93,8 @@ public class EstimateRequestService {
     private final ChangeLogEntryRepository changeLogRepository;
     private final BlendedRateRepository blendedRateRepository;
     private final UserRepository userRepository;
+    private final CategoryRepository categoryRepository;
+    private final ProgramTypeRepository programTypeRepository;
 
     // ---- reads ---------------------------------------------------------
 
@@ -173,12 +180,34 @@ public class EstimateRequestService {
 
     @Transactional
     public EstimateRequestDetail createDraft(CreateDraftRequest req, User requester) {
+        Category category = categoryRepository.findById(req.categoryId())
+            .filter(Category::isActive)
+            .orElseThrow(() -> ApiException.badRequest("Invalid or inactive category."));
+
+        if (req.programTypeIds() == null || req.programTypeIds().isEmpty()) {
+            throw ApiException.badRequest("At least one program type is required.");
+        }
+        List<Long> distinctPtIds = req.programTypeIds().stream().distinct().toList();
+        for (Long ptId : distinctPtIds) {
+            programTypeRepository.findById(ptId)
+                .filter(ProgramType::isActive)
+                .orElseThrow(() -> ApiException.badRequest("Invalid or inactive program type: " + ptId));
+        }
+
         EstimateRequest entity = new EstimateRequest();
         entity.setTitle(req.title().trim());
         entity.setDescription(blankToNull(req.description()));
         entity.setGoLiveDate(req.goLiveDate());
+        entity.setCategoryId(category.getId());
         entity.setRequesterId(requester.getId());
         EstimateRequest saved = requestRepository.save(entity);
+
+        for (Long ptId : distinctPtIds) {
+            EstimateRequestProgramType erpt = new EstimateRequestProgramType();
+            erpt.setRequestId(saved.getId());
+            erpt.setProgramTypeId(ptId);
+            requestProgramTypeRepository.save(erpt);
+        }
 
         // Validate items for duplicate product+subFeature combinations
         validateNoDuplicateItems(req.items());
@@ -245,6 +274,48 @@ public class EstimateRequestService {
             );
             request.setGoLiveDate(newGoLiveDate);
             dirty = true;
+        }
+
+        // categoryId: null = don't change; non-null = update
+        if (req.categoryId() != null && !req.categoryId().equals(request.getCategoryId())) {
+            categoryRepository.findById(req.categoryId())
+                .filter(Category::isActive)
+                .orElseThrow(() -> ApiException.badRequest("Invalid or inactive category."));
+            auditService.recordUpdated(
+                EstimateRequest.ENTITY_TYPE, request.getId(), "category",
+                String.valueOf(request.getCategoryId()), String.valueOf(req.categoryId()), requester
+            );
+            request.setCategoryId(req.categoryId());
+            dirty = true;
+        }
+
+        // programTypeIds: null = don't change; non-null list must be non-empty
+        if (req.programTypeIds() != null) {
+            if (req.programTypeIds().isEmpty()) {
+                throw ApiException.badRequest("At least one program type is required.");
+            }
+            List<Long> newPtIds = req.programTypeIds().stream().distinct().sorted().toList();
+            for (Long ptId : newPtIds) {
+                programTypeRepository.findById(ptId)
+                    .filter(ProgramType::isActive)
+                    .orElseThrow(() -> ApiException.badRequest("Invalid or inactive program type: " + ptId));
+            }
+            List<Long> currentPtIds = requestProgramTypeRepository.findByRequestId(request.getId())
+                .stream().map(EstimateRequestProgramType::getProgramTypeId).sorted().toList();
+            if (!newPtIds.equals(currentPtIds)) {
+                auditService.recordUpdated(
+                    EstimateRequest.ENTITY_TYPE, request.getId(), "programTypes",
+                    currentPtIds.toString(), newPtIds.toString(), requester
+                );
+                requestProgramTypeRepository.deleteByRequestId(request.getId());
+                for (Long ptId : newPtIds) {
+                    EstimateRequestProgramType erpt = new EstimateRequestProgramType();
+                    erpt.setRequestId(request.getId());
+                    erpt.setProgramTypeId(ptId);
+                    requestProgramTypeRepository.save(erpt);
+                }
+                dirty = true;
+            }
         }
 
         if (dirty) requestRepository.save(request);
@@ -1366,6 +1437,7 @@ public class EstimateRequestService {
             .toList();
 
         String derivedStatus = getDerivedStatus(items);
+        ClassificationView cv = loadClassification(request);
 
         return new EstimateRequestDetail(
             request.getId(),
@@ -1376,9 +1448,34 @@ public class EstimateRequestService {
             derivedStatus,
             request.getCreatedAt(),
             request.getUpdatedAt(),
-            itemDtos
+            itemDtos,
+            cv.categoryId(),
+            cv.categoryName(),
+            cv.programTypeIds(),
+            cv.programTypeNames()
         );
     }
+
+    /** Loads category + program-type display data for a single request. */
+    private ClassificationView loadClassification(EstimateRequest request) {
+        String categoryName = categoryRepository.findById(request.getCategoryId())
+            .map(Category::getName).orElse(null);
+        List<EstimateRequestProgramType> erpts =
+            requestProgramTypeRepository.findByRequestId(request.getId());
+        List<Long> ptIds = erpts.stream()
+            .map(EstimateRequestProgramType::getProgramTypeId).toList();
+        List<String> ptNames = ptIds.stream()
+            .map(id -> programTypeRepository.findById(id)
+                .map(ProgramType::getName).orElse(null))
+            .filter(n -> n != null)
+            .toList();
+        return new ClassificationView(request.getCategoryId(), categoryName, ptIds, ptNames);
+    }
+
+    private record ClassificationView(
+        Long categoryId, String categoryName,
+        List<Long> programTypeIds, List<String> programTypeNames
+    ) {}
 
     /**
      * Reviewer-facing detail: same as {@link #toDetail} but annotates each item
@@ -1401,6 +1498,7 @@ public class EstimateRequestService {
             .toList();
 
         String derivedStatus = getDerivedStatus(items);
+        ClassificationView cv = loadClassification(request);
 
         return new EstimateRequestDetail(
             request.getId(),
@@ -1411,7 +1509,11 @@ public class EstimateRequestService {
             derivedStatus,
             request.getCreatedAt(),
             request.getUpdatedAt(),
-            itemDtos
+            itemDtos,
+            cv.categoryId(),
+            cv.categoryName(),
+            cv.programTypeIds(),
+            cv.programTypeNames()
         );
     }
 

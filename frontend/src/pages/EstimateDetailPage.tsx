@@ -461,6 +461,12 @@ function RequestSummaryCard({ detail }: { detail: EstimateRequestDetail }) {
               : <span className="text-warm-gray-med italic">Unknown</span>
             }
           </KV>
+          {detail.categoryName && (
+            <KV label="Category">{detail.categoryName}</KV>
+          )}
+          {detail.programTypeNames && detail.programTypeNames.length > 0 && (
+            <KV label="Program Type">{detail.programTypeNames.join(", ")}</KV>
+          )}
           {allSubmitted && (
             <KV label="Submitted">{relativeTime(allSubmitted)}</KV>
           )}

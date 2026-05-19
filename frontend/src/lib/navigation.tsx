@@ -3,6 +3,7 @@ import {
   ChartLine,
   ClipboardList,
   Clock3,
+  FolderOpen,
   GitBranch,
   HelpCircle,
   History,
@@ -11,6 +12,7 @@ import {
   Package,
   Receipt,
   Shield,
+  Tag,
   Users,
 } from "lucide-react";
 import type { ComponentType, SVGProps } from "react";
@@ -74,6 +76,8 @@ export const NAV_SECTIONS: NavSection[] = [
       { label: "Teams", to: "/admin/teams", icon: Users },
       { label: "SDLC phases", to: "/admin/phases", icon: Layers },
       { label: "Blended rates", to: "/admin/rates", icon: Receipt },
+      { label: "Program types", to: "/admin/program-types", icon: Tag },
+      { label: "Categories", to: "/admin/categories", icon: FolderOpen },
       { label: "Users & roles", to: "/admin/users", icon: Shield },
       { label: "Change log", to: "/admin/change-log", icon: GitBranch },
     ],

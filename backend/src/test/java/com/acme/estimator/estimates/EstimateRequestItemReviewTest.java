@@ -218,13 +218,15 @@ class EstimateRequestItemReviewTest {
         seedActiveTemplateWithLine(pB.getId(), null, phase.getId());
 
         // Create a 2-item request
-        String body = json.writeValueAsString(Map.of(
-            "title", "Multi-item",
-            "items", List.of(
-                Map.of("productId", pA.getId()),
-                Map.of("productId", pB.getId())
-            )
+        var multiBody = new java.util.HashMap<String, Object>();
+        multiBody.put("title", "Multi-item");
+        multiBody.put("categoryId", 1);
+        multiBody.put("programTypeIds", List.of(1));
+        multiBody.put("items", List.of(
+            Map.of("productId", pA.getId()),
+            Map.of("productId", pB.getId())
         ));
+        String body = json.writeValueAsString(multiBody);
         String resp = mvc.perform(post("/api/estimates/my")
                 .with(user(requester)).with(csrf())
                 .contentType(MediaType.APPLICATION_JSON).content(body))
@@ -425,10 +427,12 @@ class EstimateRequestItemReviewTest {
     }
 
     private Long createAndSubmitRequest(String title, Long productId) throws Exception {
-        String body = json.writeValueAsString(Map.of(
-            "title", title,
-            "items", List.of(Map.of("productId", productId))
-        ));
+        var bodyMap = new java.util.HashMap<String, Object>();
+        bodyMap.put("title", title);
+        bodyMap.put("categoryId", 1);
+        bodyMap.put("programTypeIds", List.of(1));
+        bodyMap.put("items", List.of(Map.of("productId", productId)));
+        String body = json.writeValueAsString(bodyMap);
         String resp = mvc.perform(post("/api/estimates/my")
                 .with(user(requester)).with(csrf())
                 .contentType(MediaType.APPLICATION_JSON).content(body))

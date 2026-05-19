@@ -9,11 +9,11 @@ import java.util.List;
  * review screen, and as the response shape for create/update/submit/
  * start/release/approve/reject/sendBack.
  *
- * <p>Phase 9a: the flat per-product fields (productId, subFeatureId,
- * templateId, complexity, status, reviewerId, etc.) are now inside each
- * item in the {@code items} list. The parent-level {@code derivedStatus}
- * is computed from the collection of item statuses — see
- * {@link com.acme.estimator.estimates.EstimateRequestService#getDerivedStatus}.
+ * <p>Phase 9a: the flat per-product fields are now inside each item in
+ * the {@code items} list. The parent-level {@code derivedStatus} is
+ * computed from the collection of item statuses.
+ *
+ * <p>V21: categoryId/categoryName and programTypeIds/programTypeNames added.
  */
 public record EstimateRequestDetail(
     Long id,
@@ -26,5 +26,9 @@ public record EstimateRequestDetail(
     String derivedStatus,
     OffsetDateTime createdAt,
     OffsetDateTime updatedAt,
-    List<EstimateRequestItemDto> items
+    List<EstimateRequestItemDto> items,
+    Long categoryId,
+    String categoryName,
+    List<Long> programTypeIds,
+    List<String> programTypeNames
 ) {}

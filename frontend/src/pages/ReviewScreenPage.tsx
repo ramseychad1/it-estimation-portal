@@ -111,10 +111,12 @@ export function ReviewScreenPage() {
       />
 
       <div className="flex flex-col" style={{ gap: 16, marginTop: 24 }}>
-        {(detail.description || detail.goLiveDate !== undefined) && (
+        {(detail.description || detail.goLiveDate !== undefined || detail.categoryName || (detail.programTypeNames?.length ?? 0) > 0) && (
           <RequestContextCard
             description={detail.description ?? null}
             goLiveDate={detail.goLiveDate ?? null}
+            categoryName={detail.categoryName ?? null}
+            programTypeNames={detail.programTypeNames ?? []}
           />
         )}
         {detail.items.map((item) => (
@@ -501,9 +503,13 @@ function ItemReviewCard({
 function RequestContextCard({
   description,
   goLiveDate,
+  categoryName,
+  programTypeNames,
 }: {
   description: string | null;
   goLiveDate: string | null;
+  categoryName: string | null;
+  programTypeNames: string[];
 }) {
   const formattedDate = goLiveDate
     ? new Date(goLiveDate + "T00:00:00").toLocaleDateString(undefined, {
@@ -545,6 +551,28 @@ function RequestContextCard({
             )}
           </div>
         </div>
+        {categoryName && (
+          <div>
+            <div
+              className="text-warm-gray-med uppercase font-medium"
+              style={{ fontSize: 11, letterSpacing: "0.04em", marginBottom: 4 }}
+            >
+              Category
+            </div>
+            <div className="text-near-black" style={{ fontSize: 13 }}>{categoryName}</div>
+          </div>
+        )}
+        {programTypeNames.length > 0 && (
+          <div>
+            <div
+              className="text-warm-gray-med uppercase font-medium"
+              style={{ fontSize: 11, letterSpacing: "0.04em", marginBottom: 4 }}
+            >
+              Program Type
+            </div>
+            <div className="text-near-black" style={{ fontSize: 13 }}>{programTypeNames.join(", ")}</div>
+          </div>
+        )}
       </div>
     </section>
   );
