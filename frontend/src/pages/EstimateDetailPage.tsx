@@ -461,6 +461,12 @@ function RequestSummaryCard({ detail }: { detail: EstimateRequestDetail }) {
               : <span className="text-warm-gray-med italic">Unknown</span>
             }
           </KV>
+          {detail.clientName && (
+            <KV label="Client">{detail.clientName}</KV>
+          )}
+          {detail.programName && (
+            <KV label="Program">{detail.programName}</KV>
+          )}
           {detail.categoryName && (
             <KV label="Category">{detail.categoryName}</KV>
           )}

@@ -419,6 +419,8 @@ class EstimateReviewControllerIntegrationTest {
         body.put("title", title);
         body.put("categoryId", 1);
         body.put("programTypeIds", List.of(1));
+        body.put("clientId", 1);
+        body.put("programId", 1);
         body.put("items", List.of(item));
         String responseBody = mvc.perform(post("/api/estimates/my")
                 .with(user(requester)).with(csrf())

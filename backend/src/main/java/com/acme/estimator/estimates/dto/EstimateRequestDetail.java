@@ -14,6 +14,7 @@ import java.util.List;
  * computed from the collection of item statuses.
  *
  * <p>V21: categoryId/categoryName and programTypeIds/programTypeNames added.
+ * <p>V22: clientId/clientName and programId/programName added.
  */
 public record EstimateRequestDetail(
     Long id,
@@ -30,5 +31,9 @@ public record EstimateRequestDetail(
     Long categoryId,
     String categoryName,
     List<Long> programTypeIds,
-    List<String> programTypeNames
+    List<String> programTypeNames,
+    Long clientId,
+    String clientName,
+    Long programId,
+    String programName
 ) {}

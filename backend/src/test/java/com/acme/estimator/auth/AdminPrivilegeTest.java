@@ -165,15 +165,17 @@ class AdminPrivilegeTest {
     @Test
     void adminOnly_canCreateEstimateRequest() throws Exception {
         AtomicCtx ctx = seedAtomicProductContext();
+        var adminDraftBody = new java.util.HashMap<String, Object>();
+        adminDraftBody.put("title", "Admin's own draft");
+        adminDraftBody.put("categoryId", 1);
+        adminDraftBody.put("programTypeIds", List.of(1));
+        adminDraftBody.put("clientId", 1);
+        adminDraftBody.put("programId", 1);
+        adminDraftBody.put("items", List.of(Map.of("productId", ctx.product.getId())));
         mvc.perform(post("/api/estimates/my")
                 .with(user(adminOnly)).with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(json.writeValueAsString(Map.of(
-                    "title", "Admin's own draft",
-                    "categoryId", 1,
-                    "programTypeIds", List.of(1),
-                    "items", List.of(Map.of("productId", ctx.product.getId()))
-                ))))
+                .content(json.writeValueAsString(adminDraftBody)))
             .andExpect(status().isCreated())
             .andExpect(jsonPath("$.requesterId").value(adminOnly.getUserId()));
     }
@@ -316,12 +318,13 @@ class AdminPrivilegeTest {
     }
 
     private Long createDraftAs(AppUserDetails as, String title, Long productId) throws Exception {
-        var body = Map.of(
-            "title", title,
-            "categoryId", 1,
-            "programTypeIds", List.of(1),
-            "items", List.of(Map.of("productId", productId))
-        );
+        var body = new java.util.HashMap<String, Object>();
+        body.put("title", title);
+        body.put("categoryId", 1);
+        body.put("programTypeIds", List.of(1));
+        body.put("clientId", 1);
+        body.put("programId", 1);
+        body.put("items", List.of(Map.of("productId", productId)));
         String responseBody = mvc.perform(post("/api/estimates/my")
                 .with(user(as)).with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)

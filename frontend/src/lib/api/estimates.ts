@@ -125,6 +125,10 @@ export interface EstimateRequestDetail {
   categoryName: string | null;
   programTypeIds: number[];
   programTypeNames: string[];
+  clientId: number | null;
+  clientName: string | null;
+  programId: number | null;
+  programName: string | null;
 }
 
 // For creating a new item in the draft
@@ -140,6 +144,8 @@ export interface CreateDraftRequest {
   goLiveDate?: string | null;
   categoryId: number;
   programTypeIds: number[];
+  clientId: number;
+  programId: number;
   items: CreateItemRequest[];
 }
 
@@ -150,6 +156,8 @@ export interface UpdateDraftRequest {
   goLiveDate?: string | null;
   categoryId?: number | null;
   programTypeIds?: number[] | null;
+  clientId?: number | null;
+  programId?: number | null;
 }
 
 export interface AnswerInput {

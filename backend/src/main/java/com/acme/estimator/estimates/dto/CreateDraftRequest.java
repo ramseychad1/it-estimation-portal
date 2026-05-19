@@ -17,6 +17,7 @@ import java.util.List;
  * layer, mirroring the database partial-unique-index constraint).
  *
  * <p>V21: categoryId (required) and programTypeIds (required, ≥1) added.
+ * <p>V22: clientId (required) and programId (required) added.
  */
 public record CreateDraftRequest(
     @NotBlank @Size(max = 255) String title,
@@ -24,5 +25,7 @@ public record CreateDraftRequest(
     LocalDate goLiveDate,
     @NotNull Long categoryId,
     @NotNull @NotEmpty List<Long> programTypeIds,
+    @NotNull Long clientId,
+    @NotNull Long programId,
     @NotNull @NotEmpty @Valid List<CreateItemRequest> items
 ) {}

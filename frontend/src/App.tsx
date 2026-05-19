@@ -24,6 +24,8 @@ import { SubFeatureDetailPage } from "./pages/admin/products/SubFeatureDetailPag
 import { QuestionsBrowserPage } from "./pages/admin/QuestionsBrowserPage";
 import { ProgramTypesPage } from "./pages/admin/ProgramTypesPage";
 import { CategoriesPage } from "./pages/admin/CategoriesPage";
+import { ClientsPage } from "./pages/admin/ClientsPage";
+import { ProgramsPage } from "./pages/admin/ProgramsPage";
 import { AcceptInvitePage } from "./pages/AcceptInvitePage";
 
 function ProtectedShell({ children }: { children: React.ReactNode }) {
@@ -94,6 +96,8 @@ export default function App() {
       <Route path="/admin/phases" element={<RoleProtectedShell requires={ROLE_ADMIN}><SdlcPhasesPage /></RoleProtectedShell>} />
       <Route path="/admin/rates" element={<RoleProtectedShell requires={ROLE_ADMIN}><BlendedRatesPage /></RoleProtectedShell>} />
       <Route path="/admin/program-types" element={<RoleProtectedShell requires={ROLE_ADMIN}><ProgramTypesPage /></RoleProtectedShell>} />
+      <Route path="/admin/clients" element={<RoleProtectedShell requires={ROLE_ADMIN}><ClientsPage /></RoleProtectedShell>} />
+      <Route path="/admin/programs" element={<RoleProtectedShell requires={ROLE_ADMIN}><ProgramsPage /></RoleProtectedShell>} />
       <Route path="/admin/categories" element={<RoleProtectedShell requires={ROLE_ADMIN}><CategoriesPage /></RoleProtectedShell>} />
       <Route path="/admin/users" element={<RoleProtectedShell requires={ROLE_ADMIN}><UsersPage /></RoleProtectedShell>} />
       <Route path="/admin/change-log" element={<RoleProtectedShell requires={ROLE_ADMIN}><ChangeLogPage /></RoleProtectedShell>} />

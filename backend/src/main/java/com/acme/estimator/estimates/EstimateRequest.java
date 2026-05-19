@@ -55,6 +55,14 @@ public class EstimateRequest {
     @Column(name = "category_id", nullable = false)
     private Long categoryId;
 
+    /** Client this request is being estimated for. */
+    @Column(name = "client_id")
+    private Long clientId;
+
+    /** Program (under the client) this request belongs to. */
+    @Column(name = "program_id")
+    private Long programId;
+
     /** Locked once the Draft is created. */
     @Column(name = "requester_id", nullable = false, updatable = false)
     private Long requesterId;

@@ -184,14 +184,16 @@ class EstimateRequestControllerIntegrationTest {
         seedPhase("Discovery", 1);
         Product product = seedAtomicProduct("Eligibility API");
 
+        var createBody0 = new java.util.HashMap<String, Object>();
+        createBody0.put("title", "Member Portal v2");
+        createBody0.put("categoryId", 1);
+        createBody0.put("programTypeIds", List.of(1));
+        createBody0.put("clientId", 1);
+        createBody0.put("programId", 1);
+        createBody0.put("items", List.of(Map.of("productId", product.getId())));
         mvc.perform(asRequester(post("/api/estimates/my"))
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(json.writeValueAsString(Map.of(
-                    "title", "Member Portal v2",
-                    "categoryId", 1,
-                    "programTypeIds", List.of(1),
-                    "items", List.of(Map.of("productId", product.getId()))
-                ))))
+                .content(json.writeValueAsString(createBody0)))
             .andExpect(status().isCreated())
             .andExpect(jsonPath("$.items[0].status").value("DRAFT"))
             .andExpect(jsonPath("$.items[0].templateId").doesNotExist())
@@ -203,14 +205,16 @@ class EstimateRequestControllerIntegrationTest {
     void createDraft_containerWithoutSubFeature_returns400() throws Exception {
         Product container = seedContainerProduct("Container");
 
+        var createBody1 = new java.util.HashMap<String, Object>();
+        createBody1.put("title", "R");
+        createBody1.put("categoryId", 1);
+        createBody1.put("programTypeIds", List.of(1));
+        createBody1.put("clientId", 1);
+        createBody1.put("programId", 1);
+        createBody1.put("items", List.of(Map.of("productId", container.getId())));
         mvc.perform(asRequester(post("/api/estimates/my"))
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(json.writeValueAsString(Map.of(
-                    "title", "R",
-                    "categoryId", 1,
-                    "programTypeIds", List.of(1),
-                    "items", List.of(Map.of("productId", container.getId()))
-                ))))
+                .content(json.writeValueAsString(createBody1)))
             .andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.message")
                 .value(org.hamcrest.Matchers.containsString("sub-feature must be selected")));
@@ -222,14 +226,16 @@ class EstimateRequestControllerIntegrationTest {
         Product container = seedContainerProduct("Container");
         SubFeature sub = seedSubFeature(container.getId(), "Variant");
 
+        var createBody2 = new java.util.HashMap<String, Object>();
+        createBody2.put("title", "R");
+        createBody2.put("categoryId", 1);
+        createBody2.put("programTypeIds", List.of(1));
+        createBody2.put("clientId", 1);
+        createBody2.put("programId", 1);
+        createBody2.put("items", List.of(Map.of("productId", atomic.getId(), "subFeatureId", sub.getId())));
         mvc.perform(asRequester(post("/api/estimates/my"))
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(json.writeValueAsString(Map.of(
-                    "title", "R",
-                    "categoryId", 1,
-                    "programTypeIds", List.of(1),
-                    "items", List.of(Map.of("productId", atomic.getId(), "subFeatureId", sub.getId()))
-                ))))
+                .content(json.writeValueAsString(createBody2)))
             .andExpect(status().isBadRequest());
     }
 
@@ -239,14 +245,16 @@ class EstimateRequestControllerIntegrationTest {
         inactive.setActive(false);
         productRepository.save(inactive);
 
+        var createBody3 = new java.util.HashMap<String, Object>();
+        createBody3.put("title", "R");
+        createBody3.put("categoryId", 1);
+        createBody3.put("programTypeIds", List.of(1));
+        createBody3.put("clientId", 1);
+        createBody3.put("programId", 1);
+        createBody3.put("items", List.of(Map.of("productId", inactive.getId())));
         mvc.perform(asRequester(post("/api/estimates/my"))
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(json.writeValueAsString(Map.of(
-                    "title", "R",
-                    "categoryId", 1,
-                    "programTypeIds", List.of(1),
-                    "items", List.of(Map.of("productId", inactive.getId()))
-                ))))
+                .content(json.writeValueAsString(createBody3)))
             .andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.message")
                 .value(org.hamcrest.Matchers.containsString("not active")));
@@ -674,6 +682,8 @@ class EstimateRequestControllerIntegrationTest {
         body.put("title", title);
         body.put("categoryId", 1);
         body.put("programTypeIds", List.of(1));
+        body.put("clientId", 1);
+        body.put("programId", 1);
         body.put("items", List.of(item));
         String jsonBody = this.json.writeValueAsString(body);
         String responseBody = mvc.perform(post("/api/estimates/my").with(user(actor)).with(csrf())

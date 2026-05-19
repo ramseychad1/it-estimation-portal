@@ -49,3 +49,15 @@ INSERT INTO categories (id, name, display_order) VALUES
     (6, 'IT Support',                6),
     (7, 'Test Category',             7);
 ALTER TABLE categories ALTER COLUMN id RESTART WITH 8;
+
+-- V22: seed clients and programs so integration tests can reference them.
+INSERT INTO clients (id, name, point_of_contact, active) VALUES
+    (1, 'Test Client', 'Test Contact', true),
+    (2, 'Acme Corp',   'Jane Doe',     true);
+ALTER TABLE clients ALTER COLUMN id RESTART WITH 3;
+
+INSERT INTO programs (id, client_id, name, active) VALUES
+    (1, 1, 'Test Program',   true),
+    (2, 1, 'Test Program B', true),
+    (3, 2, 'Acme Program',   true);
+ALTER TABLE programs ALTER COLUMN id RESTART WITH 4;

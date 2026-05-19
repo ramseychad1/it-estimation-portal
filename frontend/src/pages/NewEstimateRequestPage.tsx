@@ -41,10 +41,17 @@ import {
 } from "../lib/queries/estimates";
 import { useActiveCategoriesQuery } from "../lib/queries/categories";
 import { useActiveProgramTypesQuery } from "../lib/queries/programTypes";
+import { useActiveClientsQuery } from "../lib/queries/clients";
+import { useActiveProgramsQuery } from "../lib/queries/programs";
 import type { ProductDetail } from "../lib/api/products";
 import type { QuestionListItem } from "../lib/api/questions";
 import type { CategoryDto } from "../lib/api/categories";
 import type { ProgramTypeDto } from "../lib/api/programTypes";
+import type { ClientDto } from "../lib/api/clients";
+import type { ProgramDto } from "../lib/api/programs";
+import { ComboboxInput } from "../components/ComboboxInput";
+import { NewClientModal } from "./NewClientModal";
+import { NewProgramModal } from "./NewProgramModal";
 
 const STEPS = ["Products", "Questions", "Review"];
 
@@ -88,6 +95,10 @@ export function NewEstimateRequestPage() {
   const [goLiveDateUnknown, setGoLiveDateUnknown] = useState(false);
   const [categoryId, setCategoryId] = useState<number | null>(null);
   const [programTypeIds, setProgramTypeIds] = useState<number[]>([]);
+  const [clientId, setClientId] = useState<number | null>(null);
+  const [programId, setProgramId] = useState<number | null>(null);
+  const [newClientModalOpen, setNewClientModalOpen] = useState(false);
+  const [newProgramModalOpen, setNewProgramModalOpen] = useState(false);
   const [localItems, setLocalItems] = useState<LocalItem[]>([]);
   const [dirty, setDirty] = useState(false);
   const [draftId, setDraftId] = useState<number | null>(urlId);
@@ -108,6 +119,8 @@ export function NewEstimateRequestPage() {
     setGoLiveDateUnknown(false);
     setCategoryId(d.categoryId ?? null);
     setProgramTypeIds(d.programTypeIds ?? []);
+    setClientId(d.clientId ?? null);
+    setProgramId(d.programId ?? null);
     const hydrated = d.items.map((item) => ({
       productId: item.productId,
       productName: item.productName,
@@ -142,6 +155,8 @@ export function NewEstimateRequestPage() {
   const products = productsQuery.data?.items ?? [];
   const categoriesQuery = useActiveCategoriesQuery();
   const programTypesQuery = useActiveProgramTypesQuery();
+  const clientsQuery = useActiveClientsQuery();
+  const programsQuery = useActiveProgramsQuery(clientId ?? undefined);
 
   const createMutation = useCreateDraftMutation();
   const updateMutation = useUpdateDraftMutation();
@@ -214,6 +229,8 @@ export function NewEstimateRequestPage() {
           goLiveDate: resolvedGoLiveDate,
           categoryId: categoryId!,
           programTypeIds,
+          clientId: clientId!,
+          programId: programId!,
           items: localItems.map((item) => ({
             productId: item.productId,
             subFeatureId: item.subFeatureId ?? null,
@@ -233,6 +250,8 @@ export function NewEstimateRequestPage() {
             goLiveDate: resolvedGoLiveDate,
             categoryId: categoryId ?? undefined,
             programTypeIds: programTypeIds.length > 0 ? programTypeIds : undefined,
+            clientId: clientId ?? undefined,
+            programId: programId ?? undefined,
           },
         });
       }
@@ -367,6 +386,12 @@ export function NewEstimateRequestPage() {
   const resolvedProgramTypeNames = (programTypesQuery.data ?? [])
     .filter((pt) => programTypeIds.includes(pt.id))
     .map((pt) => pt.name);
+  const resolvedClientName =
+    (clientsQuery.data ?? []).find((c) => c.id === clientId)?.name ?? null;
+  const resolvedProgramName =
+    (programsQuery.data ?? []).find((p) => p.id === programId)?.name ?? null;
+
+  const selectedClient = (clientsQuery.data ?? []).find((c) => c.id === clientId) ?? null;
 
   return (
     <>
@@ -393,6 +418,10 @@ export function NewEstimateRequestPage() {
           programTypeIds={programTypeIds}
           categories={categoriesQuery.data ?? []}
           programTypes={programTypesQuery.data ?? []}
+          clients={clientsQuery.data ?? []}
+          programs={programsQuery.data ?? []}
+          clientId={clientId}
+          programId={programId}
           localItems={localItems}
           products={products}
           itemsLocked={itemsLocked}
@@ -424,6 +453,26 @@ export function NewEstimateRequestPage() {
             setProgramTypeIds(ids);
             setDirty(true);
           }}
+          onClientChange={(id) => {
+            setClientId(id);
+            setProgramId(null);
+            setDirty(true);
+          }}
+          onClientClear={() => {
+            setClientId(null);
+            setProgramId(null);
+            setDirty(true);
+          }}
+          onProgramChange={(id) => {
+            setProgramId(id);
+            setDirty(true);
+          }}
+          onProgramClear={() => {
+            setProgramId(null);
+            setDirty(true);
+          }}
+          onOpenNewClientModal={() => setNewClientModalOpen(true)}
+          onOpenNewProgramModal={() => setNewProgramModalOpen(true)}
           onAddItem={addItem}
           onRemoveItem={removeItem}
           onCancel={() => setCancelOpen(true)}
@@ -435,7 +484,9 @@ export function NewEstimateRequestPage() {
             (!goLiveDateUnknown && goLiveDate === "") ||
             localItems.length === 0 ||
             categoryId == null ||
-            programTypeIds.length === 0
+            programTypeIds.length === 0 ||
+            clientId == null ||
+            programId == null
           }
         />
       )}
@@ -467,6 +518,8 @@ export function NewEstimateRequestPage() {
           goLiveDateUnknown={goLiveDateUnknown}
           categoryName={resolvedCategoryName}
           programTypeNames={resolvedProgramTypeNames}
+          clientName={resolvedClientName}
+          programName={resolvedProgramName}
           localItems={localItems}
           products={products}
           requesterName={requesterName}
@@ -476,6 +529,32 @@ export function NewEstimateRequestPage() {
           onGoToStep2={() => setStep(2)}
           onSaveDraft={() => void persistAllAnswers()}
           onSubmit={performSubmit}
+        />
+      )}
+
+      <NewClientModal
+        open={newClientModalOpen}
+        defaultPointOfContact={user ? `${user.firstName} ${user.lastName}` : ""}
+        onClose={() => setNewClientModalOpen(false)}
+        onCreated={(client) => {
+          setClientId(client.id);
+          setProgramId(null);
+          setNewClientModalOpen(false);
+          setDirty(true);
+        }}
+      />
+
+      {clientId != null && selectedClient != null && (
+        <NewProgramModal
+          open={newProgramModalOpen}
+          clientId={clientId}
+          clientName={selectedClient.name}
+          onClose={() => setNewProgramModalOpen(false)}
+          onCreated={(program) => {
+            setProgramId(program.id);
+            setNewProgramModalOpen(false);
+            setDirty(true);
+          }}
         />
       )}
 
@@ -523,6 +602,10 @@ interface Step1Props {
   programTypeIds: number[];
   categories: CategoryDto[];
   programTypes: ProgramTypeDto[];
+  clients: ClientDto[];
+  programs: ProgramDto[];
+  clientId: number | null;
+  programId: number | null;
   localItems: LocalItem[];
   products: ProductDetail[];
   itemsLocked: boolean;
@@ -534,6 +617,12 @@ interface Step1Props {
   onGoLiveDateUnknownChange: (unknown: boolean) => void;
   onCategoryChange: (id: number | null) => void;
   onProgramTypesChange: (ids: number[]) => void;
+  onClientChange: (id: number) => void;
+  onClientClear: () => void;
+  onProgramChange: (id: number) => void;
+  onProgramClear: () => void;
+  onOpenNewClientModal: () => void;
+  onOpenNewProgramModal: () => void;
   onAddItem: (
     productId: number,
     productName: string,
@@ -556,6 +645,10 @@ function Step1({
   programTypeIds,
   categories,
   programTypes,
+  clients,
+  programs,
+  clientId,
+  programId,
   localItems,
   products,
   itemsLocked,
@@ -567,6 +660,12 @@ function Step1({
   onGoLiveDateUnknownChange,
   onCategoryChange,
   onProgramTypesChange,
+  onClientChange,
+  onClientClear,
+  onProgramChange,
+  onProgramClear,
+  onOpenNewClientModal,
+  onOpenNewProgramModal,
   onAddItem,
   onRemoveItem,
   onCancel,
@@ -709,6 +808,56 @@ function Step1({
                 </label>
               ))}
             </div>
+          </div>
+
+          {/* Client */}
+          <div>
+            <label
+              htmlFor="request-client"
+              className="block text-near-black font-medium"
+              style={{ fontSize: 13, marginBottom: 4 }}
+            >
+              Client <span className="text-cardinal-red">*</span>
+            </label>
+            <ComboboxInput
+              id="request-client"
+              placeholder="Search clients…"
+              options={clients.map((c) => ({ id: c.id, label: c.name }))}
+              value={clientId}
+              onChange={onClientChange}
+              onClear={onClientClear}
+              onCreateNew={onOpenNewClientModal}
+              createNewLabel="New client"
+              required
+            />
+          </div>
+
+          {/* Program */}
+          <div>
+            <label
+              htmlFor="request-program"
+              className="block text-near-black font-medium"
+              style={{ fontSize: 13, marginBottom: 4 }}
+            >
+              Program <span className="text-cardinal-red">*</span>
+              {clientId == null && (
+                <span className="text-warm-gray-med font-normal" style={{ marginLeft: 6 }}>
+                  (select a client first)
+                </span>
+              )}
+            </label>
+            <ComboboxInput
+              id="request-program"
+              placeholder="Search programs…"
+              options={programs.map((p) => ({ id: p.id, label: p.name }))}
+              value={programId}
+              onChange={onProgramChange}
+              onClear={onProgramClear}
+              onCreateNew={onOpenNewProgramModal}
+              createNewLabel="New program"
+              disabled={clientId == null}
+              required
+            />
           </div>
         </div>
       </section>
@@ -1825,6 +1974,8 @@ interface Step3Props {
   goLiveDateUnknown: boolean;
   categoryName: string | null;
   programTypeNames: string[];
+  clientName: string | null;
+  programName: string | null;
   localItems: LocalItem[];
   products: ProductDetail[];
   requesterName: string;
@@ -1843,6 +1994,8 @@ function Step3({
   goLiveDateUnknown,
   categoryName,
   programTypeNames,
+  clientName,
+  programName,
   localItems,
   products,
   requesterName,
@@ -1920,6 +2073,8 @@ function Step3({
           <KVRow label="Name" value={title} />
           {description && <KVRow label="Description" value={description} />}
           <KVRow label="Go-live date" value={formattedDate ?? "Unknown"} />
+          {clientName && <KVRow label="Client" value={clientName} />}
+          {programName && <KVRow label="Program" value={programName} />}
           {categoryName && <KVRow label="Category" value={categoryName} />}
           {programTypeNames.length > 0 && (
             <KVRow label="Program type" value={programTypeNames.join(", ")} />

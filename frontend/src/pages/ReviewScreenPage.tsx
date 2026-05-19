@@ -111,12 +111,14 @@ export function ReviewScreenPage() {
       />
 
       <div className="flex flex-col" style={{ gap: 16, marginTop: 24 }}>
-        {(detail.description || detail.goLiveDate !== undefined || detail.categoryName || (detail.programTypeNames?.length ?? 0) > 0) && (
+        {(detail.description || detail.goLiveDate !== undefined || detail.categoryName || (detail.programTypeNames?.length ?? 0) > 0 || detail.clientName || detail.programName) && (
           <RequestContextCard
             description={detail.description ?? null}
             goLiveDate={detail.goLiveDate ?? null}
             categoryName={detail.categoryName ?? null}
             programTypeNames={detail.programTypeNames ?? []}
+            clientName={detail.clientName ?? null}
+            programName={detail.programName ?? null}
           />
         )}
         {detail.items.map((item) => (
@@ -505,11 +507,15 @@ function RequestContextCard({
   goLiveDate,
   categoryName,
   programTypeNames,
+  clientName,
+  programName,
 }: {
   description: string | null;
   goLiveDate: string | null;
   categoryName: string | null;
   programTypeNames: string[];
+  clientName: string | null;
+  programName: string | null;
 }) {
   const formattedDate = goLiveDate
     ? new Date(goLiveDate + "T00:00:00").toLocaleDateString(undefined, {
@@ -571,6 +577,28 @@ function RequestContextCard({
               Program Type
             </div>
             <div className="text-near-black" style={{ fontSize: 13 }}>{programTypeNames.join(", ")}</div>
+          </div>
+        )}
+        {clientName && (
+          <div>
+            <div
+              className="text-warm-gray-med uppercase font-medium"
+              style={{ fontSize: 11, letterSpacing: "0.04em", marginBottom: 4 }}
+            >
+              Client
+            </div>
+            <div className="text-near-black" style={{ fontSize: 13 }}>{clientName}</div>
+          </div>
+        )}
+        {programName && (
+          <div>
+            <div
+              className="text-warm-gray-med uppercase font-medium"
+              style={{ fontSize: 11, letterSpacing: "0.04em", marginBottom: 4 }}
+            >
+              Program
+            </div>
+            <div className="text-near-black" style={{ fontSize: 13 }}>{programName}</div>
           </div>
         )}
       </div>

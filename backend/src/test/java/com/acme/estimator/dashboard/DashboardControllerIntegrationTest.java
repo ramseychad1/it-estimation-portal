@@ -460,6 +460,8 @@ class DashboardControllerIntegrationTest {
         body.put("title", title);
         body.put("categoryId", 1);
         body.put("programTypeIds", List.of(1));
+        body.put("clientId", 1);
+        body.put("programId", 1);
         body.put("items", List.of(Map.of("productId", productId)));
         String responseBody = mvc.perform(post("/api/estimates/my")
                 .with(user(as)).with(csrf())

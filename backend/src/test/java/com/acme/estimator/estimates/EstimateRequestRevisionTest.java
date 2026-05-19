@@ -270,6 +270,8 @@ class EstimateRequestRevisionTest {
         dropBodyMap.put("title", "Drop Test");
         dropBodyMap.put("categoryId", 1);
         dropBodyMap.put("programTypeIds", List.of(1));
+        dropBodyMap.put("clientId", 1);
+        dropBodyMap.put("programId", 1);
         dropBodyMap.put("items", List.of(Map.of("productId", p1.getId()), Map.of("productId", p2.getId())));
         String body = json.writeValueAsString(dropBodyMap);
         String resp = mvc.perform(post("/api/estimates/my")
@@ -459,6 +461,8 @@ class EstimateRequestRevisionTest {
         bodyMap.put("title", title);
         bodyMap.put("categoryId", 1);
         bodyMap.put("programTypeIds", List.of(1));
+        bodyMap.put("clientId", 1);
+        bodyMap.put("programId", 1);
         bodyMap.put("items", List.of(Map.of("productId", productId)));
         String body = json.writeValueAsString(bodyMap);
         String resp = mvc.perform(post("/api/estimates/my")

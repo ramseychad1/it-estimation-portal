@@ -8,6 +8,10 @@ import com.acme.estimator.auth.User;
 import com.acme.estimator.auth.UserRepository;
 import com.acme.estimator.catalog.categories.Category;
 import com.acme.estimator.catalog.categories.CategoryRepository;
+import com.acme.estimator.clients.Client;
+import com.acme.estimator.clients.ClientRepository;
+import com.acme.estimator.programs.Program;
+import com.acme.estimator.programs.ProgramRepository;
 import com.acme.estimator.catalog.products.Product;
 import com.acme.estimator.catalog.products.ProductMode;
 import com.acme.estimator.catalog.products.ProductRepository;
@@ -95,6 +99,8 @@ public class EstimateRequestService {
     private final UserRepository userRepository;
     private final CategoryRepository categoryRepository;
     private final ProgramTypeRepository programTypeRepository;
+    private final ClientRepository clientRepository;
+    private final ProgramRepository programRepository;
 
     // ---- reads ---------------------------------------------------------
 
@@ -194,11 +200,23 @@ public class EstimateRequestService {
                 .orElseThrow(() -> ApiException.badRequest("Invalid or inactive program type: " + ptId));
         }
 
+        Client client = clientRepository.findById(req.clientId())
+            .filter(Client::isActive)
+            .orElseThrow(() -> ApiException.badRequest("Invalid or inactive client."));
+        Program program = programRepository.findById(req.programId())
+            .filter(Program::isActive)
+            .orElseThrow(() -> ApiException.badRequest("Invalid or inactive program."));
+        if (!program.getClientId().equals(client.getId())) {
+            throw ApiException.badRequest("Program does not belong to the selected client.");
+        }
+
         EstimateRequest entity = new EstimateRequest();
         entity.setTitle(req.title().trim());
         entity.setDescription(blankToNull(req.description()));
         entity.setGoLiveDate(req.goLiveDate());
         entity.setCategoryId(category.getId());
+        entity.setClientId(client.getId());
+        entity.setProgramId(program.getId());
         entity.setRequesterId(requester.getId());
         EstimateRequest saved = requestRepository.save(entity);
 
@@ -316,6 +334,38 @@ public class EstimateRequestService {
                 }
                 dirty = true;
             }
+        }
+
+        // clientId: null = don't change
+        if (req.clientId() != null && !req.clientId().equals(request.getClientId())) {
+            clientRepository.findById(req.clientId())
+                .filter(Client::isActive)
+                .orElseThrow(() -> ApiException.badRequest("Invalid or inactive client."));
+            auditService.recordUpdated(
+                EstimateRequest.ENTITY_TYPE, request.getId(), "client",
+                String.valueOf(request.getClientId()), String.valueOf(req.clientId()), requester
+            );
+            request.setClientId(req.clientId());
+            // If client changes, clear program (will be re-set below if provided)
+            request.setProgramId(null);
+            dirty = true;
+        }
+
+        // programId: null = don't change
+        if (req.programId() != null && !req.programId().equals(request.getProgramId())) {
+            Program program = programRepository.findById(req.programId())
+                .filter(Program::isActive)
+                .orElseThrow(() -> ApiException.badRequest("Invalid or inactive program."));
+            Long effectiveClientId = req.clientId() != null ? req.clientId() : request.getClientId();
+            if (!program.getClientId().equals(effectiveClientId)) {
+                throw ApiException.badRequest("Program does not belong to the selected client.");
+            }
+            auditService.recordUpdated(
+                EstimateRequest.ENTITY_TYPE, request.getId(), "program",
+                String.valueOf(request.getProgramId()), String.valueOf(req.programId()), requester
+            );
+            request.setProgramId(program.getId());
+            dirty = true;
         }
 
         if (dirty) requestRepository.save(request);
@@ -1452,11 +1502,15 @@ public class EstimateRequestService {
             cv.categoryId(),
             cv.categoryName(),
             cv.programTypeIds(),
-            cv.programTypeNames()
+            cv.programTypeNames(),
+            cv.clientId(),
+            cv.clientName(),
+            cv.programId(),
+            cv.programName()
         );
     }
 
-    /** Loads category + program-type display data for a single request. */
+    /** Loads category, program-type, client, and program display data for a single request. */
     private ClassificationView loadClassification(EstimateRequest request) {
         String categoryName = categoryRepository.findById(request.getCategoryId())
             .map(Category::getName).orElse(null);
@@ -1469,12 +1523,23 @@ public class EstimateRequestService {
                 .map(ProgramType::getName).orElse(null))
             .filter(n -> n != null)
             .toList();
-        return new ClassificationView(request.getCategoryId(), categoryName, ptIds, ptNames);
+        String clientName = request.getClientId() != null
+            ? clientRepository.findById(request.getClientId()).map(Client::getName).orElse(null)
+            : null;
+        String programName = request.getProgramId() != null
+            ? programRepository.findById(request.getProgramId()).map(Program::getName).orElse(null)
+            : null;
+        return new ClassificationView(
+            request.getCategoryId(), categoryName, ptIds, ptNames,
+            request.getClientId(), clientName, request.getProgramId(), programName
+        );
     }
 
     private record ClassificationView(
         Long categoryId, String categoryName,
-        List<Long> programTypeIds, List<String> programTypeNames
+        List<Long> programTypeIds, List<String> programTypeNames,
+        Long clientId, String clientName,
+        Long programId, String programName
     ) {}
 
     /**
@@ -1513,7 +1578,11 @@ public class EstimateRequestService {
             cv.categoryId(),
             cv.categoryName(),
             cv.programTypeIds(),
-            cv.programTypeNames()
+            cv.programTypeNames(),
+            cv.clientId(),
+            cv.clientName(),
+            cv.programId(),
+            cv.programName()
         );
     }
 

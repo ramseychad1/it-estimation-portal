@@ -222,6 +222,8 @@ class EstimateRequestItemReviewTest {
         multiBody.put("title", "Multi-item");
         multiBody.put("categoryId", 1);
         multiBody.put("programTypeIds", List.of(1));
+        multiBody.put("clientId", 1);
+        multiBody.put("programId", 1);
         multiBody.put("items", List.of(
             Map.of("productId", pA.getId()),
             Map.of("productId", pB.getId())
@@ -431,6 +433,8 @@ class EstimateRequestItemReviewTest {
         bodyMap.put("title", title);
         bodyMap.put("categoryId", 1);
         bodyMap.put("programTypeIds", List.of(1));
+        bodyMap.put("clientId", 1);
+        bodyMap.put("programId", 1);
         bodyMap.put("items", List.of(Map.of("productId", productId)));
         String body = json.writeValueAsString(bodyMap);
         String resp = mvc.perform(post("/api/estimates/my")
