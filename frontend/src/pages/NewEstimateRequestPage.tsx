@@ -210,7 +210,7 @@ export function NewEstimateRequestPage() {
       if (id == null) {
         const created = await createMutation.mutateAsync({
           title: title.trim(),
-          description: description.trim() || null,
+          description: description.trim(),
           goLiveDate: resolvedGoLiveDate,
           categoryId: categoryId!,
           programTypeIds,
@@ -431,6 +431,7 @@ export function NewEstimateRequestPage() {
           onContinue={() => void ensureDraftThen(2)}
           continueDisabled={
             title.trim() === "" ||
+            description.trim() === "" ||
             localItems.length === 0 ||
             categoryId == null ||
             programTypeIds.length === 0
@@ -636,13 +637,9 @@ function Step1({
           <div style={{ gridColumn: "1 / -1" }}>
             <Textarea
               id="request-description"
-              label={
-                <>
-                  Description{" "}
-                  <span className="text-warm-gray-med font-normal">(optional)</span>
-                </>
-              }
+              label="Description"
               helper="Add context — business goal, related projects, stakeholders…"
+              required
               rows={3}
               value={description}
               onChange={(e) => onDescriptionChange(e.currentTarget.value)}

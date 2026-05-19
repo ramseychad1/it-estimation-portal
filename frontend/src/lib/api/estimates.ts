@@ -135,7 +135,7 @@ export interface CreateItemRequest {
 
 export interface CreateDraftRequest {
   title: string;
-  description?: string | null;
+  description: string;
   /** ISO date string "YYYY-MM-DD", or null if "Unknown at this time". */
   goLiveDate?: string | null;
   categoryId: number;
