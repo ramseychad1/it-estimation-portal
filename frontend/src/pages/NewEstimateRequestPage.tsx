@@ -432,6 +432,7 @@ export function NewEstimateRequestPage() {
           continueDisabled={
             title.trim() === "" ||
             description.trim() === "" ||
+            (!goLiveDateUnknown && goLiveDate === "") ||
             localItems.length === 0 ||
             categoryId == null ||
             programTypeIds.length === 0
@@ -606,8 +607,7 @@ function Step1({
               className="block text-near-black font-medium"
               style={{ fontSize: 13, marginBottom: 4 }}
             >
-              Go-live date{" "}
-              <span className="text-warm-gray-med font-normal">(optional)</span>
+              Go-live date <span className="text-cardinal-red">*</span>
             </label>
             <input
               type="date"
