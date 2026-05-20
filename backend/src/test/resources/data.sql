@@ -1,5 +1,5 @@
 -- Test seed: roles + the admin user used in dev (BCrypt hash of "ChangeMe123!").
-INSERT INTO roles (id, name) VALUES (1, 'Admin'), (2, 'Solution Owner'), (3, 'Estimator'), (4, 'Requester');
+INSERT INTO roles (id, name) VALUES (1, 'Admin'), (2, 'Solution Owner'), (3, 'Estimator'), (4, 'Requester'), (5, 'Revenue Manager');
 
 INSERT INTO users (id, email, password_hash, first_name, last_name, active)
 VALUES (

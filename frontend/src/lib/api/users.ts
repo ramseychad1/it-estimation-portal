@@ -156,6 +156,11 @@ export const ROLE_CATALOG: { id: number; name: string; description: string }[] =
     name: "Requester",
     description: "Can create new estimate requests.",
   },
+  {
+    id: 5,
+    name: "Revenue Manager",
+    description: "Can manage Categories, Client Pricing Calculations and Review Estimates for Client Pricing.",
+  },
 ];
 
 export function roleIdByName(name: string): number | undefined {
