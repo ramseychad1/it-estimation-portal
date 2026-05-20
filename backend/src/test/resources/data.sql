@@ -50,6 +50,10 @@ INSERT INTO categories (id, name, display_order) VALUES
     (7, 'Test Category',             7);
 ALTER TABLE categories ALTER COLUMN id RESTART WITH 8;
 
+-- V24: seed the singleton client pricing defaults row.
+INSERT INTO client_pricing_defaults (id) VALUES (1);
+ALTER TABLE client_pricing_defaults ALTER COLUMN id RESTART WITH 2;
+
 -- V22: seed clients and programs so integration tests can reference them.
 INSERT INTO clients (id, name, point_of_contact, active) VALUES
     (1, 'Test Client', 'Test Contact', true),

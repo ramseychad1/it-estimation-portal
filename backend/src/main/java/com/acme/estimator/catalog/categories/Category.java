@@ -35,6 +35,9 @@ public class Category {
     @Column(name = "active", nullable = false)
     private boolean active = true;
 
+    @Column(name = "pricing_model")
+    private String pricingModel;
+
     @Column(name = "created_at", nullable = false, updatable = false, insertable = false)
     private OffsetDateTime createdAt;
 

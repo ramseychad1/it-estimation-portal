@@ -30,13 +30,4 @@ export function TemplateHistoryPage() {
   );
 }
 
-export function ClientPricingPage() {
-  return (
-    <Placeholder
-      title="Client Pricing"
-      subtitle="Manage client pricing calculations and review estimates for client pricing."
-      breadcrumb={[{ label: "Admin" }, { label: "Client Pricing" }]}
-    />
-  );
-}
 

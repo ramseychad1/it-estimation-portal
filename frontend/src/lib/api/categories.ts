@@ -5,6 +5,7 @@ export interface CategoryDto {
   name: string;
   displayOrder: number;
   active: boolean;
+  pricingModel: "TARGET_MARGIN" | "TIME_AND_MATERIALS" | null;
   createdAt: string | null;
   updatedAt: string | null;
 }
