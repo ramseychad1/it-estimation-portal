@@ -29,27 +29,27 @@ public class CategoryController {
         return service.listActive();
     }
 
-    /** Full list including inactive — Admin only. */
+    /** Full list including inactive — Admin or Revenue Manager. */
     @GetMapping("/api/admin/categories")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','REVENUE_MANAGER')")
     public List<CategoryDto> listAll() {
         return service.listAll();
     }
 
     @PostMapping("/api/admin/categories")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','REVENUE_MANAGER')")
     public ResponseEntity<CategoryDto> create(@Valid @RequestBody CategoryRequest body) {
         return ResponseEntity.status(HttpStatus.CREATED).body(service.create(body));
     }
 
     @PatchMapping("/api/admin/categories/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','REVENUE_MANAGER')")
     public CategoryDto update(@PathVariable Long id, @Valid @RequestBody CategoryRequest body) {
         return service.update(id, body);
     }
 
     @DeleteMapping("/api/admin/categories/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','REVENUE_MANAGER')")
     public ResponseEntity<Void> delete(@PathVariable Long id) {
         service.delete(id);
         return ResponseEntity.noContent().build();

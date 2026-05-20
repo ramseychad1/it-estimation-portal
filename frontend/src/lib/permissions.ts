@@ -32,9 +32,10 @@ function eq(a: string, b: string): boolean {
  * @param role         the role name to check (e.g. "Requester")
  * @param userRoles    the actor's actual roles (from /api/auth/me)
  */
-export function hasPermission(role: string, userRoles: string[]): boolean {
+export function hasPermission(role: string | string[], userRoles: string[]): boolean {
   if (!userRoles || userRoles.length === 0) return false;
-  if (userRoles.some((r) => eq(r, role))) return true;
+  const required = Array.isArray(role) ? role : [role];
+  if (userRoles.some((r) => required.some((req) => eq(r, req)))) return true;
   // Implication: Admin satisfies every role check.
   return userRoles.some((r) => eq(r, ADMIN_ROLE));
 }

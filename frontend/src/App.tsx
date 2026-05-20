@@ -2,9 +2,9 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { AppShell } from "./components/AppShell";
 import { AuthGuard } from "./components/AuthGuard";
 import { RoleGuard } from "./components/RoleGuard";
-import { ROLE_ADMIN, ROLE_REQUESTER, ROLE_SOLUTION_OWNER } from "./lib/types";
+import { ROLE_ADMIN, ROLE_REQUESTER, ROLE_REVENUE_MANAGER, ROLE_SOLUTION_OWNER } from "./lib/types";
 import { LoginPage } from "./pages/LoginPage";
-import { TemplateHistoryPage } from "./pages/placeholders";
+import { ClientPricingPage, TemplateHistoryPage } from "./pages/placeholders";
 import { DashboardPage } from "./pages/DashboardPage";
 import { MyRequestsPage } from "./pages/MyRequestsPage";
 import { NewEstimateRequestPage } from "./pages/NewEstimateRequestPage";
@@ -47,7 +47,7 @@ function RoleProtectedShell({
   requires,
   children,
 }: {
-  requires: string;
+  requires: string | string[];
   children: React.ReactNode;
 }) {
   return (
@@ -71,34 +71,35 @@ export default function App() {
           adapts content by role). */}
       <Route path="/dashboard" element={<ProtectedShell><DashboardPage /></ProtectedShell>} />
 
-      {/* Requester surface — Admins inherit. */}
-      <Route path="/requests" element={<RoleProtectedShell requires={ROLE_REQUESTER}><MyRequestsPage /></RoleProtectedShell>} />
-      <Route path="/requests/new" element={<RoleProtectedShell requires={ROLE_REQUESTER}><NewEstimateRequestPage /></RoleProtectedShell>} />
-      <Route path="/requests/:id" element={<RoleProtectedShell requires={ROLE_REQUESTER}><EstimateDetailPage /></RoleProtectedShell>} />
+      {/* Requester surface — Admins + Revenue Managers inherit. */}
+      <Route path="/requests" element={<RoleProtectedShell requires={[ROLE_REQUESTER, ROLE_REVENUE_MANAGER]}><MyRequestsPage /></RoleProtectedShell>} />
+      <Route path="/requests/new" element={<RoleProtectedShell requires={[ROLE_REQUESTER, ROLE_REVENUE_MANAGER]}><NewEstimateRequestPage /></RoleProtectedShell>} />
+      <Route path="/requests/:id" element={<RoleProtectedShell requires={[ROLE_REQUESTER, ROLE_REVENUE_MANAGER]}><EstimateDetailPage /></RoleProtectedShell>} />
 
-      {/* Reviewer surface — Admins inherit. */}
-      <Route path="/review" element={<RoleProtectedShell requires={ROLE_SOLUTION_OWNER}><ReviewQueuePage /></RoleProtectedShell>} />
-      <Route path="/review/:id" element={<RoleProtectedShell requires={ROLE_SOLUTION_OWNER}><ReviewScreenPage /></RoleProtectedShell>} />
+      {/* Reviewer surface — Admins + Revenue Managers inherit. */}
+      <Route path="/review" element={<RoleProtectedShell requires={[ROLE_SOLUTION_OWNER, ROLE_REVENUE_MANAGER]}><ReviewQueuePage /></RoleProtectedShell>} />
+      <Route path="/review/:id" element={<RoleProtectedShell requires={[ROLE_SOLUTION_OWNER, ROLE_REVENUE_MANAGER]}><ReviewScreenPage /></RoleProtectedShell>} />
 
-      {/* Reports surface — SO + Admin. */}
-      <Route path="/reports/team-workload" element={<RoleProtectedShell requires={ROLE_SOLUTION_OWNER}><TeamWorkloadPage /></RoleProtectedShell>} />
-      <Route path="/reports/team-workload/:teamId" element={<RoleProtectedShell requires={ROLE_SOLUTION_OWNER}><TeamWorkloadDetailPage /></RoleProtectedShell>} />
+      {/* Reports surface — SO + Admin + Revenue Manager. */}
+      <Route path="/reports/team-workload" element={<RoleProtectedShell requires={[ROLE_SOLUTION_OWNER, ROLE_REVENUE_MANAGER]}><TeamWorkloadPage /></RoleProtectedShell>} />
+      <Route path="/reports/team-workload/:teamId" element={<RoleProtectedShell requires={[ROLE_SOLUTION_OWNER, ROLE_REVENUE_MANAGER]}><TeamWorkloadDetailPage /></RoleProtectedShell>} />
 
-      {/* Catalog surface — Admins inherit. */}
-      <Route path="/catalog/products" element={<RoleProtectedShell requires={ROLE_SOLUTION_OWNER}><ProductsPage /></RoleProtectedShell>} />
-      <Route path="/catalog/products/:productId" element={<RoleProtectedShell requires={ROLE_SOLUTION_OWNER}><ProductDetailPage /></RoleProtectedShell>} />
-      <Route path="/catalog/products/:productId/sub-features/:subFeatureId" element={<RoleProtectedShell requires={ROLE_SOLUTION_OWNER}><SubFeatureDetailPage /></RoleProtectedShell>} />
-      <Route path="/catalog/questions" element={<RoleProtectedShell requires={ROLE_SOLUTION_OWNER}><QuestionsBrowserPage /></RoleProtectedShell>} />
-      <Route path="/catalog/template-history" element={<RoleProtectedShell requires={ROLE_SOLUTION_OWNER}><TemplateHistoryPage /></RoleProtectedShell>} />
+      {/* Catalog surface — SO + Admin + Revenue Manager. */}
+      <Route path="/catalog/products" element={<RoleProtectedShell requires={[ROLE_SOLUTION_OWNER, ROLE_REVENUE_MANAGER]}><ProductsPage /></RoleProtectedShell>} />
+      <Route path="/catalog/products/:productId" element={<RoleProtectedShell requires={[ROLE_SOLUTION_OWNER, ROLE_REVENUE_MANAGER]}><ProductDetailPage /></RoleProtectedShell>} />
+      <Route path="/catalog/products/:productId/sub-features/:subFeatureId" element={<RoleProtectedShell requires={[ROLE_SOLUTION_OWNER, ROLE_REVENUE_MANAGER]}><SubFeatureDetailPage /></RoleProtectedShell>} />
+      <Route path="/catalog/questions" element={<RoleProtectedShell requires={[ROLE_SOLUTION_OWNER, ROLE_REVENUE_MANAGER]}><QuestionsBrowserPage /></RoleProtectedShell>} />
+      <Route path="/catalog/template-history" element={<RoleProtectedShell requires={[ROLE_SOLUTION_OWNER, ROLE_REVENUE_MANAGER]}><TemplateHistoryPage /></RoleProtectedShell>} />
 
-      {/* Admin surface — explicit Admin requirement (no implication needed; Admin IS the bar). */}
+      {/* Admin surface — explicit Admin requirement except where Revenue Manager is also allowed. */}
       <Route path="/admin/teams" element={<RoleProtectedShell requires={ROLE_ADMIN}><TeamsPage /></RoleProtectedShell>} />
       <Route path="/admin/phases" element={<RoleProtectedShell requires={ROLE_ADMIN}><SdlcPhasesPage /></RoleProtectedShell>} />
       <Route path="/admin/rates" element={<RoleProtectedShell requires={ROLE_ADMIN}><BlendedRatesPage /></RoleProtectedShell>} />
       <Route path="/admin/program-types" element={<RoleProtectedShell requires={ROLE_ADMIN}><ProgramTypesPage /></RoleProtectedShell>} />
       <Route path="/admin/clients" element={<RoleProtectedShell requires={ROLE_ADMIN}><ClientsPage /></RoleProtectedShell>} />
       <Route path="/admin/programs" element={<RoleProtectedShell requires={ROLE_ADMIN}><ProgramsPage /></RoleProtectedShell>} />
-      <Route path="/admin/categories" element={<RoleProtectedShell requires={ROLE_ADMIN}><CategoriesPage /></RoleProtectedShell>} />
+      <Route path="/admin/categories" element={<RoleProtectedShell requires={[ROLE_ADMIN, ROLE_REVENUE_MANAGER]}><CategoriesPage /></RoleProtectedShell>} />
+      <Route path="/admin/client-pricing" element={<RoleProtectedShell requires={[ROLE_ADMIN, ROLE_REVENUE_MANAGER]}><ClientPricingPage /></RoleProtectedShell>} />
       <Route path="/admin/users" element={<RoleProtectedShell requires={ROLE_ADMIN}><UsersPage /></RoleProtectedShell>} />
       <Route path="/admin/change-log" element={<RoleProtectedShell requires={ROLE_ADMIN}><ChangeLogPage /></RoleProtectedShell>} />
 

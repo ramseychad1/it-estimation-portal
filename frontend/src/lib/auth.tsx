@@ -103,7 +103,7 @@ export function useAuth(): AuthContextValue {
  * literally an Admin" (e.g. an admin-only "Send back" button), import
  * {@code isAdmin} from {@code lib/permissions} directly.
  */
-export function hasRole(user: CurrentUser | null, role: string): boolean {
+export function hasRole(user: CurrentUser | null, role: string | string[]): boolean {
   if (!user) return false;
   return hasPermission(role, user.roles);
 }

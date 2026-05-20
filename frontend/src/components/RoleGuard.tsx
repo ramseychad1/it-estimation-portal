@@ -4,8 +4,8 @@ import { hasPermission } from "../lib/permissions";
 import { PageHeader } from "./PageHeader";
 
 interface RoleGuardProps {
-  /** Role required to view the wrapped content. Admins inherit every role. */
-  requires: string;
+  /** Role(s) required to view the wrapped content. Admins inherit every role. */
+  requires: string | string[];
   children: React.ReactNode;
 }
 
@@ -32,7 +32,8 @@ export function RoleGuard({ requires, children }: RoleGuardProps) {
   if (hasPermission(requires, user.roles)) {
     return <>{children}</>;
   }
-  return <NoAccessPanel requiredRole={requires} />;
+  const label = Array.isArray(requires) ? requires.join(" or ") : requires;
+  return <NoAccessPanel requiredRole={label} />;
 }
 
 function NoAccessPanel({ requiredRole }: { requiredRole: string }) {

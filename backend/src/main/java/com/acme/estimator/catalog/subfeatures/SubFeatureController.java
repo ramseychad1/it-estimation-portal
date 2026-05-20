@@ -40,7 +40,7 @@ import org.springframework.web.bind.annotation.RestController;
  * files for no real benefit.
  */
 @RestController
-@PreAuthorize("hasAnyRole('ADMIN','SOLUTION_OWNER')")
+@PreAuthorize("hasAnyRole('ADMIN','SOLUTION_OWNER','REVENUE_MANAGER')")
 @RequiredArgsConstructor
 public class SubFeatureController {
 

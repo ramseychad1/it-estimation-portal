@@ -39,7 +39,7 @@ import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBo
 
 @RestController
 @RequestMapping("/api/catalog/products")
-@PreAuthorize("hasAnyRole('ADMIN','SOLUTION_OWNER')")
+@PreAuthorize("hasAnyRole('ADMIN','SOLUTION_OWNER','REVENUE_MANAGER')")
 @RequiredArgsConstructor
 public class ProductController {
 

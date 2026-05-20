@@ -45,7 +45,7 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @RestController
 @RequestMapping("/api/estimates/my")
-@PreAuthorize("hasAnyRole('ADMIN','REQUESTER')")
+@PreAuthorize("hasAnyRole('ADMIN','REQUESTER','REVENUE_MANAGER')")
 @RequiredArgsConstructor
 public class EstimateRequestController {
 
