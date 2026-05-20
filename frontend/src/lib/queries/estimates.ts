@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  adminDeleteRequest,
   createDraft,
   discardDraft,
   dropItem,
@@ -133,5 +134,13 @@ export function useRecallItemMutation() {
   return useMutation({
     mutationFn: ({ id, itemId }: { id: number; itemId: number }) => recallItem(id, itemId),
     onSuccess: (_data, { id }) => invalidateDetail(qc, id),
+  });
+}
+
+export function useAdminDeleteRequestMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => adminDeleteRequest(id),
+    onSuccess: () => invalidateAll(qc),
   });
 }

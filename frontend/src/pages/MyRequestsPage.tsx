@@ -17,6 +17,7 @@ import { useToast } from "../components/Toast";
 import { useAuth } from "../lib/auth";
 import { isAdmin } from "../lib/permissions";
 import {
+  useAdminDeleteRequestMutation,
   useDiscardDraftMutation,
   useMyRequestsQuery,
 } from "../lib/queries/estimates";
@@ -63,6 +64,8 @@ export function MyRequestsPage() {
   );
   const [discardTarget, setDiscardTarget] =
     useState<EstimateRequestListItem | null>(null);
+  const [adminDeleteTarget, setAdminDeleteTarget] =
+    useState<EstimateRequestListItem | null>(null);
 
   const debouncedSearch = useDebouncedValue(search, 300);
 
@@ -78,6 +81,7 @@ export function MyRequestsPage() {
   );
   const requestsQuery = useMyRequestsQuery(queryParams);
   const discardMutation = useDiscardDraftMutation();
+  const adminDeleteMutation = useAdminDeleteRequestMutation();
 
   const items = requestsQuery.data?.items ?? [];
   const totalElements = requestsQuery.data?.totalElements ?? 0;
@@ -101,14 +105,24 @@ export function MyRequestsPage() {
       destructive: true,
       onSelect: () => setDiscardTarget(row),
     };
+    const adminDelete: KebabMenuItem = {
+      label: "Delete",
+      destructive: true,
+      onSelect: () => setAdminDeleteTarget(row),
+    };
     const downloadSummary: KebabMenuItem = {
       label: "Download summary",
       disabled: true,
       onSelect: () => undefined,
     };
 
-    // In all-requesters mode the admin may be viewing someone else's draft —
-    // only "Open" is safe; the owner can discard from the detail page.
+    if (userIsAdmin) {
+      if (row.derivedStatus === "APPROVED") return [open, downloadSummary, adminDelete];
+      return [open, adminDelete];
+    }
+
+    // Non-admin: in all-requesters mode the admin toggle is off for non-admins,
+    // but guard defensively — only "Open" is safe when viewing someone else's row.
     if (allRequests) return [open];
 
     switch (row.derivedStatus) {
@@ -134,6 +148,18 @@ export function MyRequestsPage() {
         setDiscardTarget(null);
       },
       onError: () => toast.error("Could not discard that request."),
+    });
+  }
+
+  function confirmAdminDelete() {
+    if (!adminDeleteTarget) return;
+    const target = adminDeleteTarget;
+    adminDeleteMutation.mutate(target.id, {
+      onSuccess: () => {
+        toast.success(`Deleted "${target.title}".`);
+        setAdminDeleteTarget(null);
+      },
+      onError: () => toast.error("Could not delete that request."),
     });
   }
 
@@ -368,6 +394,23 @@ export function MyRequestsPage() {
         destructive
         onCancel={() => setDiscardTarget(null)}
         onConfirm={confirmDiscard}
+      />
+
+      <ConfirmModal
+        open={!!adminDeleteTarget}
+        title="Delete this request?"
+        body={
+          adminDeleteTarget ? (
+            <p className="text-body text-warm-gray-med m-0">
+              "{adminDeleteTarget.title}" and all of its items, answers, and attachments will be permanently removed. This action is logged and cannot be undone.
+            </p>
+          ) : null
+        }
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        destructive
+        onCancel={() => setAdminDeleteTarget(null)}
+        onConfirm={confirmAdminDelete}
       />
     </>
   );
