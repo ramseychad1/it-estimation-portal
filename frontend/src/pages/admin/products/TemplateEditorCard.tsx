@@ -19,6 +19,8 @@ import { UserCell } from "../../../components/UserCell";
 import { useToast } from "../../../components/Toast";
 import { useUnsavedChangesGuard } from "../../../lib/useUnsavedChangesGuard";
 import { useRatesPageQuery } from "../../../lib/queries/rates";
+import { useClientPricingDefaultsQuery } from "../../../lib/queries/clientPricing";
+import { computeClientPrice, pricingModelLabel } from "../../../lib/estimateMath";
 import type {
   SaveTemplateLineInput,
   SaveTemplateVersionRequest,
@@ -67,6 +69,7 @@ export function TemplateEditorCard({
   const currentRate = ratesQuery.data?.current;
   const onshoreRate = currentRate ? parseFloat(currentRate.onshoreRate) : undefined;
   const offshoreRate = currentRate ? parseFloat(currentRate.offshoreRate) : undefined;
+  const pricingDefaultsQuery = useClientPricingDefaultsQuery();
 
   // Snapshot comes from the server response; local edit state is a
   // separate map so "Discard" is a simple snapshot restore.
@@ -247,6 +250,81 @@ export function TemplateEditorCard({
         }}
         disabled={saving || !canManage}
       />
+
+      {/* Client Pricing Preview — only rendered when global defaults have usable params */}
+      {pricingDefaultsQuery.data && (() => {
+        const d = pricingDefaultsQuery.data;
+        const complexities = ["LOW", "MED", "HIGH"] as const;
+        const rows = complexities.map((c) => {
+          let onsHrs = 0;
+          let offsHrs = 0;
+          for (const [, row] of values) {
+            onsHrs += c === "LOW" ? row.onshoreLow : c === "MED" ? row.onshoreMed : row.onshoreHigh;
+            offsHrs += c === "LOW" ? row.offshoreLow : c === "MED" ? row.offshoreMed : row.offshoreHigh;
+          }
+          const totalHrs = onsHrs + offsHrs;
+          const internalCost =
+            onshoreRate != null && offshoreRate != null
+              ? onsHrs * onshoreRate + offsHrs * offshoreRate
+              : null;
+          return {
+            c,
+            totalHrs,
+            tmPrice: computeClientPrice("TARGET_MARGIN", internalCost, totalHrs, d.tmMultiplier, d.tmTargetMarginPct, null, null),
+            matPrice: computeClientPrice("TIME_AND_MATERIALS", internalCost, totalHrs, null, null, d.matBillableRate, d.matDiscountPct),
+          };
+        });
+
+        const showTm = rows.some((r) => r.tmPrice != null);
+        const showMat = rows.some((r) => r.matPrice != null);
+        if (!showTm && !showMat) return null;
+
+        const fmtPrice = (v: number | null) =>
+          v != null ? `$${Math.ceil(v).toLocaleString()}` : "—";
+
+        return (
+          <div
+            className="rounded-lg border border-warm-gray-light px-4 py-3"
+            style={{ fontSize: 12 }}
+          >
+            <p className="text-warm-gray-med mb-2" style={{ fontWeight: 600 }}>
+              Client Pricing Preview{" "}
+              <span style={{ fontWeight: 400 }}>(global defaults · indicative only)</span>
+            </p>
+            <div
+              className="grid text-near-black"
+              style={{ gridTemplateColumns: "1fr repeat(3, 80px)", gap: "4px 12px" }}
+            >
+              <div />
+              {(["Low", "Med", "High"] as const).map((label) => (
+                <div key={label} className="text-right text-warm-gray-med" style={{ fontWeight: 600 }}>
+                  {label}
+                </div>
+              ))}
+              {showTm && (
+                <>
+                  <div>{pricingModelLabel("TARGET_MARGIN")}</div>
+                  {rows.map((r) => (
+                    <div key={r.c} className="text-right">
+                      {fmtPrice(r.tmPrice)}
+                    </div>
+                  ))}
+                </>
+              )}
+              {showMat && (
+                <>
+                  <div>{pricingModelLabel("TIME_AND_MATERIALS")}</div>
+                  {rows.map((r) => (
+                    <div key={r.c} className="text-right">
+                      {fmtPrice(r.matPrice)}
+                    </div>
+                  ))}
+                </>
+              )}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Card footer: last-saved meta + change-reason input when dirty */}
       <div className="flex items-center justify-between gap-4 flex-wrap pt-2">

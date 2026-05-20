@@ -1,7 +1,7 @@
 import { Document, Page, View, Text, StyleSheet } from "@react-pdf/renderer";
 import type { Complexity } from "../lib/api/estimates";
 import type { EstimateRequestDetail, EstimateRequestItemDto } from "../lib/api/estimates";
-import { displayedRow, onshoreHoursForLines, offshoreHoursForLines } from "../lib/estimateMath";
+import { computeClientPrice, displayedRow, onshoreHoursForLines, offshoreHoursForLines, pricingModelLabel } from "../lib/estimateMath";
 
 // ── Design tokens ────────────────────────────────────────────────────────────
 
@@ -598,6 +598,28 @@ function ItemSection({
         </Text>
       )}
 
+      {/* Client Price */}
+      {(() => {
+        const clientPrice = computeClientPrice(
+          item.pricingModel,
+          rate ? totalCost : null,
+          totalHrs,
+          item.tmMultiplier, item.tmTargetMarginPct,
+          item.matBillableRate, item.matDiscountPct,
+        );
+        if (clientPrice == null) return null;
+        return (
+          <View style={{ flexDirection: "row", alignItems: "baseline", marginTop: 6, gap: 6 }}>
+            <Text style={[s.ratesLine, { margin: 0 }]}>
+              Client Price ({pricingModelLabel(item.pricingModel)}):
+            </Text>
+            <Text style={[s.ratesLine, { margin: 0, fontFamily: "Helvetica-Bold", color: C.navy }]}>
+              ${fmtMoney(Math.ceil(clientPrice))}
+            </Text>
+          </View>
+        );
+      })()}
+
       {/* Reviewer & justification */}
       {hasReviewerInfo && (
         <View style={s.reviewerBlock}>
@@ -676,13 +698,24 @@ function ProjectSummary({
     const off = offshoreHoursForLines(it.phaseLines, it.complexity);
     const total = Math.ceil(ons + off);
     const cost = Math.ceil(ons * onsRate + off * offsRate);
-    return { it, ons, off, total, cost };
+    const clientPrice = computeClientPrice(
+      it.pricingModel,
+      rate ? cost : null,
+      total,
+      it.tmMultiplier, it.tmTargetMarginPct,
+      it.matBillableRate, it.matDiscountPct,
+    );
+    return { it, ons, off, total, cost, clientPrice };
   });
 
   const grandOns = rows.reduce((s, r) => s + r.ons, 0);
   const grandOff = rows.reduce((s, r) => s + r.off, 0);
   const grandTotal = Math.ceil(grandOns + grandOff);
   const grandCost = Math.ceil(grandOns * onsRate + grandOff * offsRate);
+  const hasClientPrice = rows.some((r) => r.clientPrice != null);
+  const grandClientPrice = hasClientPrice
+    ? Math.ceil(rows.reduce((s, r) => s + (r.clientPrice ?? 0), 0))
+    : null;
 
   return (
     <View style={s.summarySection}>
@@ -695,10 +728,11 @@ function ProjectSummary({
           <Text style={s.thSumNum}>Onshore Hrs</Text>
           <Text style={s.thSumNum}>Offshore Hrs</Text>
           <Text style={s.thSumNum}>Total Hrs</Text>
-          {rate && <Text style={s.thSumNum}>Est. Cost</Text>}
+          {rate && <Text style={s.thSumNum}>Int. Cost</Text>}
+          {hasClientPrice && <Text style={s.thSumNum}>Client Price</Text>}
         </View>
 
-        {rows.map(({ it, ons, off, total, cost }) => {
+        {rows.map(({ it, ons, off, total, cost, clientPrice }) => {
           const label = it.subFeatureName
             ? `${it.productName} · ${it.subFeatureName}`
             : it.productName;
@@ -710,6 +744,11 @@ function ProjectSummary({
               <Text style={s.tdSumNum}>{fmtNum(off)}</Text>
               <Text style={s.tdSumNum}>{fmtNum(total)}</Text>
               {rate && <Text style={s.tdSumNum}>{fmtMoney(cost)}</Text>}
+              {hasClientPrice && (
+                <Text style={s.tdSumNum}>
+                  {clientPrice != null ? fmtMoney(Math.ceil(clientPrice)) : "—"}
+                </Text>
+              )}
             </View>
           );
         })}
@@ -722,6 +761,11 @@ function ProjectSummary({
           <Text style={s.tdSumNumBold}>{fmtNum(grandTotal)}</Text>
           {rate && (
             <Text style={[s.tdSumNumBold, { color: C.navy }]}>{fmtMoney(grandCost)}</Text>
+          )}
+          {hasClientPrice && (
+            <Text style={[s.tdSumNumBold, { color: C.navy }]}>
+              {grandClientPrice != null ? fmtMoney(grandClientPrice) : "—"}
+            </Text>
           )}
         </View>
       </View>

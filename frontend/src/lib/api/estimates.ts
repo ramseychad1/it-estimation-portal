@@ -106,6 +106,13 @@ export interface EstimateRequestItemDto {
   clarificationNote: string | null;
   /** Requester's free-form reply; non-null once the requester has responded. */
   clarificationResponse: string | null;
+  // ---- Pricing (V25) ----
+  /** Null when the category has no pricing model assigned. */
+  pricingModel: "TARGET_MARGIN" | "TIME_AND_MATERIALS" | null;
+  tmMultiplier: number | null;
+  tmTargetMarginPct: number | null;
+  matBillableRate: number | null;
+  matDiscountPct: number | null;
 }
 
 // Updated: parent-level detail with items[]

@@ -47,6 +47,7 @@ import {
   type RowValues,
 } from "../components/hours/columns";
 import type { PhaseMeta } from "../components/hours/HoursRow";
+import { computeClientPrice, pricingModelLabel } from "../lib/estimateMath";
 
 export function ReviewScreenPage() {
   const { id } = useParams<{ id: string }>();
@@ -785,6 +786,11 @@ function InReviewPanel({
   const totalCst = effectiveRate && complexity
     ? totalCost(snapshot, overrides, complexity, effectiveRate)
     : null;
+  const clientPrice = computeClientPrice(
+    item.pricingModel, totalCst, totalHrs,
+    item.tmMultiplier, item.tmTargetMarginPct,
+    item.matBillableRate, item.matDiscountPct,
+  );
   const approveDisabled = !isMyReview || complexity === null || justification.trim() === "";
 
   return (
@@ -890,6 +896,22 @@ function InReviewPanel({
               </div>
             )}
           </div>
+          {clientPrice != null && (
+            <div className="text-right">
+              <div
+                className="text-warm-gray-med"
+                style={{ fontSize: 11, letterSpacing: "0.04em", textTransform: "uppercase" }}
+              >
+                Client Price · {pricingModelLabel(item.pricingModel)}
+              </div>
+              <div
+                className="text-near-black font-semibold tabular-nums"
+                style={{ fontSize: 18, marginTop: 2 }}
+              >
+                ${fmtMoney(Math.ceil(clientPrice))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -935,6 +957,13 @@ function TerminalItemPanel({
   const totalHrs = totalHours(snapshot, overrides, item.complexity);
   const totalCst = effectiveRate && item.complexity
     ? totalCost(snapshot, overrides, item.complexity, effectiveRate)
+    : null;
+  const clientPrice = isApproved
+    ? computeClientPrice(
+        item.pricingModel, totalCst, totalHrs,
+        item.tmMultiplier, item.tmTargetMarginPct,
+        item.matBillableRate, item.matDiscountPct,
+      )
     : null;
 
   return (
@@ -1027,6 +1056,22 @@ function TerminalItemPanel({
                 </div>
               )}
             </div>
+            {clientPrice != null && (
+              <div className="text-right">
+                <div
+                  className="text-warm-gray-med"
+                  style={{ fontSize: 11, letterSpacing: "0.04em", textTransform: "uppercase" }}
+                >
+                  Client Price · {pricingModelLabel(item.pricingModel)}
+                </div>
+                <div
+                  className="text-near-black font-semibold tabular-nums"
+                  style={{ fontSize: 18, marginTop: 2 }}
+                >
+                  ${fmtMoney(Math.ceil(clientPrice))}
+                </div>
+              </div>
+            )}
           </div>
         </>
       )}

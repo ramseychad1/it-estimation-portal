@@ -3,6 +3,7 @@ package com.acme.estimator.clientpricing;
 import com.acme.estimator.auth.AppUserDetails;
 import com.acme.estimator.clientpricing.dto.CategoryPricingConfigDto;
 import com.acme.estimator.clientpricing.dto.ClientPricingDefaultsDto;
+import com.acme.estimator.clientpricing.dto.EffectivePricingDto;
 import com.acme.estimator.clientpricing.dto.UpdateCategoryPricingRequest;
 import com.acme.estimator.clientpricing.dto.UpdateDefaultsRequest;
 import java.util.List;
@@ -18,17 +19,38 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequiredArgsConstructor
-@PreAuthorize("hasAnyRole('ADMIN','REVENUE_MANAGER')")
 public class ClientPricingController {
 
     private final ClientPricingService service;
 
+    // ── Read endpoints — Admin, Revenue Manager, Solution Owner ──────────────
+
     @GetMapping("/api/admin/client-pricing/defaults")
+    @PreAuthorize("hasAnyRole('ADMIN','REVENUE_MANAGER','SOLUTION_OWNER')")
     public ClientPricingDefaultsDto getDefaults() {
         return service.getDefaults();
     }
 
+    @GetMapping("/api/admin/client-pricing/categories")
+    @PreAuthorize("hasAnyRole('ADMIN','REVENUE_MANAGER','SOLUTION_OWNER')")
+    public List<CategoryPricingConfigDto> listCategoryConfigs() {
+        return service.listCategoryConfigs();
+    }
+
+    /**
+     * Effective pricing for a single category (overrides merged with defaults).
+     * Used by the template editor and review screen to show per-item client price.
+     */
+    @GetMapping("/api/admin/client-pricing/categories/{categoryId}/effective")
+    @PreAuthorize("hasAnyRole('ADMIN','REVENUE_MANAGER','SOLUTION_OWNER')")
+    public EffectivePricingDto getEffectivePricing(@PathVariable Long categoryId) {
+        return service.getEffectivePricingForCategory(categoryId);
+    }
+
+    // ── Write endpoints — Admin + Revenue Manager only ───────────────────────
+
     @PutMapping("/api/admin/client-pricing/defaults")
+    @PreAuthorize("hasAnyRole('ADMIN','REVENUE_MANAGER')")
     public ClientPricingDefaultsDto updateDefaults(
         @RequestBody UpdateDefaultsRequest body,
         @AuthenticationPrincipal AppUserDetails principal
@@ -36,12 +58,8 @@ public class ClientPricingController {
         return service.updateDefaults(body, principal.getUserId());
     }
 
-    @GetMapping("/api/admin/client-pricing/categories")
-    public List<CategoryPricingConfigDto> listCategoryConfigs() {
-        return service.listCategoryConfigs();
-    }
-
     @PatchMapping("/api/admin/client-pricing/categories/{categoryId}")
+    @PreAuthorize("hasAnyRole('ADMIN','REVENUE_MANAGER')")
     public CategoryPricingConfigDto updateCategoryPricing(
         @PathVariable Long categoryId,
         @RequestBody UpdateCategoryPricingRequest body,

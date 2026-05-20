@@ -348,6 +348,12 @@ CREATE TABLE estimate_request_items (
     -- Phase 10: clarification/recall
     clarification_note       TEXT,
     clarification_response   TEXT,
+    -- V25: pricing snapshot
+    approved_pricing_model        VARCHAR(20),
+    approved_tm_multiplier        NUMERIC(12,4),
+    approved_tm_target_margin_pct NUMERIC(5,2),
+    approved_mat_billable_rate    NUMERIC(12,2),
+    approved_mat_discount_pct     NUMERIC(5,2),
     created_at               TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at               TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT estimate_request_items_pk PRIMARY KEY (id),

@@ -4,11 +4,14 @@ import com.acme.estimator.catalog.categories.Category;
 import com.acme.estimator.catalog.categories.CategoryRepository;
 import com.acme.estimator.clientpricing.dto.CategoryPricingConfigDto;
 import com.acme.estimator.clientpricing.dto.ClientPricingDefaultsDto;
+import com.acme.estimator.clientpricing.dto.EffectivePricingDto;
 import com.acme.estimator.clientpricing.dto.UpdateCategoryPricingRequest;
 import com.acme.estimator.clientpricing.dto.UpdateDefaultsRequest;
 import com.acme.estimator.common.ApiException;
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -86,6 +89,43 @@ public class ClientPricingService {
         overrideRepo.save(override);
 
         return toConfigDto(category, override);
+    }
+
+    /**
+     * Resolves the effective pricing parameters for a category by merging
+     * its override row on top of the global defaults. Returns
+     * {@link EffectivePricingDto#none()} when the category has no pricing
+     * model assigned or when {@code categoryId} is null.
+     */
+    @Transactional(readOnly = true)
+    public EffectivePricingDto getEffectivePricingForCategory(Long categoryId) {
+        if (categoryId == null) return EffectivePricingDto.none();
+        Category category = categoryRepo.findById(categoryId).orElse(null);
+        if (category == null || category.getPricingModel() == null) {
+            return EffectivePricingDto.none();
+        }
+        ClientPricingDefaults defaults = loadDefaults();
+        Optional<CategoryPricingOverride> override = overrideRepo.findByCategoryId(categoryId);
+
+        BigDecimal tmMultiplier = override.isPresent() && override.get().getTmMultiplier() != null
+            ? override.get().getTmMultiplier() : defaults.getTmMultiplier();
+        BigDecimal tmTargetMarginPct =
+            override.isPresent() && override.get().getTmTargetMarginPct() != null
+                ? override.get().getTmTargetMarginPct() : defaults.getTmTargetMarginPct();
+        BigDecimal matBillableRate =
+            override.isPresent() && override.get().getMatBillableRate() != null
+                ? override.get().getMatBillableRate() : defaults.getMatBillableRate();
+        BigDecimal matDiscountPct =
+            override.isPresent() && override.get().getMatDiscountPct() != null
+                ? override.get().getMatDiscountPct() : defaults.getMatDiscountPct();
+
+        return new EffectivePricingDto(
+            category.getPricingModel(),
+            tmMultiplier,
+            tmTargetMarginPct,
+            matBillableRate,
+            matDiscountPct
+        );
     }
 
     private ClientPricingDefaults loadDefaults() {

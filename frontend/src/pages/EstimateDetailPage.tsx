@@ -38,9 +38,11 @@ import { useUserDisplay } from "../lib/userDisplay";
 import { relativeTime } from "../lib/relativeTime";
 import type { EstimatePdfProps } from "../components/EstimatePdf";
 import {
+  computeClientPrice,
   displayedRow,
   offshoreHoursForLines,
   onshoreHoursForLines,
+  pricingModelLabel,
   totalCostForLines,
   totalHoursForLines,
 } from "../lib/estimateMath";
@@ -681,18 +683,26 @@ function EstimateRollupCard({
   );
   if (approvedRows.length === 0) return null;
 
-  const rowData = approvedRows.map((it) => ({
-    it,
-    ons: onshoreHoursForLines(it.phaseLines, it.complexity),
-    offs: offshoreHoursForLines(it.phaseLines, it.complexity),
-    total: totalHoursForLines(it.phaseLines, it.complexity),
-    cost: totalCostForLines(it.phaseLines, it.complexity, currentRate),
-  }));
+  const rowData = approvedRows.map((it) => {
+    const ons = onshoreHoursForLines(it.phaseLines, it.complexity);
+    const offs = offshoreHoursForLines(it.phaseLines, it.complexity);
+    const total = totalHoursForLines(it.phaseLines, it.complexity);
+    const cost = totalCostForLines(it.phaseLines, it.complexity, currentRate);
+    const clientPrice = computeClientPrice(
+      it.pricingModel, currentRate ? cost : null, total,
+      it.tmMultiplier, it.tmTargetMarginPct, it.matBillableRate, it.matDiscountPct,
+    );
+    return { it, ons, offs, total, cost, clientPrice };
+  });
 
   const sumOns = rowData.reduce((s, r) => s + r.ons, 0);
   const sumOffs = rowData.reduce((s, r) => s + r.offs, 0);
   const sumTotal = rowData.reduce((s, r) => s + r.total, 0);
   const sumCost = rowData.reduce((s, r) => s + r.cost, 0);
+  const hasClientPrice = rowData.some((r) => r.clientPrice != null);
+  const sumClientPrice = hasClientPrice
+    ? rowData.reduce((s, r) => s + (r.clientPrice ?? 0), 0)
+    : null;
 
   const footerStyle = {
     background: "var(--color-warm-gray-light)",
@@ -709,11 +719,12 @@ function EstimateRollupCard({
               <Th align="right">Onshore Hrs</Th>
               <Th align="right">Offshore Hrs</Th>
               <Th align="right">Total Hrs</Th>
-              {currentRate && <Th align="right">Total Estimate</Th>}
+              {currentRate && <Th align="right">Internal Cost</Th>}
+              {hasClientPrice && <Th align="right">Client Price</Th>}
             </tr>
           </thead>
           <tbody>
-            {rowData.map(({ it, ons, offs, total, cost }) => (
+            {rowData.map(({ it, ons, offs, total, cost, clientPrice }) => (
               <tr key={it.id} style={{ borderBottom: "1px solid var(--color-warm-gray-light)" }}>
                 <Td>
                   <span className="font-medium text-near-black">
@@ -731,6 +742,13 @@ function EstimateRollupCard({
                 {currentRate && (
                   <Td align="right"><span className="tabular-nums">${fmtMoney(cost)}</span></Td>
                 )}
+                {hasClientPrice && (
+                  <Td align="right">
+                    <span className="tabular-nums font-medium">
+                      {clientPrice != null ? `$${fmtMoney(Math.ceil(clientPrice))}` : "—"}
+                    </span>
+                  </Td>
+                )}
               </tr>
             ))}
             <tr style={footerStyle}>
@@ -745,6 +763,13 @@ function EstimateRollupCard({
               {currentRate && (
                 <Td align="right">
                   <span className="font-semibold tabular-nums">${fmtMoney(sumCost)}</span>
+                </Td>
+              )}
+              {hasClientPrice && (
+                <Td align="right">
+                  <span className="font-semibold tabular-nums">
+                    {sumClientPrice != null ? `$${fmtMoney(Math.ceil(sumClientPrice))}` : "—"}
+                  </span>
                 </Td>
               )}
             </tr>
@@ -871,7 +896,16 @@ function CollapsibleApprovedItemCard({
             <PhaseLineTable lines={item.phaseLines} complexity={item.complexity} currentRate={currentRate} />
           )}
           {isApproved && item.complexity && currentRate && (
-            <CostSummary lines={item.phaseLines} complexity={item.complexity} currentRate={currentRate} />
+            <CostSummary
+              lines={item.phaseLines}
+              complexity={item.complexity}
+              currentRate={currentRate}
+              pricingModel={item.pricingModel}
+              tmMultiplier={item.tmMultiplier}
+              tmTargetMarginPct={item.tmTargetMarginPct}
+              matBillableRate={item.matBillableRate}
+              matDiscountPct={item.matDiscountPct}
+            />
           )}
           {item.answers.length > 0 && (
             <div className="mt-4">
@@ -1093,16 +1127,30 @@ function CostSummary({
   lines,
   complexity,
   currentRate,
+  pricingModel,
+  tmMultiplier,
+  tmTargetMarginPct,
+  matBillableRate,
+  matDiscountPct,
 }: {
   lines: EstimateRequestPhaseLineView[];
   complexity: import("../lib/api/estimates").Complexity | null;
   currentRate: { onshoreRate: string; offshoreRate: string; effectiveDate: string } | null;
+  pricingModel?: string | null;
+  tmMultiplier?: number | null;
+  tmTargetMarginPct?: number | null;
+  matBillableRate?: number | null;
+  matDiscountPct?: number | null;
 }) {
   if (!currentRate || !complexity) return null;
   const onsHrs = onshoreHoursForLines(lines, complexity);
   const offsHrs = offshoreHoursForLines(lines, complexity);
   const totalHrs = totalHoursForLines(lines, complexity);
   const totalCst = totalCostForLines(lines, complexity, currentRate);
+  const clientPrice = computeClientPrice(
+    pricingModel, totalCst, totalHrs,
+    tmMultiplier, tmTargetMarginPct, matBillableRate, matDiscountPct,
+  );
   return (
     <div className="mt-4 rounded-md" style={{ background: "#FBFBFA", border: "1px solid var(--color-warm-gray-light)", padding: "14px 16px" }}>
       <div className="flex flex-col" style={{ gap: 6, fontSize: 13 }}>
@@ -1119,7 +1167,7 @@ function CostSummary({
           </span>
         </div>
         <div className="flex items-baseline justify-between" style={{ borderTop: "1px solid var(--color-warm-gray-light)", paddingTop: 6, marginTop: 4 }}>
-          <span className="text-near-black font-semibold">Estimated total</span>
+          <span className="text-near-black font-semibold">Internal cost</span>
           <span className="text-near-black font-semibold tabular-nums" style={{ fontSize: 16 }}>
             {fmtHrs(totalHrs)} hours
             <span className="text-warm-gray-med" style={{ marginLeft: 12, fontSize: 13, fontWeight: 400 }}>
@@ -1127,6 +1175,19 @@ function CostSummary({
             </span>
           </span>
         </div>
+        {clientPrice != null && (
+          <div className="flex items-baseline justify-between" style={{ borderTop: "1px solid var(--color-warm-gray-light)", paddingTop: 6, marginTop: 2 }}>
+            <span className="text-near-black font-semibold">
+              Client Price
+              <span className="text-warm-gray-med font-normal" style={{ marginLeft: 6, fontSize: 12 }}>
+                {pricingModelLabel(pricingModel)}
+              </span>
+            </span>
+            <span className="text-near-black font-semibold tabular-nums" style={{ fontSize: 16 }}>
+              ${fmtMoney(Math.ceil(clientPrice))}
+            </span>
+          </div>
+        )}
         <p className="m-0 text-warm-gray-med" style={{ fontSize: 11, marginTop: 6 }}>
           This estimate uses blended rates effective {currentRate.effectiveDate}.
           Future rate changes do not affect this estimate.

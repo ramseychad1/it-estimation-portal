@@ -37,6 +37,15 @@ export interface UpdateCategoryPricingRequest {
   overrideMatDiscountPct: number | null;
 }
 
+/** Effective pricing for a category: category override merged with global defaults. */
+export interface EffectiveCategoryPricingDto {
+  pricingModel: PricingModel | null;
+  tmMultiplier: number | null;
+  tmTargetMarginPct: number | null;
+  matBillableRate: number | null;
+  matDiscountPct: number | null;
+}
+
 export function getClientPricingDefaults(): Promise<ClientPricingDefaultsDto> {
   return api(`/admin/client-pricing/defaults`);
 }
@@ -56,4 +65,10 @@ export function updateCategoryPricing(
   body: UpdateCategoryPricingRequest
 ): Promise<CategoryPricingConfigDto> {
   return api(`/admin/client-pricing/categories/${categoryId}`, { method: "PATCH", body });
+}
+
+export function getEffectiveCategoryPricing(
+  categoryId: number
+): Promise<EffectiveCategoryPricingDto> {
+  return api(`/admin/client-pricing/categories/${categoryId}/effective`);
 }

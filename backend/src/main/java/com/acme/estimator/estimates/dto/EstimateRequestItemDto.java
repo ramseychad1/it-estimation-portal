@@ -2,6 +2,7 @@ package com.acme.estimator.estimates.dto;
 
 import com.acme.estimator.estimates.Complexity;
 import com.acme.estimator.estimates.EstimateStatus;
+import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.List;
 
@@ -57,5 +58,17 @@ public record EstimateRequestItemDto(
     /** SO's clarification question; non-null only when status is NEEDS_CLARIFICATION. */
     String clarificationNote,
     /** Requester's reply to the clarification; non-null once the requester has responded. */
-    String clarificationResponse
+    String clarificationResponse,
+    // ---- Pricing fields (V25) -------------------------------------------
+    /**
+     * Effective pricing model for this item's category. For APPROVED items
+     * this is the snapshotted value; for live items it reflects the current
+     * effective config (category override merged with global defaults).
+     * Null when the category has no pricing model assigned.
+     */
+    String pricingModel,
+    BigDecimal tmMultiplier,
+    BigDecimal tmTargetMarginPct,
+    BigDecimal matBillableRate,
+    BigDecimal matDiscountPct
 ) {}

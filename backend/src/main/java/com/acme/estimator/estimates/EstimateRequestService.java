@@ -8,6 +8,8 @@ import com.acme.estimator.auth.User;
 import com.acme.estimator.auth.UserRepository;
 import com.acme.estimator.catalog.categories.Category;
 import com.acme.estimator.catalog.categories.CategoryRepository;
+import com.acme.estimator.clientpricing.ClientPricingService;
+import com.acme.estimator.clientpricing.dto.EffectivePricingDto;
 import com.acme.estimator.clients.Client;
 import com.acme.estimator.clients.ClientRepository;
 import com.acme.estimator.programs.Program;
@@ -101,6 +103,7 @@ public class EstimateRequestService {
     private final ProgramTypeRepository programTypeRepository;
     private final ClientRepository clientRepository;
     private final ProgramRepository programRepository;
+    private final ClientPricingService clientPricingService;
 
     // ---- reads ---------------------------------------------------------
 
@@ -699,6 +702,16 @@ public class EstimateRequestService {
 
         BlendedRate currentRate = blendedRateRepository.findCurrentAsOf(LocalDate.now()).orElse(null);
         item.setApprovedBlendedRateId(currentRate == null ? null : currentRate.getId());
+
+        // Snapshot effective pricing config at approval time
+        EffectivePricingDto pricing =
+            clientPricingService.getEffectivePricingForCategory(request.getCategoryId());
+        item.setApprovedPricingModel(pricing.pricingModel());
+        item.setApprovedTmMultiplier(pricing.tmMultiplier());
+        item.setApprovedTmTargetMarginPct(pricing.tmTargetMarginPct());
+        item.setApprovedMatBillableRate(pricing.matBillableRate());
+        item.setApprovedMatDiscountPct(pricing.matDiscountPct());
+
         item.setStatus(EstimateStatus.APPROVED);
         item.setReviewedAt(OffsetDateTime.now());
         itemRepository.save(item);
@@ -790,6 +803,11 @@ public class EstimateRequestService {
         item.setComplexity(null);
         item.setJustification(null);
         item.setApprovedBlendedRateId(null);
+        item.setApprovedPricingModel(null);
+        item.setApprovedTmMultiplier(null);
+        item.setApprovedTmTargetMarginPct(null);
+        item.setApprovedMatBillableRate(null);
+        item.setApprovedMatDiscountPct(null);
         item.setRejectionReason(null);
         // clarificationNote intentionally kept when returning from NEEDS_CLARIFICATION
         // so the reviewer can see their original question alongside the requester's response.
@@ -960,6 +978,11 @@ public class EstimateRequestService {
         item.setComplexity(null);
         item.setJustification(null);
         item.setApprovedBlendedRateId(null);
+        item.setApprovedPricingModel(null);
+        item.setApprovedTmMultiplier(null);
+        item.setApprovedTmTargetMarginPct(null);
+        item.setApprovedMatBillableRate(null);
+        item.setApprovedMatDiscountPct(null);
         item.setStatus(EstimateStatus.SUBMITTED);
         itemRepository.save(item);
 
@@ -1483,8 +1506,9 @@ public class EstimateRequestService {
         List<EstimateRequestItem> items = itemRepository
             .findByEstimateRequestIdOrderByDisplayOrderAsc(request.getId());
 
+        Long categoryId = request.getCategoryId();
         List<EstimateRequestItemDto> itemDtos = items.stream()
-            .map(item -> toItemDto(item, actor, false))
+            .map(item -> toItemDto(item, actor, false, categoryId))
             .toList();
 
         String derivedStatus = getDerivedStatus(items);
@@ -1556,10 +1580,11 @@ public class EstimateRequestService {
         List<EstimateRequestItem> items = itemRepository
             .findByEstimateRequestIdOrderByDisplayOrderAsc(request.getId());
 
+        Long categoryId = request.getCategoryId();
         List<EstimateRequestItemDto> itemDtos = items.stream()
             .map(item -> {
                 boolean reviewable = computeIsReviewable(item, reviewer, accessibleProductIds);
-                return toItemDto(item, reviewer, reviewable);
+                return toItemDto(item, reviewer, reviewable, categoryId);
             })
             .toList();
 
@@ -1625,7 +1650,9 @@ public class EstimateRequestService {
             .collect(Collectors.toSet());
     }
 
-    private EstimateRequestItemDto toItemDto(EstimateRequestItem item, User actor, boolean isReviewable) {
+    private EstimateRequestItemDto toItemDto(
+        EstimateRequestItem item, User actor, boolean isReviewable, Long categoryId
+    ) {
         Product product = productRepository.findById(item.getProductId()).orElse(null);
         SubFeature subFeature = (item.getSubFeatureId() == null) ? null
             : subFeatureRepository.findById(item.getSubFeatureId()).orElse(null);
@@ -1713,6 +1740,21 @@ public class EstimateRequestService {
                 .map(Product::getName).orElse("Deleted product");
         }
 
+        // Pricing: use snapshotted values for APPROVED items; resolve live config otherwise
+        EffectivePricingDto pricing;
+        if (item.getStatus() == EstimateStatus.APPROVED
+                && item.getApprovedPricingModel() != null) {
+            pricing = new EffectivePricingDto(
+                item.getApprovedPricingModel(),
+                item.getApprovedTmMultiplier(),
+                item.getApprovedTmTargetMarginPct(),
+                item.getApprovedMatBillableRate(),
+                item.getApprovedMatDiscountPct()
+            );
+        } else {
+            pricing = clientPricingService.getEffectivePricingForCategory(categoryId);
+        }
+
         return new EstimateRequestItemDto(
             item.getId(),
             item.getProductId(),
@@ -1740,7 +1782,12 @@ public class EstimateRequestService {
             originalProductName,
             isReviewable,
             item.getClarificationNote(),
-            item.getClarificationResponse()
+            item.getClarificationResponse(),
+            pricing.pricingModel(),
+            pricing.tmMultiplier(),
+            pricing.tmTargetMarginPct(),
+            pricing.matBillableRate(),
+            pricing.matDiscountPct()
         );
     }
 

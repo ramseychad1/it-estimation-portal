@@ -8,6 +8,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -94,6 +95,25 @@ public class EstimateRequestItem {
      */
     @Column(name = "rejection_reason")
     private String rejectionReason;
+
+    /**
+     * Pricing model snapshotted at approval time (e.g. "TARGET_MARGIN").
+     * NULL until approved; cleared on admin send-back.
+     */
+    @Column(name = "approved_pricing_model", length = 20)
+    private String approvedPricingModel;
+
+    @Column(name = "approved_tm_multiplier", precision = 12, scale = 4)
+    private BigDecimal approvedTmMultiplier;
+
+    @Column(name = "approved_tm_target_margin_pct", precision = 5, scale = 2)
+    private BigDecimal approvedTmTargetMarginPct;
+
+    @Column(name = "approved_mat_billable_rate", precision = 12, scale = 2)
+    private BigDecimal approvedMatBillableRate;
+
+    @Column(name = "approved_mat_discount_pct", precision = 5, scale = 2)
+    private BigDecimal approvedMatDiscountPct;
 
     /**
      * SO's question to the requester when requesting clarification.

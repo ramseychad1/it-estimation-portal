@@ -109,3 +109,44 @@ export function offshoreHoursForLines(
   if (!complexity) return 0;
   return lines.reduce((sum, line) => sum + displayedRow(line, complexity).offshore, 0);
 }
+
+/**
+ * Computes the client-facing price from effective pricing parameters.
+ *
+ * TARGET_MARGIN: uses multiplier if set, otherwise falls back to margin %.
+ * TIME_AND_MATERIALS: total hours × billable rate × (1 − discount%).
+ *
+ * Returns null when the model is unset or required inputs are missing.
+ */
+export function computeClientPrice(
+  pricingModel: string | null | undefined,
+  internalCost: number | null,
+  totalHours: number,
+  tmMultiplier: number | null | undefined,
+  tmTargetMarginPct: number | null | undefined,
+  matBillableRate: number | null | undefined,
+  matDiscountPct: number | null | undefined,
+): number | null {
+  if (!pricingModel) return null;
+  if (pricingModel === "TARGET_MARGIN") {
+    if (internalCost == null) return null;
+    if (tmMultiplier != null) return internalCost * tmMultiplier;
+    if (tmTargetMarginPct != null && tmTargetMarginPct < 100) {
+      return internalCost / (1 - tmTargetMarginPct / 100);
+    }
+    return null;
+  }
+  if (pricingModel === "TIME_AND_MATERIALS") {
+    if (matBillableRate == null) return null;
+    const discount = matDiscountPct ?? 0;
+    return totalHours * matBillableRate * (1 - discount / 100);
+  }
+  return null;
+}
+
+/** Human-readable label for a pricing model code. */
+export function pricingModelLabel(model: string | null | undefined): string {
+  if (model === "TARGET_MARGIN") return "Target Margin";
+  if (model === "TIME_AND_MATERIALS") return "Time & Materials";
+  return "Unassigned";
+}
