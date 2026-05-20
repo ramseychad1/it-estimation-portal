@@ -493,6 +493,7 @@ public class EstimateRequestService {
         // Build spec: requests that have at least one reviewable item visible to this SO
         var spec = (org.springframework.data.jpa.domain.Specification<EstimateRequest>)
             (root, query, cb) -> {
+                if (query == null) return cb.conjunction();
                 List<jakarta.persistence.criteria.Predicate> ps = new ArrayList<>();
 
                 // Subquery: has at least one SUBMITTED or IN_REVIEW item the SO can see

@@ -284,8 +284,6 @@ class EstimateRequestRevisionTest {
         submitRequest(requestId);
         Long item1Id = itemRepository.findByEstimateRequestIdOrderByDisplayOrderAsc(requestId)
             .get(0).getId();
-        Long item2Id = itemRepository.findByEstimateRequestIdOrderByDisplayOrderAsc(requestId)
-            .get(1).getId();
 
         startReview(requestId, item1Id);
         rejectItem(requestId, item1Id);

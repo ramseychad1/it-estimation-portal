@@ -11,7 +11,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.acme.estimator.audit.ChangeAction;
-import com.acme.estimator.audit.ChangeLogEntry;
 import com.acme.estimator.audit.ChangeLogEntryRepository;
 import com.acme.estimator.audit.ChangeSource;
 import com.acme.estimator.auth.AppUserDetails;

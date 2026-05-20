@@ -14,7 +14,6 @@ import com.acme.estimator.audit.ChangeAction;
 import com.acme.estimator.audit.ChangeLogEntry;
 import com.acme.estimator.audit.ChangeLogEntryRepository;
 import com.acme.estimator.auth.AppUserDetails;
-import com.acme.estimator.auth.InvitationStatus;
 import com.acme.estimator.auth.Role;
 import com.acme.estimator.auth.User;
 import com.acme.estimator.auth.UserRepository;

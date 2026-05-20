@@ -8,8 +8,6 @@ import com.acme.estimator.catalog.products.dto.ProductListItem;
 import com.acme.estimator.catalog.questions.CriticalQuestionRepository;
 import com.acme.estimator.catalog.subfeatures.SubFeatureRepository;
 import com.acme.estimator.common.ApiException;
-import com.acme.estimator.estimates.EstimateRequestPhaseLineRepository;
-import com.acme.estimator.estimates.EstimateRequestRepository;
 import com.acme.estimator.teams.Team;
 import com.acme.estimator.teams.TeamRepository;
 import com.acme.estimator.teams.dto.TeamRef;
@@ -43,9 +41,6 @@ public class ReportingService {
     private final ProductRepository productRepository;
     private final SubFeatureRepository subFeatureRepository;
     private final CriticalQuestionRepository questionRepository;
-    private final EstimateRequestRepository estimateRequestRepository;
-    private final EstimateRequestPhaseLineRepository phaseLineRepository;
-
     // ---- summary -----------------------------------------------------------
 
     /**

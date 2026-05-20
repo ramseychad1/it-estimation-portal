@@ -7,7 +7,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import jakarta.servlet.http.HttpSession;
+import java.util.Objects;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
@@ -51,10 +51,11 @@ class AuthControllerIntegrationTest {
                 .andExpect(jsonPath("$.roles[0]").value("Admin"))
                 .andReturn();
 
-        HttpSession session = result.getRequest().getSession(false);
-        assert session != null : "expected login to create a session";
+        MockHttpSession session = Objects.requireNonNull(
+                (MockHttpSession) result.getRequest().getSession(false),
+                "expected login to create a session");
 
-        mvc.perform(get("/api/auth/me").session((MockHttpSession) session))
+        mvc.perform(get("/api/auth/me").session(session))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.email").value("admin@local"));
     }
@@ -81,8 +82,8 @@ class AuthControllerIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json.writeValueAsString(new LoginBody("admin@local", "ChangeMe123!"))))
                 .andReturn();
-        MockHttpSession session = (MockHttpSession) login.getRequest().getSession(false);
-        assert session != null;
+        MockHttpSession session = Objects.requireNonNull(
+                (MockHttpSession) login.getRequest().getSession(false));
 
         mvc.perform(post("/api/auth/logout").with(csrf()).session(session))
                 .andExpect(status().isNoContent());
