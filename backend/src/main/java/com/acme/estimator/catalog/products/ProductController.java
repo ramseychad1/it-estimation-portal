@@ -10,6 +10,8 @@ import com.acme.estimator.catalog.products.dto.ListProductsFilter;
 import com.acme.estimator.catalog.products.dto.ProductDetail;
 import com.acme.estimator.catalog.products.dto.ProductListItem;
 import com.acme.estimator.catalog.products.dto.UpdateProductRequest;
+import com.acme.estimator.catalog.templatefiles.CatalogTemplateFileService;
+import com.acme.estimator.catalog.templatefiles.TemplateFileMeta;
 import com.acme.estimator.common.ApiException;
 import com.acme.estimator.common.PageResponse;
 import jakarta.validation.Valid;
@@ -35,6 +37,9 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.http.ContentDisposition;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
 @RestController
@@ -44,6 +49,7 @@ import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBo
 public class ProductController {
 
     private final ProductService productService;
+    private final CatalogTemplateFileService templateFileService;
     private final UserRepository userRepository;
 
     @GetMapping
@@ -150,6 +156,38 @@ public class ProductController {
             .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
             .contentType(MediaType.parseMediaType("text/csv; charset=UTF-8"))
             .body(stream);
+    }
+
+    // ---- template file --------------------------------------------------
+
+    @PostMapping("/{id}/template-file")
+    public TemplateFileMeta uploadTemplateFile(
+        @PathVariable Long id,
+        @RequestParam("file") MultipartFile file,
+        @AuthenticationPrincipal AppUserDetails principal
+    ) {
+        return templateFileService.uploadForProduct(id, file, currentUser(principal));
+    }
+
+    @DeleteMapping("/{id}/template-file")
+    public ResponseEntity<Void> deleteTemplateFile(
+        @PathVariable Long id,
+        @AuthenticationPrincipal AppUserDetails principal
+    ) {
+        templateFileService.deleteForProduct(id, currentUser(principal));
+        return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/{id}/template-file/download")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<ByteArrayResource> downloadTemplateFile(@PathVariable Long id) {
+        var f = templateFileService.downloadForProduct(id);
+        return ResponseEntity.ok()
+            .header("Content-Disposition",
+                ContentDisposition.attachment().filename(f.getOriginalFilename()).build().toString())
+            .contentType(MediaType.parseMediaType(f.getContentType()))
+            .contentLength(f.getFileSizeBytes())
+            .body(new ByteArrayResource(f.getFileData()));
     }
 
     // ---- helpers --------------------------------------------------------

@@ -5,7 +5,9 @@ import { isAdmin } from "../../../lib/permissions";
 import {
   useActivateProductMutation,
   useDeactivateProductMutation,
+  useDeleteProductTemplateFileMutation,
   useUpdateProductMutation,
+  useUploadProductTemplateFileMutation,
 } from "../../../lib/queries/products";
 import { useTeamsQuery } from "../../../lib/queries/teams";
 import { useToast } from "../../../components/Toast";
@@ -15,7 +17,11 @@ import { TextInput, Textarea } from "../../../components/inputs";
 import { Toggle } from "../../../components/Toggle";
 import { FormField } from "../../../components/FormField";
 import { EntityHeader } from "../../../components/EntityHeader";
+import { TemplateFileSection } from "../../../components/TemplateFileSection";
 import type { ProductDetail } from "../../../lib/api/products";
+import {
+  productTemplateFileDownloadUrl,
+} from "../../../lib/api/templateFiles";
 
 interface EditProductDrawerProps {
   open: boolean;
@@ -56,6 +62,8 @@ export function EditProductDrawer({
   const updateMutation = useUpdateProductMutation();
   const activateMutation = useActivateProductMutation();
   const deactivateMutation = useDeactivateProductMutation();
+  const uploadFileMutation = useUploadProductTemplateFileMutation();
+  const deleteFileMutation = useDeleteProductTemplateFileMutation();
   const teamsQuery = useTeamsQuery({ status: "ACTIVE", size: 100 });
   const toast = useToast();
 
@@ -216,6 +224,16 @@ export function EditProductDrawer({
       </form>
 
       <div className="mt-6 pt-4" style={{ borderTop: "1px solid var(--color-warm-gray-light)" }}>
+        <TemplateFileSection
+          file={product.templateFile}
+          downloadUrl={productTemplateFileDownloadUrl(product.id)}
+          onUpload={(file) => uploadFileMutation.mutateAsync({ id: product.id, file })}
+          onDelete={() => deleteFileMutation.mutateAsync(product.id)}
+          disabled={busy}
+        />
+      </div>
+
+      <div className="mt-4 pt-4" style={{ borderTop: "1px solid var(--color-warm-gray-light)" }}>
         <EntityHeader.AuditFooter
           createdAt={product.createdAt}
           createdBy={product.createdBy}

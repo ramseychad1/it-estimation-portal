@@ -12,6 +12,10 @@ import {
   type ListProductsParams,
   type UpdateProductRequest,
 } from "../api/products";
+import {
+  deleteProductTemplateFile,
+  uploadProductTemplateFile,
+} from "../api/templateFiles";
 
 const PRODUCTS_KEY = ["products"] as const;
 
@@ -79,6 +83,23 @@ export function useDeleteProductMutation() {
   return useMutation({
     mutationFn: ({ id, confirmationName }: { id: number; confirmationName: string }) =>
       deleteProduct(id, confirmationName),
+    onSuccess: () => invalidateAllProducts(qc),
+  });
+}
+
+export function useUploadProductTemplateFileMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, file }: { id: number; file: File }) =>
+      uploadProductTemplateFile(id, file),
+    onSuccess: () => invalidateAllProducts(qc),
+  });
+}
+
+export function useDeleteProductTemplateFileMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => deleteProductTemplateFile(id),
     onSuccess: () => invalidateAllProducts(qc),
   });
 }

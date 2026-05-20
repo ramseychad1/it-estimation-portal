@@ -1,4 +1,5 @@
 import { api } from "../api";
+import type { TemplateFileMeta } from "./templateFiles";
 
 export interface SubFeatureListItem {
   id: number;
@@ -13,7 +14,9 @@ export interface SubFeatureListItem {
   createdBy: number | null;
 }
 
-export interface SubFeatureDetail extends SubFeatureListItem {}
+export interface SubFeatureDetail extends SubFeatureListItem {
+  templateFile: TemplateFileMeta | null;
+}
 
 export interface CreateSubFeatureRequest {
   name: string;

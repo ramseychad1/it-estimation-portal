@@ -12,6 +12,8 @@ import com.acme.estimator.catalog.products.dto.ProductListItem;
 import com.acme.estimator.catalog.products.dto.UpdateProductRequest;
 import com.acme.estimator.catalog.questions.CriticalQuestionRepository;
 import com.acme.estimator.catalog.subfeatures.SubFeatureRepository;
+import com.acme.estimator.catalog.templatefiles.CatalogTemplateFileService;
+import com.acme.estimator.catalog.templatefiles.TemplateFileMeta;
 import com.acme.estimator.common.ApiException;
 import com.acme.estimator.teams.Team;
 import com.acme.estimator.teams.TeamRepository;
@@ -40,6 +42,7 @@ public class ProductService {
     private final UserRepository userRepository;
     private final TeamRepository teamRepository;
     private final AuditService auditService;
+    private final CatalogTemplateFileService templateFileService;
 
     // ---- reads ---------------------------------------------------------
 
@@ -327,7 +330,8 @@ public class ProductService {
     private ProductDetail toDetail(Product p) {
         int subFeatureCount = (int) subFeatureRepository.countByProductIdAndActiveTrue(p.getId());
         int questionCount = (int) questionRepository.countByProductIdAndActiveTrue(p.getId());
-        return ProductDetail.from(p, subFeatureCount, questionCount);
+        TemplateFileMeta templateFile = templateFileService.getMetaForProduct(p.getId()).orElse(null);
+        return ProductDetail.from(p, subFeatureCount, questionCount, templateFile);
     }
 
     private static String blankToNull(String s) {

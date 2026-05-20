@@ -9,11 +9,16 @@ import com.acme.estimator.catalog.subfeatures.dto.DeleteSubFeatureRequest;
 import com.acme.estimator.catalog.subfeatures.dto.SubFeatureDetail;
 import com.acme.estimator.catalog.subfeatures.dto.SubFeatureListItem;
 import com.acme.estimator.catalog.subfeatures.dto.UpdateSubFeatureRequest;
+import com.acme.estimator.catalog.templatefiles.CatalogTemplateFileService;
+import com.acme.estimator.catalog.templatefiles.TemplateFileMeta;
 import com.acme.estimator.common.ApiException;
 import jakarta.validation.Valid;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -23,7 +28,9 @@ import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 /**
  * Sub-features expose two URL surfaces:
@@ -45,6 +52,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class SubFeatureController {
 
     private final SubFeatureService subFeatureService;
+    private final CatalogTemplateFileService templateFileService;
     private final UserRepository userRepository;
 
     // ---- under-product: list + create -------------------------------------
@@ -108,6 +116,38 @@ public class SubFeatureController {
     @GetMapping("/api/catalog/sub-features/{id}/history")
     public List<ChangeLogEntry> history(@PathVariable Long id) {
         return subFeatureService.history(id);
+    }
+
+    // ---- template file ----------------------------------------------------
+
+    @PostMapping("/api/catalog/sub-features/{id}/template-file")
+    public TemplateFileMeta uploadTemplateFile(
+        @PathVariable Long id,
+        @RequestParam("file") MultipartFile file,
+        @AuthenticationPrincipal AppUserDetails principal
+    ) {
+        return templateFileService.uploadForSubFeature(id, file, currentUser(principal));
+    }
+
+    @DeleteMapping("/api/catalog/sub-features/{id}/template-file")
+    public ResponseEntity<Void> deleteTemplateFile(
+        @PathVariable Long id,
+        @AuthenticationPrincipal AppUserDetails principal
+    ) {
+        templateFileService.deleteForSubFeature(id, currentUser(principal));
+        return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/api/catalog/sub-features/{id}/template-file/download")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<ByteArrayResource> downloadTemplateFile(@PathVariable Long id) {
+        var f = templateFileService.downloadForSubFeature(id);
+        return ResponseEntity.ok()
+            .header("Content-Disposition",
+                ContentDisposition.attachment().filename(f.getOriginalFilename()).build().toString())
+            .contentType(MediaType.parseMediaType(f.getContentType()))
+            .contentLength(f.getFileSizeBytes())
+            .body(new ByteArrayResource(f.getFileData()));
     }
 
     // ---- helpers ----------------------------------------------------------

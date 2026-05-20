@@ -3,7 +3,9 @@ import { ApiError } from "../../../lib/api";
 import {
   useActivateSubFeatureMutation,
   useDeactivateSubFeatureMutation,
+  useDeleteSubFeatureTemplateFileMutation,
   useUpdateSubFeatureMutation,
+  useUploadSubFeatureTemplateFileMutation,
 } from "../../../lib/queries/subFeatures";
 import { useToast } from "../../../components/Toast";
 import { Drawer } from "../../../components/Drawer";
@@ -12,7 +14,9 @@ import { TextInput, Textarea } from "../../../components/inputs";
 import { Toggle } from "../../../components/Toggle";
 import { FormField } from "../../../components/FormField";
 import { EntityHeader } from "../../../components/EntityHeader";
+import { TemplateFileSection } from "../../../components/TemplateFileSection";
 import type { SubFeatureDetail } from "../../../lib/api/subFeatures";
+import { subFeatureTemplateFileDownloadUrl } from "../../../lib/api/templateFiles";
 
 interface EditSubFeatureDrawerProps {
   open: boolean;
@@ -48,6 +52,8 @@ export function EditSubFeatureDrawer({
   const updateMutation = useUpdateSubFeatureMutation();
   const activateMutation = useActivateSubFeatureMutation();
   const deactivateMutation = useDeactivateSubFeatureMutation();
+  const uploadFileMutation = useUploadSubFeatureTemplateFileMutation();
+  const deleteFileMutation = useDeleteSubFeatureTemplateFileMutation();
   const toast = useToast();
 
   useEffect(() => {
@@ -167,6 +173,16 @@ export function EditSubFeatureDrawer({
       </form>
 
       <div className="mt-6 pt-4" style={{ borderTop: "1px solid var(--color-warm-gray-light)" }}>
+        <TemplateFileSection
+          file={subFeature.templateFile}
+          downloadUrl={subFeatureTemplateFileDownloadUrl(subFeature.id)}
+          onUpload={(file) => uploadFileMutation.mutateAsync({ id: subFeature.id, file })}
+          onDelete={() => deleteFileMutation.mutateAsync(subFeature.id)}
+          disabled={busy}
+        />
+      </div>
+
+      <div className="mt-4 pt-4" style={{ borderTop: "1px solid var(--color-warm-gray-light)" }}>
         <EntityHeader.AuditFooter
           createdAt={subFeature.createdAt}
           createdBy={subFeature.createdBy}

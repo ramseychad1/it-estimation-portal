@@ -2,6 +2,7 @@ package com.acme.estimator.catalog.products.dto;
 
 import com.acme.estimator.catalog.products.Product;
 import com.acme.estimator.catalog.products.ProductMode;
+import com.acme.estimator.catalog.templatefiles.TemplateFileMeta;
 import com.acme.estimator.teams.dto.TeamRef;
 import java.time.OffsetDateTime;
 
@@ -14,12 +15,14 @@ public record ProductDetail(
     TeamRef team,
     int subFeatureCount,
     int questionCount,
+    TemplateFileMeta templateFile,
     OffsetDateTime createdAt,
     Long createdBy,
     OffsetDateTime updatedAt,
     Long updatedBy
 ) {
-    public static ProductDetail from(Product p, int subFeatureCount, int questionCount) {
+    public static ProductDetail from(Product p, int subFeatureCount, int questionCount,
+                                     TemplateFileMeta templateFile) {
         TeamRef teamRef = p.getTeam() != null ? TeamRef.from(p.getTeam()) : null;
         return new ProductDetail(
             p.getId(),
@@ -30,6 +33,7 @@ public record ProductDetail(
             teamRef,
             subFeatureCount,
             questionCount,
+            templateFile,
             p.getCreatedAt(),
             p.getCreatedBy(),
             p.getUpdatedAt(),

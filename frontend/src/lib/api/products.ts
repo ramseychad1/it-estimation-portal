@@ -1,4 +1,5 @@
 import { api } from "../api";
+import type { TemplateFileMeta } from "./templateFiles";
 import type { PageResponse, TeamRef } from "./users";
 
 export type ProductMode = "ATOMIC" | "CONTAINER";
@@ -18,7 +19,9 @@ export interface ProductListItem {
   createdBy: number | null;
 }
 
-export interface ProductDetail extends ProductListItem {}
+export interface ProductDetail extends ProductListItem {
+  templateFile?: TemplateFileMeta | null;
+}
 
 export interface CreateProductRequest {
   name: string;

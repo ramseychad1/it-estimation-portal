@@ -10,6 +10,10 @@ import {
   type CreateSubFeatureRequest,
   type UpdateSubFeatureRequest,
 } from "../api/subFeatures";
+import {
+  deleteSubFeatureTemplateFile,
+  uploadSubFeatureTemplateFile,
+} from "../api/templateFiles";
 
 const SUB_FEATURES_KEY = ["sub-features"] as const;
 const PRODUCTS_KEY = ["products"] as const;
@@ -77,6 +81,23 @@ export function useDeleteSubFeatureMutation() {
   return useMutation({
     mutationFn: ({ id, confirmationName }: { id: number; confirmationName: string }) =>
       deleteSubFeature(id, confirmationName),
+    onSuccess: () => invalidateAll(qc),
+  });
+}
+
+export function useUploadSubFeatureTemplateFileMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, file }: { id: number; file: File }) =>
+      uploadSubFeatureTemplateFile(id, file),
+    onSuccess: () => invalidateAll(qc),
+  });
+}
+
+export function useDeleteSubFeatureTemplateFileMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => deleteSubFeatureTemplateFile(id),
     onSuccess: () => invalidateAll(qc),
   });
 }

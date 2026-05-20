@@ -10,6 +10,8 @@ import com.acme.estimator.catalog.products.ProductMode;
 import com.acme.estimator.catalog.products.ProductRepository;
 import com.acme.estimator.catalog.questions.CriticalQuestionRepository;
 import com.acme.estimator.catalog.subfeatures.dto.CreateSubFeatureRequest;
+import com.acme.estimator.catalog.templatefiles.CatalogTemplateFileService;
+import com.acme.estimator.catalog.templatefiles.TemplateFileMeta;
 import com.acme.estimator.catalog.subfeatures.dto.SubFeatureDetail;
 import com.acme.estimator.catalog.subfeatures.dto.SubFeatureListItem;
 import com.acme.estimator.catalog.subfeatures.dto.UpdateSubFeatureRequest;
@@ -29,6 +31,7 @@ public class SubFeatureService {
     private final ChangeLogEntryRepository changeLogRepository;
     private final UserRepository userRepository;
     private final AuditService auditService;
+    private final CatalogTemplateFileService templateFileService;
 
     // ---- reads ---------------------------------------------------------
 
@@ -256,7 +259,8 @@ public class SubFeatureService {
 
     private SubFeatureDetail toDetail(SubFeature s) {
         int qc = (int) questionRepository.countBySubFeatureIdAndActiveTrue(s.getId());
-        return SubFeatureDetail.from(s, qc);
+        TemplateFileMeta templateFile = templateFileService.getMetaForSubFeature(s.getId()).orElse(null);
+        return SubFeatureDetail.from(s, qc, templateFile);
     }
 
     private static String blankToNull(String s) {
