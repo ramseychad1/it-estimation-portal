@@ -6,6 +6,7 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
+  Download,
   Lock,
   Search,
   X,
@@ -26,7 +27,12 @@ import type { AttachmentMeta } from "../lib/api/estimates";
 import { useUnsavedChangesGuard } from "../lib/useUnsavedChangesGuard";
 import { useAuth } from "../lib/auth";
 import { useProductsQuery } from "../lib/queries/products";
-import { useSubFeaturesForProductQuery } from "../lib/queries/subFeatures";
+import { useSubFeaturesForProductQuery, useSubFeatureQuery } from "../lib/queries/subFeatures";
+import {
+  downloadTemplateFile,
+  productTemplateFileDownloadUrl,
+  subFeatureTemplateFileDownloadUrl,
+} from "../lib/api/templateFiles";
 import {
   useProductQuestionsQuery,
   useSubFeatureQuestionsQuery,
@@ -1690,6 +1696,29 @@ function ItemSection({
   onCountChange,
 }: ItemSectionProps) {
   const isContainer = product?.mode === "CONTAINER";
+  const toast = useToast();
+
+  const subFeatureDetailQuery = useSubFeatureQuery(
+    isContainer && item.subFeatureId ? item.subFeatureId : null,
+  );
+
+  const templateFile = isContainer
+    ? (subFeatureDetailQuery.data?.templateFile ?? null)
+    : (product?.templateFile ?? null);
+
+  const templateDownloadUrl = isContainer && item.subFeatureId
+    ? subFeatureTemplateFileDownloadUrl(item.subFeatureId)
+    : productTemplateFileDownloadUrl(item.productId);
+
+  async function handleTemplateDownload(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (!templateFile) return;
+    try {
+      await downloadTemplateFile(templateDownloadUrl, templateFile.originalFilename);
+    } catch {
+      toast.error("Could not download the template file.");
+    }
+  }
 
   const productQuestionsQuery = useProductQuestionsQuery(
     !isContainer ? item.productId : null,
@@ -1820,6 +1849,26 @@ function ItemSection({
               : `${answeredCount} of ${questions.length} answered`}
           </div>
         </div>
+
+        {templateFile && (
+          <button
+            type="button"
+            onClick={handleTemplateDownload}
+            className="flex items-center gap-1 shrink-0 rounded text-warm-gray-med hover:text-near-black"
+            style={{
+              fontSize: 12,
+              padding: "3px 8px",
+              border: "1px solid var(--color-border-strong)",
+              background: "var(--color-warm-gray-light)",
+              cursor: "pointer",
+              lineHeight: 1.4,
+            }}
+            title={`Download template: ${templateFile.originalFilename}`}
+          >
+            <Download size={12} strokeWidth={1.5} />
+            Template
+          </button>
+        )}
 
         <span className="text-warm-gray-med" style={{ fontSize: 12, fontVariantNumeric: "tabular-nums" }}>
           {answeredCount} / {questions.length}
