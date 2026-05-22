@@ -515,6 +515,8 @@ function NumericField({
   disabled: boolean;
   onChange: (v: number | null) => void;
 }) {
+  const [raw, setRaw] = useState(value != null ? String(value) : "");
+
   return (
     <div>
       <label
@@ -524,13 +526,14 @@ function NumericField({
         {label}
       </label>
       <input
-        type="number"
-        min="0"
-        step="0.01"
-        value={value ?? ""}
+        type="text"
+        inputMode="decimal"
+        value={raw}
         disabled={disabled}
         onChange={(e) => {
-          const parsed = parseFloat(e.target.value);
+          const str = e.target.value;
+          setRaw(str);
+          const parsed = parseFloat(str);
           onChange(isNaN(parsed) ? null : parsed);
         }}
         className="rounded border text-near-black"
