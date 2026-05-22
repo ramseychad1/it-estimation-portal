@@ -1,6 +1,6 @@
 package com.acme.estimator.settings;
 
-import com.acme.estimator.auth.User;
+import com.acme.estimator.auth.AppUserDetails;
 import java.time.OffsetDateTime;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -50,8 +50,8 @@ public class AppSettingService {
 
     private Long currentUserId() {
         Object principal = SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-        if (principal instanceof User u) {
-            return u.getId();
+        if (principal instanceof AppUserDetails d) {
+            return d.getUserId();
         }
         return null;
     }

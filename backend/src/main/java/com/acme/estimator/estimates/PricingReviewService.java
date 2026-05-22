@@ -2,6 +2,7 @@ package com.acme.estimator.estimates;
 
 import com.acme.estimator.audit.AuditService;
 import com.acme.estimator.audit.ChangeAction;
+import com.acme.estimator.auth.AppUserDetails;
 import com.acme.estimator.auth.User;
 import com.acme.estimator.common.ApiException;
 import com.acme.estimator.estimates.dto.EstimateRequestDetail;
@@ -113,7 +114,7 @@ public class PricingReviewService {
 
     private User currentUser() {
         Object principal = SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-        if (principal instanceof User u) return u;
+        if (principal instanceof AppUserDetails d) return d.getUser();
         throw new ApiException(HttpStatus.UNAUTHORIZED, "UNAUTHORIZED", "Not authenticated.");
     }
 
