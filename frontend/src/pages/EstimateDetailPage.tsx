@@ -1,7 +1,7 @@
 import * as React from "react";
 import { createElement, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { AlertTriangle, CheckCircle, ChevronDown, Clock, Download, FileText, Info, Pencil, RotateCcw, Trash2 } from "lucide-react";
+import { AlertTriangle, CheckCircle, ChevronDown, Clock, Download, FileSpreadsheet, FileText, Info, Pencil, RotateCcw, Trash2 } from "lucide-react";
 import { downloadAttachment } from "../lib/api/documents";
 import { ConfirmModal } from "../components/ConfirmModal";
 import { EntityHeader } from "../components/EntityHeader";
@@ -49,14 +49,14 @@ import {
   totalHoursForLines,
 } from "../lib/estimateMath";
 
-function buildPdfFilename(detail: EstimateRequestDetail): string {
+function buildExportFilename(detail: EstimateRequestDetail, ext: "pdf" | "xlsx"): string {
   const seg = (s: string, max: number) =>
     s.replace(/[^a-zA-Z0-9 ]/g, "").trim().replace(/\s+/g, "-").replace(/-+/g, "-").slice(0, max);
   const parts: string[] = [`EST-${detail.id}`];
   if (detail.clientName) parts.push(seg(detail.clientName, 30));
   if (detail.programName) parts.push(seg(detail.programName, 30));
   parts.push(seg(detail.title, 40));
-  return `${parts.join("_")}.pdf`;
+  return `${parts.join("_")}.${ext}`;
 }
 
 export function EstimateDetailPage() {
@@ -73,6 +73,7 @@ export function EstimateDetailPage() {
   const [discardOpen, setDiscardOpen] = useState(false);
   const [adminDeleteOpen, setAdminDeleteOpen] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [isExportingExcel, setIsExportingExcel] = useState(false);
   const requesterDisplay = useUserDisplay(detailQuery.data?.requesterId ?? null);
 
   useEffect(() => {
@@ -142,7 +143,7 @@ export function EstimateDetailPage() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = buildPdfFilename(detail);
+      a.download = buildExportFilename(detail, "pdf");
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -151,6 +152,26 @@ export function EstimateDetailPage() {
       toast.error("Could not generate PDF.");
     } finally {
       setIsExporting(false);
+    }
+  }
+
+  async function handleExportExcel() {
+    setIsExportingExcel(true);
+    try {
+      const { buildEstimateExcel } = await import("../components/EstimateExcel");
+      const blob = await buildEstimateExcel(detail, currentRate, requesterDisplay.data?.name);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = buildExportFilename(detail, "xlsx");
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch {
+      toast.error("Could not generate Excel file.");
+    } finally {
+      setIsExportingExcel(false);
     }
   }
 
@@ -213,10 +234,16 @@ export function EstimateDetailPage() {
       subtitle={subtitle}
       actions={
         isApproved ? (
-          <SecondaryButton onClick={() => void handleExportPdf()} disabled={isExporting}>
-            <FileText className="w-3.5 h-3.5" strokeWidth={1.5} />
-            {isExporting ? "Generating…" : "Export PDF"}
-          </SecondaryButton>
+          <>
+            <SecondaryButton onClick={() => void handleExportExcel()} disabled={isExportingExcel}>
+              <FileSpreadsheet className="w-3.5 h-3.5" strokeWidth={1.5} />
+              {isExportingExcel ? "Generating…" : "Export Excel"}
+            </SecondaryButton>
+            <SecondaryButton onClick={() => void handleExportPdf()} disabled={isExporting}>
+              <FileText className="w-3.5 h-3.5" strokeWidth={1.5} />
+              {isExporting ? "Generating…" : "Export PDF"}
+            </SecondaryButton>
+          </>
         ) : buildKebab().length > 0 ? (
           <KebabMenu items={buildKebab()} ariaLabel="Request actions" />
         ) : undefined
