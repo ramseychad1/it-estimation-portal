@@ -4,6 +4,8 @@ import { UserCell } from "./UserCell";
 
 interface EntityHeaderProps {
   breadcrumb?: BreadcrumbItem[];
+  /** Small identifier label rendered above the title (e.g. "EST-34"). */
+  eyebrow?: string;
   title: string;
   /** Inline element to the right of the title — typically a {@code <StatusBadge>}. */
   titleSuffix?: ReactNode;
@@ -27,6 +29,7 @@ interface EntityHeaderProps {
  */
 export function EntityHeader({
   breadcrumb,
+  eyebrow,
   title,
   titleSuffix,
   subtitle,
@@ -37,6 +40,7 @@ export function EntityHeader({
     <header className="flex flex-col gap-4">
       <PageHeader
         breadcrumb={breadcrumb}
+        eyebrow={eyebrow}
         title={title}
         titleSuffix={titleSuffix}
         subtitleNode={subtitle}

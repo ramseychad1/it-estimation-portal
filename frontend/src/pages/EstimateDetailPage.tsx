@@ -49,6 +49,16 @@ import {
   totalHoursForLines,
 } from "../lib/estimateMath";
 
+function buildPdfFilename(detail: EstimateRequestDetail): string {
+  const seg = (s: string, max: number) =>
+    s.replace(/[^a-zA-Z0-9 ]/g, "").trim().replace(/\s+/g, "-").replace(/-+/g, "-").slice(0, max);
+  const parts: string[] = [`EST-${detail.id}`];
+  if (detail.clientName) parts.push(seg(detail.clientName, 30));
+  if (detail.programName) parts.push(seg(detail.programName, 30));
+  parts.push(seg(detail.title, 40));
+  return `${parts.join("_")}.pdf`;
+}
+
 export function EstimateDetailPage() {
   const { id } = useParams<{ id: string }>();
   const numericId = id ? Number(id) : null;
@@ -132,7 +142,7 @@ export function EstimateDetailPage() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `estimate-${detail.id}.pdf`;
+      a.download = buildPdfFilename(detail);
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -197,6 +207,7 @@ export function EstimateDetailPage() {
         { label: "Estimate requests", to: "/requests" },
         { label: detail.title },
       ]}
+      eyebrow={`EST-${detail.id}`}
       title={detail.title}
       titleSuffix={<StatusBadge variant={variant}>{label}</StatusBadge>}
       subtitle={subtitle}

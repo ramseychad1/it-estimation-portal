@@ -8,6 +8,8 @@ export interface BreadcrumbItem {
 
 interface PageHeaderProps {
   breadcrumb?: BreadcrumbItem[];
+  /** Small identifier label rendered above the title (e.g. "EST-34"). */
+  eyebrow?: string;
   title: string;
   /** Optional inline element rendered to the right of the title (e.g. a status badge). */
   titleSuffix?: ReactNode;
@@ -17,7 +19,7 @@ interface PageHeaderProps {
   actions?: ReactNode;
 }
 
-export function PageHeader({ breadcrumb, title, titleSuffix, subtitle, subtitleNode, actions }: PageHeaderProps) {
+export function PageHeader({ breadcrumb, eyebrow, title, titleSuffix, subtitle, subtitleNode, actions }: PageHeaderProps) {
   return (
     <header className="flex flex-col gap-2">
       {breadcrumb && breadcrumb.length > 0 && (
@@ -43,6 +45,11 @@ export function PageHeader({ breadcrumb, title, titleSuffix, subtitle, subtitleN
       )}
       <div className="flex items-center justify-between gap-4">
         <div>
+          {eyebrow && (
+            <p className="text-small font-medium text-warm-gray-med tracking-wide m-0 mb-0.5">
+              {eyebrow}
+            </p>
+          )}
           <div className="flex items-center gap-3">
             <h1 className="text-page-title font-semibold text-near-black tracking-tight m-0">
               {title}

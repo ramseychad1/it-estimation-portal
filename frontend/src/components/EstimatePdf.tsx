@@ -781,7 +781,7 @@ function PageHeader({ requestId }: { requestId: number }) {
       <Text style={s.headerWordmark}>IT Estimation Portal</Text>
       <View style={s.headerRight}>
         <Text style={s.headerTitle}>ESTIMATE REPORT</Text>
-        <Text style={s.headerSubtitle}>Request #{requestId}</Text>
+        <Text style={s.headerSubtitle}>EST-{requestId}</Text>
       </View>
     </View>
   );
@@ -847,6 +847,10 @@ export function EstimatePdfDocument({
           {/* Metadata */}
           <View style={s.metaBlock}>
             <View style={[s.metaGrid, { marginBottom: 10 }]}>
+              <View style={s.metaCell}>
+                <Text style={s.metaLabel}>Identifier</Text>
+                <Text style={s.metaValueBold}>EST-{detail.id}</Text>
+              </View>
               <View style={s.metaCell}>
                 <Text style={s.metaLabel}>Status</Text>
                 <Text style={s.approvedBadge}>APPROVED</Text>

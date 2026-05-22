@@ -105,6 +105,7 @@ export function ReviewScreenPage() {
           { label: "Review queue", to: "/review" },
           { label: detail.title },
         ]}
+        eyebrow={`EST-${detail.id}`}
         title={detail.title}
         titleSuffix={<StatusBadge variant={variant}>{label}</StatusBadge>}
         subtitle={subtitle}
