@@ -13,6 +13,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -40,7 +41,8 @@ public class PricingReviewService {
     // ---- reads ---------------------------------------------------------------
 
     @Transactional(readOnly = true)
-    public EstimateRequestDetail getForReview(Long requestId, User actor) {
+    public EstimateRequestDetail getForReview(Long requestId) {
+        User actor = currentUser();
         EstimateRequest request = loadPricingReviewRequest(requestId);
         return estimateRequestService.toDetail(request, actor);
     }
@@ -48,7 +50,8 @@ public class PricingReviewService {
     // ---- writes --------------------------------------------------------------
 
     @Transactional
-    public EstimateRequestDetail claim(Long requestId, User actor) {
+    public EstimateRequestDetail claim(Long requestId) {
+        User actor = currentUser();
         EstimateRequest request = loadPricingReviewRequest(requestId);
         if (!"PENDING".equals(request.getPricingReviewStatus())) {
             throw new ApiException(HttpStatus.CONFLICT, "INVALID_STATE",
@@ -66,7 +69,8 @@ public class PricingReviewService {
     }
 
     @Transactional
-    public EstimateRequestDetail release(Long requestId, User actor) {
+    public EstimateRequestDetail release(Long requestId) {
+        User actor = currentUser();
         EstimateRequest request = requireInReviewByActor(requestId, actor);
         request.setPricingReviewStatus("PENDING");
         request.setRmReviewerId(null);
@@ -80,7 +84,8 @@ public class PricingReviewService {
     }
 
     @Transactional
-    public EstimateRequestDetail save(Long requestId, SavePricingReviewRequest dto, User actor) {
+    public EstimateRequestDetail save(Long requestId, SavePricingReviewRequest dto) {
+        User actor = currentUser();
         EstimateRequest request = requireInReviewByActor(requestId, actor);
         applyOverrides(request, dto);
         requestRepository.save(request);
@@ -88,7 +93,8 @@ public class PricingReviewService {
     }
 
     @Transactional
-    public EstimateRequestDetail approve(Long requestId, SavePricingReviewRequest dto, User actor) {
+    public EstimateRequestDetail approve(Long requestId, SavePricingReviewRequest dto) {
+        User actor = currentUser();
         EstimateRequest request = requireInReviewByActor(requestId, actor);
         applyOverrides(request, dto);
         request.setPricingReviewStatus("APPROVED");
@@ -104,6 +110,12 @@ public class PricingReviewService {
     }
 
     // ---- helpers -------------------------------------------------------------
+
+    private User currentUser() {
+        Object principal = SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        if (principal instanceof User u) return u;
+        throw new ApiException(HttpStatus.UNAUTHORIZED, "UNAUTHORIZED", "Not authenticated.");
+    }
 
     private EstimateRequest loadPricingReviewRequest(Long requestId) {
         EstimateRequest request = requestRepository.findById(requestId)

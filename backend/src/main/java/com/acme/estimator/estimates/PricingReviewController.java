@@ -1,6 +1,5 @@
 package com.acme.estimator.estimates;
 
-import com.acme.estimator.auth.User;
 import com.acme.estimator.common.PageResponse;
 import com.acme.estimator.estimates.dto.EstimateRequestDetail;
 import com.acme.estimator.estimates.dto.EstimateRequestListItem;
@@ -11,7 +10,6 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -42,44 +40,33 @@ public class PricingReviewController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<EstimateRequestDetail> get(
-        @PathVariable Long id,
-        @AuthenticationPrincipal User actor
-    ) {
-        return ResponseEntity.ok(pricingReviewService.getForReview(id, actor));
+    public ResponseEntity<EstimateRequestDetail> get(@PathVariable Long id) {
+        return ResponseEntity.ok(pricingReviewService.getForReview(id));
     }
 
     @PostMapping("/{id}/claim")
-    public ResponseEntity<EstimateRequestDetail> claim(
-        @PathVariable Long id,
-        @AuthenticationPrincipal User actor
-    ) {
-        return ResponseEntity.ok(pricingReviewService.claim(id, actor));
+    public ResponseEntity<EstimateRequestDetail> claim(@PathVariable Long id) {
+        return ResponseEntity.ok(pricingReviewService.claim(id));
     }
 
     @PostMapping("/{id}/release")
-    public ResponseEntity<EstimateRequestDetail> release(
-        @PathVariable Long id,
-        @AuthenticationPrincipal User actor
-    ) {
-        return ResponseEntity.ok(pricingReviewService.release(id, actor));
+    public ResponseEntity<EstimateRequestDetail> release(@PathVariable Long id) {
+        return ResponseEntity.ok(pricingReviewService.release(id));
     }
 
     @PutMapping("/{id}/save")
     public ResponseEntity<EstimateRequestDetail> save(
         @PathVariable Long id,
-        @RequestBody SavePricingReviewRequest dto,
-        @AuthenticationPrincipal User actor
+        @RequestBody SavePricingReviewRequest dto
     ) {
-        return ResponseEntity.ok(pricingReviewService.save(id, dto, actor));
+        return ResponseEntity.ok(pricingReviewService.save(id, dto));
     }
 
     @PostMapping("/{id}/approve")
     public ResponseEntity<EstimateRequestDetail> approve(
         @PathVariable Long id,
-        @RequestBody SavePricingReviewRequest dto,
-        @AuthenticationPrincipal User actor
+        @RequestBody SavePricingReviewRequest dto
     ) {
-        return ResponseEntity.ok(pricingReviewService.approve(id, dto, actor));
+        return ResponseEntity.ok(pricingReviewService.approve(id, dto));
     }
 }
