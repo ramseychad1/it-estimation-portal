@@ -24,22 +24,22 @@ export function getPricingReviewQueue(
   size = 25,
 ): Promise<PageResponse<EstimateRequestListItem>> {
   return api<PageResponse<EstimateRequestListItem>>(
-    `/api/pricing-review?page=${page}&size=${size}`,
+    `/pricing-review?page=${page}&size=${size}`,
   );
 }
 
 export function getPricingReviewDetail(id: number): Promise<EstimateRequestDetail> {
-  return api<EstimateRequestDetail>(`/api/pricing-review/${id}`);
+  return api<EstimateRequestDetail>(`/pricing-review/${id}`);
 }
 
 export function claimPricingReview(id: number): Promise<EstimateRequestDetail> {
-  return api<EstimateRequestDetail>(`/api/pricing-review/${id}/claim`, {
+  return api<EstimateRequestDetail>(`/pricing-review/${id}/claim`, {
     method: "POST",
   });
 }
 
 export function releasePricingReview(id: number): Promise<EstimateRequestDetail> {
-  return api<EstimateRequestDetail>(`/api/pricing-review/${id}/release`, {
+  return api<EstimateRequestDetail>(`/pricing-review/${id}/release`, {
     method: "POST",
   });
 }
@@ -48,7 +48,7 @@ export function savePricingReview(
   id: number,
   body: SavePricingReviewRequest,
 ): Promise<EstimateRequestDetail> {
-  return api<EstimateRequestDetail>(`/api/pricing-review/${id}/save`, {
+  return api<EstimateRequestDetail>(`/pricing-review/${id}/save`, {
     method: "PUT",
     body: JSON.stringify(body),
   });
@@ -58,20 +58,20 @@ export function approvePricingReview(
   id: number,
   body: SavePricingReviewRequest,
 ): Promise<EstimateRequestDetail> {
-  return api<EstimateRequestDetail>(`/api/pricing-review/${id}/approve`, {
+  return api<EstimateRequestDetail>(`/pricing-review/${id}/approve`, {
     method: "POST",
     body: JSON.stringify(body),
   });
 }
 
 export function getAppSettings(): Promise<Record<string, string>> {
-  return api<Record<string, string>>("/api/admin/settings");
+  return api<Record<string, string>>("/admin/settings");
 }
 
 export function updateAppSettings(
   updates: Record<string, string>,
 ): Promise<Record<string, string>> {
-  return api<Record<string, string>>("/api/admin/settings", {
+  return api<Record<string, string>>("/admin/settings", {
     method: "PUT",
     body: JSON.stringify(updates),
   });
