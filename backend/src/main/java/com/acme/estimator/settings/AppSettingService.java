@@ -5,6 +5,7 @@ import java.time.OffsetDateTime;
 import java.util.Map;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,25 +31,28 @@ public class AppSettingService {
     }
 
     @Transactional
-    public Map<String, String> set(String key, String value, User actor) {
-        AppSetting setting = repo.findById(key)
-            .orElseGet(() -> {
-                AppSetting s = new AppSetting();
-                s.setKey(key);
-                return s;
-            });
-        setting.setValue(value);
-        setting.setUpdatedAt(OffsetDateTime.now());
-        setting.setUpdatedBy(actor.getId());
-        repo.save(setting);
+    public Map<String, String> setAll(Map<String, String> updates) {
+        Long actorId = currentUserId();
+        for (Map.Entry<String, String> entry : updates.entrySet()) {
+            AppSetting setting = repo.findById(entry.getKey())
+                .orElseGet(() -> {
+                    AppSetting s = new AppSetting();
+                    s.setKey(entry.getKey());
+                    return s;
+                });
+            setting.setValue(entry.getValue());
+            setting.setUpdatedAt(OffsetDateTime.now());
+            setting.setUpdatedBy(actorId);
+            repo.save(setting);
+        }
         return getAll();
     }
 
-    @Transactional
-    public Map<String, String> setAll(Map<String, String> updates, User actor) {
-        for (Map.Entry<String, String> entry : updates.entrySet()) {
-            set(entry.getKey(), entry.getValue(), actor);
+    private Long currentUserId() {
+        Object principal = SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        if (principal instanceof User u) {
+            return u.getId();
         }
-        return getAll();
+        return null;
     }
 }
