@@ -23,6 +23,7 @@ import {
 } from "../lib/api/estimates";
 import type { ProductListItem } from "../lib/api/products";
 import {
+  useAdminDeleteRequestMutation,
   useDiscardDraftMutation,
   useDropItemMutation,
   useMyRequestHistoryQuery,
@@ -34,6 +35,7 @@ import { useProductsQuery } from "../lib/queries/products";
 import { useSubFeaturesForProductQuery } from "../lib/queries/subFeatures";
 import { useRatesPageQuery } from "../lib/queries/rates";
 import { useAuth } from "../lib/auth";
+import { isAdmin } from "../lib/permissions";
 import { useUserDisplay } from "../lib/userDisplay";
 import { relativeTime } from "../lib/relativeTime";
 import type { EstimatePdfProps } from "../components/EstimatePdf";
@@ -57,7 +59,9 @@ export function EstimateDetailPage() {
   const historyQuery = useMyRequestHistoryQuery(numericId);
   const ratesQuery = useRatesPageQuery({ size: 1 });
   const discardMutation = useDiscardDraftMutation();
+  const adminDeleteMutation = useAdminDeleteRequestMutation();
   const [discardOpen, setDiscardOpen] = useState(false);
+  const [adminDeleteOpen, setAdminDeleteOpen] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const requesterDisplay = useUserDisplay(detailQuery.data?.requesterId ?? null);
 
@@ -140,8 +144,20 @@ export function EstimateDetailPage() {
     }
   }
 
+  const userIsAdmin = isAdmin(currentUser?.roles ?? []);
+
   function buildKebab(): KebabMenuItem[] {
     if (!isDraft && !isNeedsRevision && !isNeedsClarification && !isRecalled) return [];
+    if (userIsAdmin && !isOwner) {
+      return [
+        {
+          label: "Delete",
+          icon: <Trash2 className="w-3.5 h-3.5" strokeWidth={1.5} />,
+          destructive: true,
+          onSelect: () => setAdminDeleteOpen(true),
+        },
+      ];
+    }
     return [
       {
         label: "Discard",
@@ -160,6 +176,17 @@ export function EstimateDetailPage() {
         navigate("/requests");
       },
       onError: () => toast.error("Could not discard that request."),
+    });
+  }
+
+  function confirmAdminDelete() {
+    if (numericId == null) return;
+    adminDeleteMutation.mutate(numericId, {
+      onSuccess: () => {
+        toast.success(`Deleted "${detail.title}".`);
+        navigate("/requests");
+      },
+      onError: () => toast.error("Could not delete that request."),
     });
   }
 
@@ -203,6 +230,23 @@ export function EstimateDetailPage() {
     />
   );
 
+  const adminDeleteModal = (
+    <ConfirmModal
+      open={adminDeleteOpen}
+      title="Delete this request?"
+      body={
+        <p className="text-body text-warm-gray-med m-0">
+          "{detail.title}" and all of its items, answers, and attachments will be permanently removed. This action is logged and cannot be undone.
+        </p>
+      }
+      confirmLabel="Delete"
+      cancelLabel="Cancel"
+      destructive
+      onCancel={() => setAdminDeleteOpen(false)}
+      onConfirm={confirmAdminDelete}
+    />
+  );
+
   // ── NEEDS_REVISION ─────────────────────────────────────────────────────────
   if (isNeedsRevision) {
     return (
@@ -228,6 +272,7 @@ export function EstimateDetailPage() {
           <ActivityCard history={historyQuery.data ?? []} loading={historyQuery.isLoading} />
         </div>
         {discardModal}
+        {adminDeleteModal}
       </>
     );
   }
@@ -259,6 +304,7 @@ export function EstimateDetailPage() {
           <ActivityCard history={historyQuery.data ?? []} loading={historyQuery.isLoading} />
         </div>
         {discardModal}
+        {adminDeleteModal}
       </>
     );
   }
@@ -290,6 +336,7 @@ export function EstimateDetailPage() {
           <ActivityCard history={historyQuery.data ?? []} loading={historyQuery.isLoading} />
         </div>
         {discardModal}
+        {adminDeleteModal}
       </>
     );
   }
@@ -308,6 +355,7 @@ export function EstimateDetailPage() {
           <ActivityCard history={historyQuery.data ?? []} loading={historyQuery.isLoading} />
         </div>
         {discardModal}
+        {adminDeleteModal}
       </>
     );
   }
@@ -349,6 +397,7 @@ export function EstimateDetailPage() {
           <ActivityCard history={historyQuery.data ?? []} loading={historyQuery.isLoading} />
         </div>
         {discardModal}
+        {adminDeleteModal}
       </>
     );
   }
@@ -369,6 +418,7 @@ export function EstimateDetailPage() {
         <ActivityCard history={historyQuery.data ?? []} loading={historyQuery.isLoading} />
       </div>
       {discardModal}
+      {adminDeleteModal}
     </>
   );
 }
