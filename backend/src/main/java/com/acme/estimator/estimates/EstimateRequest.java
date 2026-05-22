@@ -6,6 +6,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import lombok.AccessLevel;
@@ -66,6 +67,31 @@ public class EstimateRequest {
     /** Locked once the Draft is created. */
     @Column(name = "requester_id", nullable = false, updatable = false)
     private Long requesterId;
+
+    // ── Pricing review (V27) ──────────────────────────────────────────────────
+
+    /**
+     * PENDING → RM has not yet claimed; IN_REVIEW → RM is actively reviewing;
+     * APPROVED → RM approved. NULL means pricing review is not applicable
+     * (feature disabled or items not all approved yet).
+     */
+    @Column(name = "pricing_review_status", length = 20)
+    private String pricingReviewStatus;
+
+    /** RM who claimed this request for pricing review. */
+    @Column(name = "rm_reviewer_id")
+    private Long rmReviewerId;
+
+    /** Global discount % the RM applies to the total client price. */
+    @Column(name = "rm_discount_pct", precision = 5, scale = 2)
+    private BigDecimal rmDiscountPct;
+
+    /** RM's notes recorded at approval time. */
+    @Column(name = "rm_notes")
+    private String rmNotes;
+
+    @Column(name = "rm_reviewed_at")
+    private OffsetDateTime rmReviewedAt;
 
     @Column(name = "created_at", nullable = false, updatable = false, insertable = false)
     private OffsetDateTime createdAt;

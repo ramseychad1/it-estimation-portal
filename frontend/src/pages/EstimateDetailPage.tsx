@@ -398,6 +398,39 @@ export function EstimateDetailPage() {
     );
   }
 
+  // ── PRICING_REVIEW — all items approved, awaiting Revenue Manager ──────────
+  if (detail.derivedStatus === "PRICING_REVIEW") {
+    return (
+      <>
+        {header}
+        <div className="flex flex-col" style={{ gap: 16, marginTop: 24 }}>
+          <RequestSummaryCard detail={detail} />
+          <div
+            className="rounded-lg flex items-start"
+            style={{
+              background: "rgba(184, 134, 11, 0.07)",
+              border: "1px solid rgba(184, 134, 11, 0.35)",
+              padding: "12px 16px",
+              gap: 10,
+              fontSize: 13,
+              color: "var(--fg-1)",
+            }}
+          >
+            <Info className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" strokeWidth={1.5} />
+            <span>
+              All items have been approved. This estimate is awaiting Revenue & Pricing Review before it is finalized.
+            </span>
+          </div>
+          {detail.items.map((it) => (
+            <CollapsibleApprovedItemCard key={it.id} item={it} currentRate={currentRate} />
+          ))}
+          <ActivityCard history={historyQuery.data ?? []} loading={historyQuery.isLoading} />
+        </div>
+        {adminDeleteModal}
+      </>
+    );
+  }
+
   // ── APPROVED / PARTIALLY_APPROVED / REJECTED ──────────────────────────────
   if (isApproved || isPartiallyApproved || detail.derivedStatus === "REJECTED") {
     const rateHasChanged = currentRate != null && detail.items.some(
@@ -428,7 +461,26 @@ export function EstimateDetailPage() {
               </span>
             </div>
           )}
-          <EstimateRollupCard items={detail.items} currentRate={currentRate} />
+          {detail.rmDiscountPct != null && (
+            <div
+              className="rounded-lg flex items-start"
+              style={{
+                background: "var(--color-light-blue-soft)",
+                border: "1px solid rgba(187,221,230,0.7)",
+                padding: "12px 16px",
+                gap: 10,
+                fontSize: 13,
+                color: "var(--fg-1)",
+              }}
+            >
+              <Info className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" strokeWidth={1.5} />
+              <span>
+                A <strong>{detail.rmDiscountPct}% pricing discount</strong> has been applied by Revenue Management.
+                {detail.rmNotes && <> Notes: {detail.rmNotes}</>}
+              </span>
+            </div>
+          )}
+          <EstimateRollupCard items={detail.items} currentRate={currentRate} rmDiscountPct={detail.rmDiscountPct} />
           {detail.items.map((it) => (
             <CollapsibleApprovedItemCard key={it.id} item={it} currentRate={currentRate} />
           ))}
@@ -762,9 +814,11 @@ function DraftItemCard({
 function EstimateRollupCard({
   items,
   currentRate,
+  rmDiscountPct = null,
 }: {
   items: EstimateRequestItemDto[];
   currentRate: { onshoreRate: string; offshoreRate: string; effectiveDate: string } | null;
+  rmDiscountPct?: number | null;
 }) {
   const approvedRows = items.filter(
     (it) => it.status === "APPROVED" && it.complexity != null,
@@ -776,9 +830,16 @@ function EstimateRollupCard({
     const offs = offshoreHoursForLines(it.phaseLines, it.complexity);
     const total = totalHoursForLines(it.phaseLines, it.complexity);
     const cost = totalCostForLines(it.phaseLines, it.complexity, currentRate);
+    // Use RM overrides when present, else fall back to approved values.
+    const effectivePricingModel = it.rmPricingModel ?? it.pricingModel;
+    const effectiveTmMultiplier = it.rmTmMultiplier ?? it.tmMultiplier;
+    const effectiveTmTargetMarginPct = it.rmTmTargetMarginPct ?? it.tmTargetMarginPct;
+    const effectiveMatBillableRate = it.rmMatBillableRate ?? it.matBillableRate;
+    const effectiveMatDiscountPct = it.rmMatDiscountPct ?? it.matDiscountPct;
     const clientPrice = computeClientPrice(
-      it.pricingModel, currentRate ? cost : null, total,
-      it.tmMultiplier, it.tmTargetMarginPct, it.matBillableRate, it.matDiscountPct,
+      effectivePricingModel, currentRate ? cost : null, total,
+      effectiveTmMultiplier, effectiveTmTargetMarginPct,
+      effectiveMatBillableRate, effectiveMatDiscountPct,
     );
     return { it, ons, offs, total, cost, clientPrice };
   });
@@ -791,6 +852,14 @@ function EstimateRollupCard({
   const sumClientPrice = hasClientPrice
     ? rowData.reduce((s, r) => s + (r.clientPrice ?? 0), 0)
     : null;
+  const discountAmount =
+    sumClientPrice != null && rmDiscountPct != null
+      ? sumClientPrice * (rmDiscountPct / 100)
+      : null;
+  const netClientPrice =
+    sumClientPrice != null && discountAmount != null
+      ? sumClientPrice - discountAmount
+      : sumClientPrice;
 
   const footerStyle = {
     background: "var(--color-warm-gray-light)",
@@ -861,6 +930,34 @@ function EstimateRollupCard({
                 </Td>
               )}
             </tr>
+            {hasClientPrice && discountAmount != null && (
+              <tr style={{ borderTop: "1px solid var(--color-warm-gray-light)" }}>
+                <td colSpan={currentRate ? 4 : 3} style={{ padding: "8px 10px" }}>
+                  <span className="text-warm-gray-med" style={{ fontSize: 12 }}>
+                    Pricing discount ({rmDiscountPct}%)
+                  </span>
+                </td>
+                <td style={{ textAlign: "right", padding: "8px 10px" }}>
+                  <span className="tabular-nums text-warm-gray-med" style={{ fontSize: 12 }}>
+                    −${fmtMoney(Math.ceil(discountAmount))}
+                  </span>
+                </td>
+              </tr>
+            )}
+            {hasClientPrice && discountAmount != null && (
+              <tr style={{ background: "var(--color-light-blue-soft)", borderTop: "1px solid rgba(187,221,230,0.7)" }}>
+                <td colSpan={currentRate ? 4 : 3} style={{ padding: "8px 10px" }}>
+                  <span className="font-semibold text-near-black" style={{ fontSize: 12 }}>
+                    Net Client Price
+                  </span>
+                </td>
+                <td style={{ textAlign: "right", padding: "8px 10px" }}>
+                  <span className="font-semibold tabular-nums">
+                    {netClientPrice != null ? `$${fmtMoney(Math.ceil(netClientPrice))}` : "—"}
+                  </span>
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>

@@ -104,6 +104,7 @@ public class EstimateRequestService {
     private final ClientRepository clientRepository;
     private final ProgramRepository programRepository;
     private final ClientPricingService clientPricingService;
+    private final com.acme.estimator.settings.AppSettingService appSettingService;
 
     // ---- reads ---------------------------------------------------------
 
@@ -559,6 +560,29 @@ public class EstimateRequestService {
         });
     }
 
+    // ---- Pricing review queue (V27) ----------------------------------------
+
+    @Transactional(readOnly = true)
+    public Page<EstimateRequestListItem> pricingReviewQueue(Pageable pageable) {
+        Page<EstimateRequest> page = requestRepository
+            .findByPricingReviewStatusIn(List.of("PENDING", "IN_REVIEW"), pageable);
+
+        List<Long> requestIds = page.stream().map(EstimateRequest::getId).toList();
+        Map<Long, List<EstimateRequestItem>> itemsByRequestId = loadItemsForRequests(requestIds);
+        Map<Long, String> productNames = batchLoadProductNames(itemsByRequestId);
+        Map<Long, String> subNames = batchLoadSubNames(itemsByRequestId);
+        Map<Long, String> userNames = batchLoadUserNames(page.getContent(), itemsByRequestId);
+        Map<Long, Integer> answeredByItemId = batchLoadAnsweredCounts(itemsByRequestId);
+        Map<Long, Integer> totalByItemId = batchLoadTotalQuestionCounts(itemsByRequestId);
+
+        return page.map(req -> {
+            List<EstimateRequestItem> items =
+                itemsByRequestId.getOrDefault(req.getId(), List.of());
+            return toListItem(req, items, productNames, subNames, userNames,
+                answeredByItemId, totalByItemId);
+        });
+    }
+
     /**
      * Reviewer-side detail load. Visible on any non-Draft request
      * (Drafts stay private to the requester).
@@ -724,6 +748,18 @@ public class EstimateRequestService {
         auditService.recordAction(
             EstimateRequest.ENTITY_TYPE, requestId, ChangeAction.ITEM_APPROVED, reviewer, notes
         );
+
+        // If all items are now approved and revenue review is enabled, queue for pricing review.
+        List<EstimateRequestItem> allItems =
+            itemRepository.findByEstimateRequestIdOrderByDisplayOrderAsc(requestId);
+        boolean allApproved = allItems.stream()
+            .allMatch(i -> i.getStatus() == EstimateStatus.APPROVED);
+        if (allApproved && appSettingService.isRevenueReviewEnabled()
+                && request.getPricingReviewStatus() == null) {
+            request.setPricingReviewStatus("PENDING");
+            requestRepository.save(request);
+        }
+
         return toDetail(request, reviewer);
     }
 
@@ -983,8 +1019,23 @@ public class EstimateRequestService {
         item.setApprovedTmTargetMarginPct(null);
         item.setApprovedMatBillableRate(null);
         item.setApprovedMatDiscountPct(null);
+        item.setRmPricingModel(null);
+        item.setRmTmMultiplier(null);
+        item.setRmTmTargetMarginPct(null);
+        item.setRmMatBillableRate(null);
+        item.setRmMatDiscountPct(null);
         item.setStatus(EstimateStatus.SUBMITTED);
         itemRepository.save(item);
+
+        // Clear the pricing review state since the request is no longer fully approved.
+        if (request.getPricingReviewStatus() != null) {
+            request.setPricingReviewStatus(null);
+            request.setRmReviewerId(null);
+            request.setRmDiscountPct(null);
+            request.setRmNotes(null);
+            request.setRmReviewedAt(null);
+            requestRepository.save(request);
+        }
 
         List<EstimateRequestPhaseLine> lines = phaseLineRepository
             .findAllByItemIdOrderBySdlcPhaseDisplayOrderSnapshotAsc(item.getId());
@@ -1100,6 +1151,7 @@ public class EstimateRequestService {
      * <p>Rules (in priority order):
      * <ol>
      *   <li>No items → DRAFT
+     *   <li>All APPROVED + pricingReviewStatus PENDING or IN_REVIEW → PRICING_REVIEW
      *   <li>All APPROVED → APPROVED
      *   <li>Any NEEDS_CLARIFICATION → NEEDS_CLARIFICATION (SO is waiting on requester)
      *   <li>Any REJECTED → NEEDS_REVISION
@@ -1111,9 +1163,19 @@ public class EstimateRequestService {
      * </ol>
      */
     public static String getDerivedStatus(List<EstimateRequestItem> items) {
+        return getDerivedStatus(items, null);
+    }
+
+    public static String getDerivedStatus(List<EstimateRequestItem> items, EstimateRequest request) {
         if (items.isEmpty()) return "DRAFT";
         boolean allApproved = items.stream().allMatch(i -> i.getStatus() == EstimateStatus.APPROVED);
-        if (allApproved) return "APPROVED";
+        if (allApproved) {
+            if (request != null) {
+                String prs = request.getPricingReviewStatus();
+                if ("PENDING".equals(prs) || "IN_REVIEW".equals(prs)) return "PRICING_REVIEW";
+            }
+            return "APPROVED";
+        }
         boolean anyNeedsClarification = items.stream()
             .anyMatch(i -> i.getStatus() == EstimateStatus.NEEDS_CLARIFICATION);
         if (anyNeedsClarification) return "NEEDS_CLARIFICATION";
@@ -1511,7 +1573,7 @@ public class EstimateRequestService {
             .map(item -> toItemDto(item, actor, false, categoryId))
             .toList();
 
-        String derivedStatus = getDerivedStatus(items);
+        String derivedStatus = getDerivedStatus(items, request);
         ClassificationView cv = loadClassification(request);
 
         return new EstimateRequestDetail(
@@ -1531,7 +1593,12 @@ public class EstimateRequestService {
             cv.clientId(),
             cv.clientName(),
             cv.programId(),
-            cv.programName()
+            cv.programName(),
+            request.getPricingReviewStatus(),
+            request.getRmReviewerId(),
+            request.getRmDiscountPct(),
+            request.getRmNotes(),
+            request.getRmReviewedAt()
         );
     }
 
@@ -1588,7 +1655,7 @@ public class EstimateRequestService {
             })
             .toList();
 
-        String derivedStatus = getDerivedStatus(items);
+        String derivedStatus = getDerivedStatus(items, request);
         ClassificationView cv = loadClassification(request);
 
         return new EstimateRequestDetail(
@@ -1608,7 +1675,12 @@ public class EstimateRequestService {
             cv.clientId(),
             cv.clientName(),
             cv.programId(),
-            cv.programName()
+            cv.programName(),
+            request.getPricingReviewStatus(),
+            request.getRmReviewerId(),
+            request.getRmDiscountPct(),
+            request.getRmNotes(),
+            request.getRmReviewedAt()
         );
     }
 
@@ -1787,7 +1859,12 @@ public class EstimateRequestService {
             pricing.tmMultiplier(),
             pricing.tmTargetMarginPct(),
             pricing.matBillableRate(),
-            pricing.matDiscountPct()
+            pricing.matDiscountPct(),
+            item.getRmPricingModel(),
+            item.getRmTmMultiplier(),
+            item.getRmTmTargetMarginPct(),
+            item.getRmMatBillableRate(),
+            item.getRmMatDiscountPct()
         );
     }
 
@@ -1800,7 +1877,7 @@ public class EstimateRequestService {
         Map<Long, Integer> answeredByItemId,
         Map<Long, Integer> totalByItemId
     ) {
-        String derivedStatus = getDerivedStatus(items);
+        String derivedStatus = getDerivedStatus(items, request);
 
         // Build display string: "Product A, Sub B; Product C" etc., truncated at 3
         List<String> nameList = new ArrayList<>();

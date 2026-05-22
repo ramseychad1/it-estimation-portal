@@ -30,7 +30,8 @@ export type StatusBadgeVariant =
   | "partially-approved"
   | "needs-revision"
   | "needs-clarification"
-  | "recalled";
+  | "recalled"
+  | "pricing-review";
 
 interface StatusBadgeProps {
   variant: StatusBadgeVariant;
@@ -124,6 +125,12 @@ const VARIANT_STYLES: Record<StatusBadgeVariant, React.CSSProperties> = {
     color: "var(--fg-2)",
     borderColor: "var(--color-border-strong)",
   },
+  // Amber-tinted: awaiting Revenue Manager action, similar weight to needs-clarification.
+  "pricing-review": {
+    background: "rgba(184, 134, 11, 0.07)",
+    color: "var(--color-warning)",
+    borderColor: "rgba(184, 134, 11, 0.35)",
+  },
 };
 
 /**
@@ -145,6 +152,7 @@ export function estimateStatusBadge(status: string): {
     case "NEEDS_REVISION":        return { variant: "needs-revision",        label: "Needs revision" };
     case "NEEDS_CLARIFICATION":   return { variant: "needs-clarification",   label: "Clarification needed" };
     case "RECALLED":              return { variant: "recalled",              label: "Recalled" };
+    case "PRICING_REVIEW":        return { variant: "pricing-review",        label: "Pricing review" };
     default:                      return { variant: "neutral",               label: status };
   }
 }

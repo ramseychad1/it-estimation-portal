@@ -162,9 +162,11 @@ export async function buildEstimateExcel(
     const off = offshoreHoursForLines(item.phaseLines, item.complexity);
     const cost = Math.ceil(ons * onsRate + off * offsRate);
     const clientPrice = computeClientPrice(
-      item.pricingModel, hasRate ? cost : null, Math.ceil(ons + off),
-      item.tmMultiplier, item.tmTargetMarginPct,
-      item.matBillableRate, item.matDiscountPct,
+      item.rmPricingModel ?? item.pricingModel, hasRate ? cost : null, Math.ceil(ons + off),
+      item.rmTmMultiplier ?? item.tmMultiplier,
+      item.rmTmTargetMarginPct ?? item.tmTargetMarginPct,
+      item.rmMatBillableRate ?? item.matBillableRate,
+      item.rmMatDiscountPct ?? item.matDiscountPct,
     );
 
     const row: unknown[] = [
@@ -200,20 +202,47 @@ export async function buildEstimateExcel(
     grandRow.push(fmla(`SUM(F${sumDataStart}:F${sumDataEnd})`, grandCost));
   }
   if (hasClientPrice) {
-    const grandClientPrice = approvedItems.reduce((s, it) => {
+    const grossClientPrice = approvedItems.reduce((s, it) => {
       const ons = onshoreHoursForLines(it.phaseLines, it.complexity);
       const off = offshoreHoursForLines(it.phaseLines, it.complexity);
       const cost = Math.ceil(ons * onsRate + off * offsRate);
       const cp = computeClientPrice(
-        it.pricingModel, hasRate ? cost : null, Math.ceil(ons + off),
-        it.tmMultiplier, it.tmTargetMarginPct,
-        it.matBillableRate, it.matDiscountPct,
+        it.rmPricingModel ?? it.pricingModel, hasRate ? cost : null, Math.ceil(ons + off),
+        it.rmTmMultiplier ?? it.tmMultiplier,
+        it.rmTmTargetMarginPct ?? it.tmTargetMarginPct,
+        it.rmMatBillableRate ?? it.matBillableRate,
+        it.rmMatDiscountPct ?? it.matDiscountPct,
       );
       return s + (cp ?? 0);
     }, 0);
-    grandRow.push(fmla(`SUM(G${sumDataStart}:G${sumDataEnd})`, Math.ceil(grandClientPrice)));
+    grandRow.push(fmla(`SUM(G${sumDataStart}:G${sumDataEnd})`, Math.ceil(grossClientPrice)));
   }
   sumRows.push(grandRow);
+
+  // RM discount rows — append after Grand Total when a discount was applied
+  const rmDiscountPct = detail.rmDiscountPct;
+  if (hasClientPrice && rmDiscountPct) {
+    const grossClientPrice = approvedItems.reduce((s, it) => {
+      const ons = onshoreHoursForLines(it.phaseLines, it.complexity);
+      const off = offshoreHoursForLines(it.phaseLines, it.complexity);
+      const cost = Math.ceil(ons * onsRate + off * offsRate);
+      const cp = computeClientPrice(
+        it.rmPricingModel ?? it.pricingModel, hasRate ? cost : null, Math.ceil(ons + off),
+        it.rmTmMultiplier ?? it.tmMultiplier,
+        it.rmTmTargetMarginPct ?? it.tmTargetMarginPct,
+        it.rmMatBillableRate ?? it.matBillableRate,
+        it.rmMatDiscountPct ?? it.matDiscountPct,
+      );
+      return s + (cp ?? 0);
+    }, 0);
+    const grandTotalRow = sumDataStart + approvedItems.length;
+    const discountAmt = Math.ceil((grossClientPrice * rmDiscountPct) / 100);
+    const netPrice = Math.ceil(grossClientPrice) - discountAmt;
+    const clientCol = hasRate ? "G" : "F";
+    sumRows.push([`Pricing Discount (${rmDiscountPct}%)`, "", "", "", "", ...(hasRate ? [""] : []), -discountAmt]);
+    sumRows.push(["Net Client Price", "", "", "", "", ...(hasRate ? [""] : []),
+      fmla(`${clientCol}${grandTotalRow}-${discountAmt}`, netPrice)]);
+  }
 
   const summaryWs = XLSX.utils.aoa_to_sheet(sumRows);
   summaryWs["!cols"] = [
@@ -317,14 +346,17 @@ export async function buildEstimateExcel(
       ]);
     }
 
-    // Client price
+    // Client price (RM overrides take precedence)
+    const effModel = item.rmPricingModel ?? item.pricingModel;
     const clientPrice = computeClientPrice(
-      item.pricingModel, hasRate ? totalCost : null, Math.ceil(ons + off),
-      item.tmMultiplier, item.tmTargetMarginPct,
-      item.matBillableRate, item.matDiscountPct,
+      effModel, hasRate ? totalCost : null, Math.ceil(ons + off),
+      item.rmTmMultiplier ?? item.tmMultiplier,
+      item.rmTmTargetMarginPct ?? item.tmTargetMarginPct,
+      item.rmMatBillableRate ?? item.matBillableRate,
+      item.rmMatDiscountPct ?? item.matDiscountPct,
     );
     if (clientPrice != null) {
-      itemRows.push([`Client Price (${pricingModelLabel(item.pricingModel)})`, Math.ceil(clientPrice)]);
+      itemRows.push([`Client Price (${pricingModelLabel(effModel)})`, Math.ceil(clientPrice)]);
     }
 
     // Reviewer justification

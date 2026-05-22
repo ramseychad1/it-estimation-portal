@@ -14,9 +14,11 @@ import {
   Layers,
   Package,
   Receipt,
+  Settings,
   Shield,
   Tag,
   Users,
+  Wallet,
 } from "lucide-react";
 import type { ComponentType, SVGProps } from "react";
 import { ROLE_ADMIN, ROLE_REQUESTER, ROLE_REVENUE_MANAGER, ROLE_SOLUTION_OWNER } from "./types";
@@ -47,6 +49,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { label: "Dashboard", to: "/dashboard", icon: ChartLine },
       { label: "Estimate requests", to: "/requests", icon: ClipboardList, requiresRole: [ROLE_REQUESTER, ROLE_REVENUE_MANAGER] },
       { label: "Review queue", to: "/review", icon: Inbox, requiresRole: [ROLE_SOLUTION_OWNER, ROLE_REVENUE_MANAGER] },
+      { label: "Pricing review", to: "/pricing-review", icon: Wallet, requiresRole: ROLE_REVENUE_MANAGER },
     ],
   },
   {
@@ -80,6 +83,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { label: "Client Pricing", to: "/admin/client-pricing", icon: CircleDollarSign, requiresRole: [ROLE_ADMIN, ROLE_REVENUE_MANAGER] },
       { label: "Users & roles", to: "/admin/users", icon: Shield, requiresRole: ROLE_ADMIN },
       { label: "Change log", to: "/admin/change-log", icon: GitBranch, requiresRole: ROLE_ADMIN },
+      { label: "Global settings", to: "/admin/settings", icon: Settings, requiresRole: ROLE_ADMIN },
     ],
   },
 ];

@@ -149,6 +149,25 @@ public class EstimateRequestItem {
     @Column(name = "display_order", nullable = false)
     private int displayOrder;
 
+    // ── Revenue Manager pricing overrides (V27) ───────────────────────────────
+    // Non-null values replace the corresponding approved_* columns when
+    // computing client price. Cleared if Admin sends the item back.
+
+    @Column(name = "rm_pricing_model", length = 20)
+    private String rmPricingModel;
+
+    @Column(name = "rm_tm_multiplier", precision = 12, scale = 4)
+    private BigDecimal rmTmMultiplier;
+
+    @Column(name = "rm_tm_target_margin_pct", precision = 5, scale = 2)
+    private BigDecimal rmTmTargetMarginPct;
+
+    @Column(name = "rm_mat_billable_rate", precision = 12, scale = 2)
+    private BigDecimal rmMatBillableRate;
+
+    @Column(name = "rm_mat_discount_pct", precision = 5, scale = 2)
+    private BigDecimal rmMatDiscountPct;
+
     @Column(name = "created_at", nullable = false, updatable = false, insertable = false)
     private OffsetDateTime createdAt;
 

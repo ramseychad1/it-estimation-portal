@@ -598,20 +598,23 @@ function ItemSection({
         </Text>
       )}
 
-      {/* Client Price */}
+      {/* Client Price (RM overrides take precedence over approved pricing params) */}
       {(() => {
+        const effModel = item.rmPricingModel ?? item.pricingModel;
         const clientPrice = computeClientPrice(
-          item.pricingModel,
+          effModel,
           rate ? totalCost : null,
           totalHrs,
-          item.tmMultiplier, item.tmTargetMarginPct,
-          item.matBillableRate, item.matDiscountPct,
+          item.rmTmMultiplier ?? item.tmMultiplier,
+          item.rmTmTargetMarginPct ?? item.tmTargetMarginPct,
+          item.rmMatBillableRate ?? item.matBillableRate,
+          item.rmMatDiscountPct ?? item.matDiscountPct,
         );
         if (clientPrice == null) return null;
         return (
           <View style={{ flexDirection: "row", alignItems: "baseline", marginTop: 6, gap: 6 }}>
             <Text style={[s.ratesLine, { margin: 0 }]}>
-              Client Price ({pricingModelLabel(item.pricingModel)}):
+              Client Price ({pricingModelLabel(effModel)}):
             </Text>
             <Text style={[s.ratesLine, { margin: 0, fontFamily: "Helvetica-Bold", color: C.navy }]}>
               ${fmtMoney(Math.ceil(clientPrice))}
@@ -686,9 +689,11 @@ function ItemSection({
 function ProjectSummary({
   items,
   rate,
+  rmDiscountPct,
 }: {
   items: EstimateRequestItemDto[];
   rate: RateShape;
+  rmDiscountPct?: number | null;
 }) {
   const onsRate = rate ? Number(rate.onshoreRate) : 0;
   const offsRate = rate ? Number(rate.offshoreRate) : 0;
@@ -699,11 +704,13 @@ function ProjectSummary({
     const total = Math.ceil(ons + off);
     const cost = Math.ceil(ons * onsRate + off * offsRate);
     const clientPrice = computeClientPrice(
-      it.pricingModel,
+      it.rmPricingModel ?? it.pricingModel,
       rate ? cost : null,
       total,
-      it.tmMultiplier, it.tmTargetMarginPct,
-      it.matBillableRate, it.matDiscountPct,
+      it.rmTmMultiplier ?? it.tmMultiplier,
+      it.rmTmTargetMarginPct ?? it.tmTargetMarginPct,
+      it.rmMatBillableRate ?? it.matBillableRate,
+      it.rmMatDiscountPct ?? it.matDiscountPct,
     );
     return { it, ons, off, total, cost, clientPrice };
   });
@@ -713,9 +720,17 @@ function ProjectSummary({
   const grandTotal = Math.ceil(grandOns + grandOff);
   const grandCost = Math.ceil(grandOns * onsRate + grandOff * offsRate);
   const hasClientPrice = rows.some((r) => r.clientPrice != null);
-  const grandClientPrice = hasClientPrice
+  const grossClientPrice = hasClientPrice
     ? Math.ceil(rows.reduce((s, r) => s + (r.clientPrice ?? 0), 0))
     : null;
+  const discountAmount =
+    grossClientPrice != null && rmDiscountPct
+      ? Math.ceil((grossClientPrice * rmDiscountPct) / 100)
+      : null;
+  const netClientPrice =
+    grossClientPrice != null && discountAmount != null
+      ? grossClientPrice - discountAmount
+      : grossClientPrice;
 
   return (
     <View style={s.summarySection}>
@@ -764,11 +779,41 @@ function ProjectSummary({
           )}
           {hasClientPrice && (
             <Text style={[s.tdSumNumBold, { color: C.navy }]}>
-              {grandClientPrice != null ? fmtMoney(grandClientPrice) : "—"}
+              {grossClientPrice != null ? fmtMoney(grossClientPrice) : "—"}
             </Text>
           )}
         </View>
       </View>
+
+      {/* RM discount rows below the table */}
+      {discountAmount != null && (
+        <>
+          <View style={[s.summaryRow, { borderWidth: 1, borderColor: C.border, borderStyle: "solid", borderTopWidth: 0 }]}>
+            <Text style={[s.tdProduct, { color: C.grayMed, fontSize: 7 }]}>
+              Pricing Discount ({rmDiscountPct}%)
+            </Text>
+            <Text style={{ width: 44 }} />
+            <Text style={s.tdSumNum} />
+            <Text style={s.tdSumNum} />
+            <Text style={s.tdSumNum} />
+            {rate && <Text style={s.tdSumNum} />}
+            <Text style={[s.tdSumNum, { color: C.grayMed }]}>
+              -{fmtMoney(discountAmount)}
+            </Text>
+          </View>
+          <View style={[s.summaryFooter, { borderTopWidth: 1, borderTopColor: C.borderStr }]}>
+            <Text style={s.tdProductBold}>Net Client Price</Text>
+            <Text style={{ width: 44 }} />
+            <Text style={s.tdSumNum} />
+            <Text style={s.tdSumNum} />
+            <Text style={s.tdSumNum} />
+            {rate && <Text style={s.tdSumNum} />}
+            <Text style={[s.tdSumNumBold, { color: C.navy }]}>
+              {netClientPrice != null ? fmtMoney(netClientPrice) : "—"}
+            </Text>
+          </View>
+        </>
+      )}
     </View>
   );
 }
@@ -903,7 +948,7 @@ export function EstimatePdfDocument({
           </View>
 
           {/* Project Summary always on page 1 */}
-          <ProjectSummary items={approvedItems} rate={currentRate} />
+          <ProjectSummary items={approvedItems} rate={currentRate} rmDiscountPct={detail.rmDiscountPct} />
         </View>
 
         <PageFooter generatedAt={generatedAt} />

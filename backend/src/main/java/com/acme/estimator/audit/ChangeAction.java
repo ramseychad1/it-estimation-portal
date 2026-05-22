@@ -72,5 +72,17 @@ public enum ChangeAction {
     /** Requester responded to the SO's clarification request and resubmitted. */
     ITEM_CLARIFICATION_ANSWERED,
     /** Requester recalled an item from SUBMITTED or IN_REVIEW back to editable state. */
-    ITEM_RECALLED
+    ITEM_RECALLED,
+
+    // ---- Revenue & Pricing Review workflow (V27) --------------------------
+
+    /** Revenue Manager claimed a fully-approved request for pricing review. */
+    PRICING_REVIEW_STARTED,
+    /** Revenue Manager released a request from pricing review without a decision. */
+    PRICING_REVIEW_RELEASED,
+    /** Revenue Manager approved the pricing review; estimate is now fully approved. */
+    PRICING_REVIEW_APPROVED,
+
+    /** Admin-only: global app setting was changed. */
+    SETTING_UPDATED
 }

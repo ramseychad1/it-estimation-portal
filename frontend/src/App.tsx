@@ -28,6 +28,9 @@ import { CategoriesPage } from "./pages/admin/CategoriesPage";
 import { ClientsPage } from "./pages/admin/ClientsPage";
 import { ProgramsPage } from "./pages/admin/ProgramsPage";
 import { AcceptInvitePage } from "./pages/AcceptInvitePage";
+import { GlobalSettingsPage } from "./pages/admin/GlobalSettingsPage";
+import { PricingReviewQueuePage } from "./pages/PricingReviewQueuePage";
+import { PricingReviewDetailPage } from "./pages/PricingReviewDetailPage";
 
 function ProtectedShell({ children }: { children: React.ReactNode }) {
   return (
@@ -92,7 +95,12 @@ export default function App() {
       <Route path="/catalog/questions" element={<RoleProtectedShell requires={[ROLE_SOLUTION_OWNER, ROLE_REVENUE_MANAGER]}><QuestionsBrowserPage /></RoleProtectedShell>} />
       <Route path="/catalog/template-history" element={<RoleProtectedShell requires={[ROLE_SOLUTION_OWNER, ROLE_REVENUE_MANAGER]}><TemplateHistoryPage /></RoleProtectedShell>} />
 
+      {/* Pricing Review surface — Revenue Manager + Admin. */}
+      <Route path="/pricing-review" element={<RoleProtectedShell requires={[ROLE_REVENUE_MANAGER, ROLE_ADMIN]}><PricingReviewQueuePage /></RoleProtectedShell>} />
+      <Route path="/pricing-review/:id" element={<RoleProtectedShell requires={[ROLE_REVENUE_MANAGER, ROLE_ADMIN]}><PricingReviewDetailPage /></RoleProtectedShell>} />
+
       {/* Admin surface — explicit Admin requirement except where Revenue Manager is also allowed. */}
+      <Route path="/admin/settings" element={<RoleProtectedShell requires={ROLE_ADMIN}><GlobalSettingsPage /></RoleProtectedShell>} />
       <Route path="/admin/teams" element={<RoleProtectedShell requires={ROLE_ADMIN}><TeamsPage /></RoleProtectedShell>} />
       <Route path="/admin/phases" element={<RoleProtectedShell requires={ROLE_ADMIN}><SdlcPhasesPage /></RoleProtectedShell>} />
       <Route path="/admin/rates" element={<RoleProtectedShell requires={ROLE_ADMIN}><BlendedRatesPage /></RoleProtectedShell>} />

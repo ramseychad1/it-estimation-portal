@@ -113,6 +113,12 @@ export interface EstimateRequestItemDto {
   tmTargetMarginPct: number | null;
   matBillableRate: number | null;
   matDiscountPct: number | null;
+  // ---- Revenue Manager overrides (V27) ----
+  rmPricingModel: "TARGET_MARGIN" | "TIME_AND_MATERIALS" | null;
+  rmTmMultiplier: number | null;
+  rmTmTargetMarginPct: number | null;
+  rmMatBillableRate: number | null;
+  rmMatDiscountPct: number | null;
 }
 
 // Updated: parent-level detail with items[]
@@ -136,6 +142,13 @@ export interface EstimateRequestDetail {
   clientName: string | null;
   programId: number | null;
   programName: string | null;
+  // ---- Pricing review (V27) ----
+  /** PENDING | IN_REVIEW | APPROVED | null (not applicable or feature disabled). */
+  pricingReviewStatus: string | null;
+  rmReviewerId: number | null;
+  rmDiscountPct: number | null;
+  rmNotes: string | null;
+  rmReviewedAt: string | null;
 }
 
 // For creating a new item in the draft

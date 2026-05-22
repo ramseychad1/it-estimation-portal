@@ -1,6 +1,9 @@
 package com.acme.estimator.estimates;
 
+import java.util.Collection;
 import java.util.Optional;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
@@ -44,4 +47,9 @@ public interface EstimateRequestRepository
         )
         """)
     long countNeedsRevisionByRequesterId(@Param("requesterId") Long requesterId);
+
+    // ---- Pricing review queue (V27) -----------------------------------------
+
+    Page<EstimateRequest> findByPricingReviewStatusIn(
+        Collection<String> statuses, Pageable pageable);
 }

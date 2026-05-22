@@ -1,5 +1,6 @@
 package com.acme.estimator.estimates.dto;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -35,5 +36,12 @@ public record EstimateRequestDetail(
     Long clientId,
     String clientName,
     Long programId,
-    String programName
+    String programName,
+    // ── Pricing review (V27) ──────────────────────────────────────────────
+    /** PENDING | IN_REVIEW | APPROVED | null (not applicable). */
+    String pricingReviewStatus,
+    Long rmReviewerId,
+    BigDecimal rmDiscountPct,
+    String rmNotes,
+    OffsetDateTime rmReviewedAt
 ) {}

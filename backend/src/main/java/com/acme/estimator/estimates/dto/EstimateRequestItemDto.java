@@ -70,5 +70,12 @@ public record EstimateRequestItemDto(
     BigDecimal tmMultiplier,
     BigDecimal tmTargetMarginPct,
     BigDecimal matBillableRate,
-    BigDecimal matDiscountPct
+    BigDecimal matDiscountPct,
+    // ── Revenue Manager overrides (V27) ───────────────────────────────────
+    /** Non-null when the RM has overridden the pricing model for this item. */
+    String rmPricingModel,
+    BigDecimal rmTmMultiplier,
+    BigDecimal rmTmTargetMarginPct,
+    BigDecimal rmMatBillableRate,
+    BigDecimal rmMatDiscountPct
 ) {}
