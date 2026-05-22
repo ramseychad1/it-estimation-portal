@@ -16,4 +16,7 @@ public interface ClientRepository extends JpaRepository<Client, Long> {
 
     @Query(value = "SELECT COUNT(*) FROM estimate_requests WHERE client_id = :id", nativeQuery = true)
     long countRequestsByClient(Long id);
+
+    @Query(value = "SELECT COUNT(*) FROM programs WHERE client_id = :id", nativeQuery = true)
+    long countProgramsByClient(Long id);
 }

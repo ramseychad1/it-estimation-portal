@@ -55,6 +55,10 @@ public class ClientService {
     @Transactional
     public void delete(Long id) {
         getOrThrow(id);
+        if (repository.countProgramsByClient(id) > 0) {
+            throw ApiException.conflict(
+                "Cannot delete: this client has associated programs. Remove or reassign them first.");
+        }
         if (repository.countRequestsByClient(id) > 0) {
             throw ApiException.conflict(
                 "Cannot delete: this client is assigned to one or more estimate requests.");

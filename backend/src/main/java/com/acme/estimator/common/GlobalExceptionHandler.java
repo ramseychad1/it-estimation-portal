@@ -2,6 +2,7 @@ package com.acme.estimator.common;
 
 import java.util.HashMap;
 import java.util.Map;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
@@ -41,5 +42,11 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleAuth(AuthenticationException ex) {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
             .body(ErrorResponse.of("UNAUTHORIZED", "Authentication required."));
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ErrorResponse> handleDataIntegrity(DataIntegrityViolationException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+            .body(ErrorResponse.of("CONFLICT", "This record may be in use with an existing record. Contact your system admin for help."));
     }
 }
