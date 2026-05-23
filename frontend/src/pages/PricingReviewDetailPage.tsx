@@ -166,6 +166,38 @@ export function PricingReviewDetailPage() {
     (it) => it.status === "APPROVED" && it.complexity != null,
   );
 
+  // Gross client price: sum of every approved item that has a computable client price.
+  // Recalculates live as item overrides or the discount field change.
+  const grossClientPrice: number | null = (() => {
+    if (!currentRate || approvedItems.length === 0) return null;
+    let sum = 0;
+    let hasAny = false;
+    for (const item of approvedItems) {
+      const ov = itemOverrides.get(item.id);
+      const model = (ov?.pricingModel ?? item.rmPricingModel ?? item.pricingModel) as PricingModel | null;
+      const price = computeClientPrice(
+        model,
+        totalCostForLines(item.phaseLines, item.complexity, currentRate),
+        totalHoursForLines(item.phaseLines, item.complexity),
+        ov?.tmMultiplier ?? item.rmTmMultiplier ?? item.tmMultiplier,
+        ov?.tmTargetMarginPct ?? item.rmTmTargetMarginPct ?? item.tmTargetMarginPct,
+        ov?.matBillableRate ?? item.rmMatBillableRate ?? item.matBillableRate,
+        ov?.matDiscountPct ?? item.rmMatDiscountPct ?? item.matDiscountPct,
+      );
+      if (price != null) { sum += price; hasAny = true; }
+    }
+    return hasAny ? sum : null;
+  })();
+
+  const parsedDiscountPct = parseFloat(discountPct);
+  const activeDiscountPct = !isNaN(parsedDiscountPct) && parsedDiscountPct > 0 ? parsedDiscountPct : null;
+  const discountAmount = grossClientPrice != null && activeDiscountPct != null
+    ? (grossClientPrice * activeDiscountPct) / 100
+    : null;
+  const netClientPrice = grossClientPrice != null && discountAmount != null
+    ? grossClientPrice - discountAmount
+    : null;
+
   return (
     <div>
       <EntityHeader
@@ -245,7 +277,7 @@ export function PricingReviewDetailPage() {
             Pricing Adjustments
           </div>
           <div className="flex flex-col" style={{ gap: 16 }}>
-            <div className="flex gap-8">
+            <div className="flex gap-8 items-start">
               <div style={{ flex: "0 0 200px" }}>
                 <label className="block font-medium text-near-black" style={{ fontSize: 13, marginBottom: 6 }}>
                   Global Discount (%)
@@ -271,6 +303,25 @@ export function PricingReviewDetailPage() {
                   Applied to the total client price
                 </p>
               </div>
+
+              {grossClientPrice != null && (
+                <div style={{ paddingTop: 24 }}>
+                  <PriceSummaryLine label="Gross Client Price" value={grossClientPrice} />
+                  {discountAmount != null && (
+                    <PriceSummaryLine
+                      label={`Discount (${activeDiscountPct}%)`}
+                      value={-discountAmount}
+                      muted
+                    />
+                  )}
+                  {netClientPrice != null && (
+                    <>
+                      <div style={{ borderTop: "1px solid var(--color-border)", margin: "6px 0" }} />
+                      <PriceSummaryLine label="Net Client Price" value={netClientPrice} emphasis />
+                    </>
+                  )}
+                </div>
+              )}
             </div>
             <div>
               <label className="block font-medium text-near-black" style={{ fontSize: 13, marginBottom: 6 }}>
@@ -545,6 +596,35 @@ function NumericField({
           background: disabled ? "var(--color-warm-gray-light)" : "white",
         }}
       />
+    </div>
+  );
+}
+
+function PriceSummaryLine({
+  label,
+  value,
+  muted = false,
+  emphasis = false,
+}: {
+  label: string;
+  value: number;
+  muted?: boolean;
+  emphasis?: boolean;
+}) {
+  const formatted = `${value < 0 ? "-" : ""}$${Math.abs(Math.ceil(value)).toLocaleString()}`;
+  return (
+    <div
+      className="flex justify-between"
+      style={{
+        fontSize: 13,
+        gap: 32,
+        color: muted ? "var(--color-warm-gray-med)" : "var(--fg-1)",
+        fontWeight: emphasis ? 600 : undefined,
+        marginBottom: 4,
+      }}
+    >
+      <span>{label}</span>
+      <span className="tabular-nums">{formatted}</span>
     </div>
   );
 }
