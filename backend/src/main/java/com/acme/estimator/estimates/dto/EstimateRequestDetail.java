@@ -37,11 +37,13 @@ public record EstimateRequestDetail(
     String clientName,
     Long programId,
     String programName,
-    // ── Pricing review (V27) ──────────────────────────────────────────────
+    // ── Pricing review (V27 / V28) ────────────────────────────────────────
     /** PENDING | IN_REVIEW | APPROVED | null (not applicable). */
     String pricingReviewStatus,
     Long rmReviewerId,
     BigDecimal rmDiscountPct,
     String rmNotes,
-    OffsetDateTime rmReviewedAt
+    OffsetDateTime rmReviewedAt,
+    /** Free-form context the requester supplied when sending this estimate for (re-)pricing review. */
+    String requesterPricingContext
 ) {}

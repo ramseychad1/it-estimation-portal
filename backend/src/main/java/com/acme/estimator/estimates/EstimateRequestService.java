@@ -44,6 +44,7 @@ import com.acme.estimator.estimates.dto.RejectItemRequest;
 import com.acme.estimator.estimates.dto.ReviseAndResubmitRequest;
 import com.acme.estimator.estimates.dto.SaveAnswersRequest;
 import com.acme.estimator.estimates.dto.UpdateDraftRequest;
+import com.acme.estimator.estimates.dto.RequestPricingReviewRequest;
 import com.acme.estimator.phases.SdlcPhase;
 import com.acme.estimator.phases.SdlcPhaseRepository;
 import com.acme.estimator.rates.BlendedRate;
@@ -558,6 +559,54 @@ public class EstimateRequestService {
             List<EstimateRequestItem> items = itemsByRequestId.getOrDefault(req.getId(), List.of());
             return toListItem(req, items, productNames, subNames, userNames, answeredByItemId, totalByItemId);
         });
+    }
+
+    // ---- Requester-initiated pricing review (V28) ---------------------------
+
+    /**
+     * Requester sends a fully-approved estimate to (or back to) the pricing
+     * review queue and optionally supplies context for the Revenue Manager.
+     *
+     * <p>Guard: all items must be APPROVED and the current pricing review
+     * status must not already be PENDING or IN_REVIEW.
+     */
+    @Transactional
+    public EstimateRequestDetail requestPricingReview(
+        Long requestId, RequestPricingReviewRequest dto, User actor
+    ) {
+        EstimateRequest request = requestRepository.findById(requestId)
+            .orElseThrow(() -> ApiException.notFound("Estimate request " + requestId + " not found."));
+        if (!actor.isAdmin() && !actor.getId().equals(request.getRequesterId())) {
+            throw ApiException.notFound("Estimate request " + requestId + " not found.");
+        }
+
+        List<EstimateRequestItem> items =
+            itemRepository.findByEstimateRequestIdOrderByDisplayOrderAsc(requestId);
+        boolean allApproved = items.stream()
+            .allMatch(i -> i.getStatus() == EstimateStatus.APPROVED);
+        if (!allApproved) {
+            throw new ApiException(org.springframework.http.HttpStatus.CONFLICT,
+                "INVALID_STATE", "All items must be approved before requesting pricing review.");
+        }
+
+        String prs = request.getPricingReviewStatus();
+        if ("PENDING".equals(prs) || "IN_REVIEW".equals(prs)) {
+            throw new ApiException(org.springframework.http.HttpStatus.CONFLICT,
+                "INVALID_STATE", "This request is already in the pricing review queue.");
+        }
+
+        String context = dto.context() == null ? null : dto.context().strip();
+        if (context != null && context.isEmpty()) context = null;
+        request.setRequesterPricingContext(context);
+        request.setPricingReviewStatus("PENDING");
+        requestRepository.save(request);
+
+        auditService.recordAction(
+            EstimateRequest.ENTITY_TYPE, requestId,
+            ChangeAction.PRICING_REVIEW_REQUESTED, actor,
+            "Requester sent '" + request.getTitle() + "' for pricing review."
+        );
+        return toDetail(request, actor);
     }
 
     // ---- Pricing review queue (V27) ----------------------------------------
@@ -1598,7 +1647,8 @@ public class EstimateRequestService {
             request.getRmReviewerId(),
             request.getRmDiscountPct(),
             request.getRmNotes(),
-            request.getRmReviewedAt()
+            request.getRmReviewedAt(),
+            request.getRequesterPricingContext()
         );
     }
 
@@ -1680,7 +1730,8 @@ public class EstimateRequestService {
             request.getRmReviewerId(),
             request.getRmDiscountPct(),
             request.getRmNotes(),
-            request.getRmReviewedAt()
+            request.getRmReviewedAt(),
+            request.getRequesterPricingContext()
         );
     }
 

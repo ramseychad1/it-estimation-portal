@@ -29,6 +29,7 @@ import {
   useMyRequestHistoryQuery,
   useMyRequestQuery,
   useRecallItemMutation,
+  useRequestPricingReviewMutation,
   useReviseAndResubmitMutation,
 } from "../lib/queries/estimates";
 import { useProductsQuery } from "../lib/queries/products";
@@ -70,8 +71,10 @@ export function EstimateDetailPage() {
   const ratesQuery = useRatesPageQuery({ size: 1 });
   const discardMutation = useDiscardDraftMutation();
   const adminDeleteMutation = useAdminDeleteRequestMutation();
+  const requestPricingReviewMutation = useRequestPricingReviewMutation(numericId ?? 0);
   const [discardOpen, setDiscardOpen] = useState(false);
   const [adminDeleteOpen, setAdminDeleteOpen] = useState(false);
+  const [pricingReviewModalOpen, setPricingReviewModalOpen] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [isExportingExcel, setIsExportingExcel] = useState(false);
   const requesterDisplay = useUserDisplay(detailQuery.data?.requesterId ?? null);
@@ -221,6 +224,17 @@ export function EstimateDetailPage() {
     });
   }
 
+  function handleRequestPricingReview(context: string) {
+    if (numericId == null) return;
+    requestPricingReviewMutation.mutate({ context: context || null }, {
+      onSuccess: () => {
+        setPricingReviewModalOpen(false);
+        toast.success("Sent for pricing re-review.");
+      },
+      onError: () => toast.error("Could not send for pricing review."),
+    });
+  }
+
   const header = (
     <EntityHeader
       breadcrumb={[
@@ -235,6 +249,11 @@ export function EstimateDetailPage() {
       actions={
         isApproved ? (
           <>
+            {detail.pricingReviewStatus === "APPROVED" && (isOwner || userIsAdmin) && (
+              <SecondaryButton onClick={() => setPricingReviewModalOpen(true)}>
+                Request Re-review
+              </SecondaryButton>
+            )}
             <SecondaryButton onClick={() => void handleExportExcel()} disabled={isExportingExcel}>
               <FileSpreadsheet className="w-3.5 h-3.5" strokeWidth={1.5} />
               {isExportingExcel ? "Generating…" : "Export Excel"}
@@ -488,6 +507,12 @@ export function EstimateDetailPage() {
         </div>
         {discardModal}
         {adminDeleteModal}
+        <PricingReReviewModal
+          open={pricingReviewModalOpen}
+          isPending={requestPricingReviewMutation.isPending}
+          onCancel={() => setPricingReviewModalOpen(false)}
+          onConfirm={handleRequestPricingReview}
+        />
       </>
     );
   }
@@ -2120,4 +2145,101 @@ function actionLabel(action: string): string {
     case "ITEM_RECALLED": return "Recalled";
     default: return action;
   }
+}
+
+// ── Pricing re-review request modal ───────────────────────────────────────────
+
+function PricingReReviewModal({
+  open,
+  isPending,
+  onCancel,
+  onConfirm,
+}: {
+  open: boolean;
+  isPending: boolean;
+  onCancel: () => void;
+  onConfirm: (context: string) => void;
+}) {
+  const [context, setContext] = useState("");
+  const trimmed = context.trim();
+
+  // Reset textarea whenever the modal opens.
+  React.useEffect(() => {
+    if (open) setContext("");
+  }, [open]);
+
+  if (!open) return null;
+
+  return (
+    <>
+      <div
+        onClick={onCancel}
+        className="fixed inset-0 z-40"
+        style={{ background: "rgba(39,37,31,0.40)" }}
+      />
+      <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Request Pricing Re-review"
+          className="bg-white rounded-lg flex flex-col pointer-events-auto"
+          style={{ width: 520, boxShadow: "var(--shadow-modal)" }}
+        >
+          <header style={{ padding: "20px 24px 0" }}>
+            <div className="font-semibold text-near-black" style={{ fontSize: 16 }}>
+              Request Pricing Re-review
+            </div>
+          </header>
+
+          <div style={{ padding: "12px 24px 20px", display: "flex", flexDirection: "column", gap: 12 }}>
+            <p className="m-0 text-warm-gray-med" style={{ fontSize: 13 }}>
+              This estimate will be returned to the Revenue Manager queue. Describe what you'd like them to review or reconsider.
+            </p>
+            <div>
+              <label
+                className="block font-medium text-near-black"
+                style={{ fontSize: 13, marginBottom: 6 }}
+              >
+                Context for the Revenue Manager
+              </label>
+              <textarea
+                autoFocus
+                value={context}
+                onChange={(e) => setContext(e.target.value)}
+                disabled={isPending}
+                rows={7}
+                placeholder="e.g. The proposed discount doesn't reflect the volume commitment in the contract. Please reconsider the margin target for the offshore phases…"
+                className="w-full rounded border text-near-black"
+                style={{
+                  padding: "8px 10px",
+                  fontSize: 13,
+                  borderColor: "var(--color-border-strong)",
+                  resize: "vertical",
+                  background: isPending ? "var(--color-warm-gray-light)" : "white",
+                }}
+              />
+            </div>
+          </div>
+
+          <footer
+            className="flex justify-end gap-3"
+            style={{
+              padding: "12px 24px 20px",
+              borderTop: "1px solid var(--color-warm-gray-light)",
+            }}
+          >
+            <SecondaryButton onClick={onCancel} disabled={isPending}>
+              Cancel
+            </SecondaryButton>
+            <PrimaryButton
+              onClick={() => onConfirm(trimmed)}
+              disabled={!trimmed || isPending}
+            >
+              {isPending ? "Sending…" : "Send for Re-review"}
+            </PrimaryButton>
+          </footer>
+        </div>
+      </div>
+    </>
+  );
 }

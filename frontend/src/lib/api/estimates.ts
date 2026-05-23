@@ -142,13 +142,15 @@ export interface EstimateRequestDetail {
   clientName: string | null;
   programId: number | null;
   programName: string | null;
-  // ---- Pricing review (V27) ----
+  // ---- Pricing review (V27 / V28) ----
   /** PENDING | IN_REVIEW | APPROVED | null (not applicable or feature disabled). */
   pricingReviewStatus: string | null;
   rmReviewerId: number | null;
   rmDiscountPct: number | null;
   rmNotes: string | null;
   rmReviewedAt: string | null;
+  /** Context the requester supplied when sending this estimate for (re-)pricing review. */
+  requesterPricingContext: string | null;
 }
 
 // For creating a new item in the draft
@@ -295,6 +297,19 @@ export function recallItem(
   itemId: number,
 ): Promise<EstimateRequestDetail> {
   return api(`/estimates/my/${id}/items/${itemId}/recall`, { method: "POST" });
+}
+
+// ---- Requester-initiated pricing review (V28) -------------------------
+
+export interface RequestPricingReviewRequest {
+  context: string | null;
+}
+
+export function requestPricingReview(
+  id: number,
+  body: RequestPricingReviewRequest,
+): Promise<EstimateRequestDetail> {
+  return api(`/estimates/my/${id}/request-pricing-review`, { method: "POST", body });
 }
 
 // ---- Admin delete (hard delete, audit logged) -------------------------

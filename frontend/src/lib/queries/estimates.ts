@@ -8,6 +8,7 @@ import {
   listMyRequestHistory,
   listMyRequests,
   recallItem,
+  requestPricingReview,
   reviseAndResubmitItem,
   saveDraftAnswers,
   saveDraftItemAnswers,
@@ -15,6 +16,7 @@ import {
   updateDraft,
   type CreateDraftRequest,
   type ListMyRequestsParams,
+  type RequestPricingReviewRequest,
   type ReviseAndResubmitRequest,
   type SaveAnswersRequest,
   type UpdateDraftRequest,
@@ -142,5 +144,13 @@ export function useAdminDeleteRequestMutation() {
   return useMutation({
     mutationFn: (id: number) => adminDeleteRequest(id),
     onSuccess: () => invalidateAll(qc),
+  });
+}
+
+export function useRequestPricingReviewMutation(id: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: RequestPricingReviewRequest) => requestPricingReview(id, body),
+    onSuccess: () => invalidateDetail(qc, id),
   });
 }

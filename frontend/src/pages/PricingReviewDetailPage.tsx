@@ -268,6 +268,24 @@ export function PricingReviewDetailPage() {
           </div>
         )}
 
+        {/* Requester context — shown when the requestor supplied notes */}
+        {detail.requesterPricingContext && (
+          <div
+            className="bg-white"
+            style={{ border: "1px solid var(--color-border)", borderRadius: 6, padding: "16px 20px" }}
+          >
+            <div className="font-semibold text-near-black" style={{ fontSize: 14, marginBottom: 8 }}>
+              Context from Requester
+            </div>
+            <p
+              className="m-0 text-near-black"
+              style={{ fontSize: 13, whiteSpace: "pre-wrap", lineHeight: 1.6 }}
+            >
+              {detail.requesterPricingContext}
+            </p>
+          </div>
+        )}
+
         {/* Global discount + notes */}
         <div
           className="bg-white"

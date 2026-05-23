@@ -170,6 +170,16 @@ public class EstimateRequestController {
         return service.recallItem(id, itemId, currentUser(principal));
     }
 
+    /** Requester sends a fully-approved estimate for (or back to) pricing review. */
+    @PostMapping("/{id}/request-pricing-review")
+    public EstimateRequestDetail requestPricingReview(
+        @PathVariable Long id,
+        @RequestBody com.acme.estimator.estimates.dto.RequestPricingReviewRequest dto,
+        @AuthenticationPrincipal AppUserDetails principal
+    ) {
+        return service.requestPricingReview(id, dto, currentUser(principal));
+    }
+
     @GetMapping("/{id}/history")
     public List<ChangeLogEntry> history(
         @PathVariable Long id, @AuthenticationPrincipal AppUserDetails principal

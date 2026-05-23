@@ -93,6 +93,10 @@ public class EstimateRequest {
     @Column(name = "rm_reviewed_at")
     private OffsetDateTime rmReviewedAt;
 
+    /** Free-form context provided by the requester when sending the estimate for (re-)pricing review. */
+    @Column(name = "requester_pricing_context")
+    private String requesterPricingContext;
+
     @Column(name = "created_at", nullable = false, updatable = false, insertable = false)
     private OffsetDateTime createdAt;
 

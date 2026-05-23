@@ -82,6 +82,8 @@ public enum ChangeAction {
     PRICING_REVIEW_RELEASED,
     /** Revenue Manager approved the pricing review; estimate is now fully approved. */
     PRICING_REVIEW_APPROVED,
+    /** Requester sent a fully-approved estimate back to the pricing review queue. */
+    PRICING_REVIEW_REQUESTED,
 
     /** Admin-only: global app setting was changed. */
     SETTING_UPDATED
