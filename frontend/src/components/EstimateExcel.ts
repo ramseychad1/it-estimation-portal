@@ -6,6 +6,7 @@ import {
   offshoreHoursForLines,
   computeClientPrice,
   pricingModelLabel,
+  rmAdjustmentLabel,
 } from "../lib/estimateMath";
 
 // Matches the shape used in EstimateDetailPage / EstimatePdf
@@ -91,6 +92,7 @@ export async function buildEstimateExcel(
   const offsRate = rate ? Number(rate.offshoreRate) : 0;
   const hasRate = rate != null;
   const hasClientPrice = approvedItems.some((it) => it.pricingModel != null);
+  const hasRmAdjustment = approvedItems.some((it) => rmAdjustmentLabel(it) != null);
 
   // Pre-compute where the "Item Total" row sits on each item sheet (1-indexed).
   // Item layout: row 1=title, row 2=meta, row 3=blank, row 4=section header,
@@ -143,6 +145,7 @@ export async function buildEstimateExcel(
   const summaryHeaders = ["Product / Sub-feature", "Complexity", "Onshore Hrs", "Offshore Hrs", "Total Hrs"];
   if (hasRate) summaryHeaders.push("Internal Cost");
   if (hasClientPrice) summaryHeaders.push("Client Price");
+  if (hasRmAdjustment) summaryHeaders.push("RM Adjustment");
   sumRows.push(summaryHeaders);
 
   // Data rows start at row 14 (1-indexed).
@@ -179,6 +182,7 @@ export async function buildEstimateExcel(
     ];
     if (hasRate) row.push(fmla(`'${sheetName}'!E${totalRow}`, cost));
     if (hasClientPrice) row.push(clientPrice != null ? Math.ceil(clientPrice) : "");
+    if (hasRmAdjustment) row.push(rmAdjustmentLabel(item) ?? "—");
     sumRows.push(row);
   }
 
@@ -217,6 +221,7 @@ export async function buildEstimateExcel(
     }, 0);
     grandRow.push(fmla(`SUM(G${sumDataStart}:G${sumDataEnd})`, Math.ceil(grossClientPrice)));
   }
+  if (hasRmAdjustment) grandRow.push("");
   sumRows.push(grandRow);
 
   // RM discount rows — append after Grand Total when a discount was applied
@@ -239,9 +244,9 @@ export async function buildEstimateExcel(
     const discountAmt = Math.ceil((grossClientPrice * rmDiscountPct) / 100);
     const netPrice = Math.ceil(grossClientPrice) - discountAmt;
     const clientCol = hasRate ? "G" : "F";
-    sumRows.push([`Pricing Discount (${rmDiscountPct}%)`, "", "", "", "", ...(hasRate ? [""] : []), -discountAmt]);
+    sumRows.push([`Pricing Discount (${rmDiscountPct}%)`, "", "", "", "", ...(hasRate ? [""] : []), -discountAmt, ...(hasRmAdjustment ? [""] : [])]);
     sumRows.push(["Net Client Price", "", "", "", "", ...(hasRate ? [""] : []),
-      fmla(`${clientCol}${grandTotalRow}-${discountAmt}`, netPrice)]);
+      fmla(`${clientCol}${grandTotalRow}-${discountAmt}`, netPrice), ...(hasRmAdjustment ? [""] : [])]);
   }
 
   const summaryWs = XLSX.utils.aoa_to_sheet(sumRows);
@@ -253,6 +258,7 @@ export async function buildEstimateExcel(
     { wch: 12 }, // E: Total Hrs
     { wch: 16 }, // F: Internal Cost
     { wch: 16 }, // G: Client Price
+    ...(hasRmAdjustment ? [{ wch: 22 }] : []), // H: RM Adjustment
   ];
   XLSX.utils.book_append_sheet(wb, summaryWs, "Summary");
 

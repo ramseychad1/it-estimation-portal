@@ -150,3 +150,42 @@ export function pricingModelLabel(model: string | null | undefined): string {
   if (model === "TIME_AND_MATERIALS") return "Time & Materials";
   return "Unassigned";
 }
+
+/**
+ * Returns a compact label describing the RM's item-level pricing adjustment,
+ * or null when no RM override has been applied to the item.
+ *
+ * Used in the requestor's approved-estimate table and the Excel export.
+ * NOT used in the PDF export.
+ */
+export function rmAdjustmentLabel(item: {
+  rmPricingModel?: string | null;
+  pricingModel?: string | null;
+  rmTmMultiplier?: number | null;
+  rmTmTargetMarginPct?: number | null;
+  rmMatBillableRate?: number | null;
+  rmMatDiscountPct?: number | null;
+}): string | null {
+  const hasOverride =
+    item.rmPricingModel != null ||
+    item.rmTmMultiplier != null ||
+    item.rmTmTargetMarginPct != null ||
+    item.rmMatBillableRate != null ||
+    item.rmMatDiscountPct != null;
+  if (!hasOverride) return null;
+
+  const model = item.rmPricingModel ?? item.pricingModel;
+
+  if (model === "TIME_AND_MATERIALS") {
+    const parts: string[] = [];
+    if (item.rmMatBillableRate != null) parts.push(`$${item.rmMatBillableRate}/hr`);
+    if (item.rmMatDiscountPct != null) parts.push(`${item.rmMatDiscountPct}% disc.`);
+    return parts.length > 0 ? parts.join(" · ") : "T&M override";
+  }
+  if (model === "TARGET_MARGIN") {
+    if (item.rmTmMultiplier != null) return `${item.rmTmMultiplier}× mult.`;
+    if (item.rmTmTargetMarginPct != null) return `${item.rmTmTargetMarginPct}% margin`;
+    return "Margin override";
+  }
+  return "RM override";
+}

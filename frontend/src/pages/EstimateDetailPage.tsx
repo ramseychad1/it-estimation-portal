@@ -46,6 +46,7 @@ import {
   offshoreHoursForLines,
   onshoreHoursForLines,
   pricingModelLabel,
+  rmAdjustmentLabel,
   totalCostForLines,
   totalHoursForLines,
 } from "../lib/estimateMath";
@@ -874,6 +875,14 @@ function EstimateRollupCard({
   const sumTotal = rowData.reduce((s, r) => s + r.total, 0);
   const sumCost = rowData.reduce((s, r) => s + r.cost, 0);
   const hasClientPrice = rowData.some((r) => r.clientPrice != null);
+  const hasRmAdjustment = approvedRows.some(
+    (it) =>
+      it.rmPricingModel != null ||
+      it.rmTmMultiplier != null ||
+      it.rmTmTargetMarginPct != null ||
+      it.rmMatBillableRate != null ||
+      it.rmMatDiscountPct != null,
+  );
   const sumClientPrice = hasClientPrice
     ? rowData.reduce((s, r) => s + (r.clientPrice ?? 0), 0)
     : null;
@@ -902,6 +911,7 @@ function EstimateRollupCard({
               <Th align="right">Offshore Hrs</Th>
               <Th align="right">Total Hrs</Th>
               {currentRate && <Th align="right">Internal Cost</Th>}
+              {hasRmAdjustment && <Th align="right">RM Adjustment</Th>}
               {hasClientPrice && <Th align="right">Client Price</Th>}
             </tr>
           </thead>
@@ -923,6 +933,13 @@ function EstimateRollupCard({
                 <Td align="right"><span className="tabular-nums">{fmtHrs(total)}</span></Td>
                 {currentRate && (
                   <Td align="right"><span className="tabular-nums">${fmtMoney(cost)}</span></Td>
+                )}
+                {hasRmAdjustment && (
+                  <Td align="right">
+                    <span className="tabular-nums text-warm-gray-med" style={{ fontSize: 12 }}>
+                      {rmAdjustmentLabel(it) ?? "—"}
+                    </span>
+                  </Td>
                 )}
                 {hasClientPrice && (
                   <Td align="right">
@@ -947,6 +964,7 @@ function EstimateRollupCard({
                   <span className="font-semibold tabular-nums">${fmtMoney(sumCost)}</span>
                 </Td>
               )}
+              {hasRmAdjustment && <Td align="right">{null}</Td>}
               {hasClientPrice && (
                 <Td align="right">
                   <span className="font-semibold tabular-nums">
@@ -957,7 +975,10 @@ function EstimateRollupCard({
             </tr>
             {hasClientPrice && discountAmount != null && (
               <tr style={{ borderTop: "1px solid var(--color-warm-gray-light)" }}>
-                <td colSpan={currentRate ? 4 : 3} style={{ padding: "8px 10px" }}>
+                <td
+                  colSpan={4 + (currentRate ? 1 : 0) + (hasRmAdjustment ? 1 : 0)}
+                  style={{ padding: "8px 10px" }}
+                >
                   <span className="text-warm-gray-med" style={{ fontSize: 12 }}>
                     Pricing discount ({rmDiscountPct}%)
                   </span>
@@ -971,7 +992,10 @@ function EstimateRollupCard({
             )}
             {hasClientPrice && discountAmount != null && (
               <tr style={{ background: "var(--color-light-blue-soft)", borderTop: "1px solid rgba(187,221,230,0.7)" }}>
-                <td colSpan={currentRate ? 4 : 3} style={{ padding: "8px 10px" }}>
+                <td
+                  colSpan={4 + (currentRate ? 1 : 0) + (hasRmAdjustment ? 1 : 0)}
+                  style={{ padding: "8px 10px" }}
+                >
                   <span className="font-semibold text-near-black" style={{ fontSize: 12 }}>
                     Net Client Price
                   </span>
