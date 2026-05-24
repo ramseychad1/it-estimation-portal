@@ -262,7 +262,7 @@ public class EstimateRequestService {
             EstimateRequestItem contextItem = new EstimateRequestItem();
             contextItem.setEstimateRequestId(saved.getId());
             contextItem.setProductId(intakeSystemProductId);
-            contextItem.setItemType("CONTEXT");
+            contextItem.setItemType("SCOPE");
             contextItem.setStatus(EstimateStatus.DRAFT);
             contextItem.setDisplayOrder(0);
             itemRepository.save(contextItem);
@@ -465,11 +465,6 @@ public class EstimateRequestService {
 
         for (EstimateRequestItem item : items) {
             submitItem(item);
-            // CONTEXT items are requirements carriers — auto-approve them immediately
-            // so only SCOPE items gate the approval / pricing-review flow.
-            if ("CONTEXT".equals(item.getItemType())) {
-                autoApproveContextItem(item, request);
-            }
         }
 
         itemRepository.saveAll(items);
@@ -482,21 +477,6 @@ public class EstimateRequestService {
         return toDetail(request, requester);
     }
 
-    private void autoApproveContextItem(EstimateRequestItem item, EstimateRequest request) {
-        BlendedRate currentRate = blendedRateRepository.findCurrentAsOf(LocalDate.now()).orElse(null);
-        item.setComplexity(Complexity.LOW);
-        item.setJustification("Intake requirements context — auto-approved");
-        item.setApprovedBlendedRateId(currentRate == null ? null : currentRate.getId());
-        com.acme.estimator.clientpricing.dto.EffectivePricingDto pricing =
-            clientPricingService.getEffectivePricingForCategory(request.getCategoryId());
-        item.setApprovedPricingModel(pricing.pricingModel());
-        item.setApprovedTmMultiplier(pricing.tmMultiplier());
-        item.setApprovedTmTargetMarginPct(pricing.tmTargetMarginPct());
-        item.setApprovedMatBillableRate(pricing.matBillableRate());
-        item.setApprovedMatDiscountPct(pricing.matDiscountPct());
-        item.setStatus(EstimateStatus.APPROVED);
-        item.setReviewedAt(OffsetDateTime.now());
-    }
 
     @Transactional
     public void discard(Long id, User requester) {
@@ -586,15 +566,17 @@ public class EstimateRequestService {
 
                 itemSub.where(itemPredicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
 
-                // Special case: INTAKE requests that have been submitted (CONTEXT item APPROVED,
-                // no SCOPE items yet) must appear in the queue so SOs can add scope items.
+                // INTAKE requests are visible to all SOs (not team-scoped) so any SO
+                // can add scope items from their team regardless of which team owns the
+                // system intake product. Matches INTAKE requests with any item in an
+                // actionable state (SUBMITTED or IN_REVIEW).
                 var intakeScopingSub = query.subquery(Long.class);
                 var intakeItemRoot = intakeScopingSub.from(EstimateRequestItem.class);
                 intakeScopingSub.select(intakeItemRoot.get("estimateRequestId"));
                 intakeScopingSub.where(
                     cb.equal(intakeItemRoot.get("estimateRequestId"), root.get("id")),
-                    cb.equal(intakeItemRoot.get("itemType"), "CONTEXT"),
-                    cb.equal(intakeItemRoot.get("status"), EstimateStatus.APPROVED)
+                    cb.equal(root.get("requestType"), "INTAKE"),
+                    intakeItemRoot.get("status").in(EstimateStatus.SUBMITTED, EstimateStatus.IN_REVIEW)
                 );
                 ps.add(cb.or(cb.exists(itemSub), cb.exists(intakeScopingSub)));
 
@@ -649,11 +631,8 @@ public class EstimateRequestService {
 
         List<EstimateRequestItem> items =
             itemRepository.findByEstimateRequestIdOrderByDisplayOrderAsc(requestId);
-        List<EstimateRequestItem> scopeItemsForPricing = items.stream()
-            .filter(i -> !"CONTEXT".equals(i.getItemType()))
-            .toList();
-        boolean allApproved = !scopeItemsForPricing.isEmpty()
-            && scopeItemsForPricing.stream().allMatch(i -> i.getStatus() == EstimateStatus.APPROVED);
+        boolean allApproved = !items.isEmpty()
+            && items.stream().allMatch(i -> i.getStatus() == EstimateStatus.APPROVED);
         if (!allApproved) {
             throw new ApiException(org.springframework.http.HttpStatus.CONFLICT,
                 "INVALID_STATE", "All items must be approved before requesting pricing review.");
@@ -733,7 +712,6 @@ public class EstimateRequestService {
         EstimateRequest request = requestRepository.findById(requestId)
             .orElseThrow(() -> ApiException.notFound("Estimate request " + requestId + " not found."));
         EstimateRequestItem item = requireItemOnRequest(requestId, itemId);
-        requireNotContextItem(item);
 
         // Idempotent: same SO calling start twice on the same item is a no-op
         if (item.getStatus() == EstimateStatus.IN_REVIEW
@@ -869,15 +847,11 @@ public class EstimateRequestService {
             EstimateRequest.ENTITY_TYPE, requestId, ChangeAction.ITEM_APPROVED, reviewer, notes
         );
 
-        // If all SCOPE items are now approved and revenue review is enabled, queue for pricing review.
-        // CONTEXT items (auto-approved intake carriers) are excluded from this gate.
+        // If all items are now approved and revenue review is enabled, queue for pricing review.
         List<EstimateRequestItem> allItems =
             itemRepository.findByEstimateRequestIdOrderByDisplayOrderAsc(requestId);
-        List<EstimateRequestItem> scopeItems = allItems.stream()
-            .filter(i -> !"CONTEXT".equals(i.getItemType()))
-            .toList();
-        boolean allApproved = !scopeItems.isEmpty()
-            && scopeItems.stream().allMatch(i -> i.getStatus() == EstimateStatus.APPROVED);
+        boolean allApproved = !allItems.isEmpty()
+            && allItems.stream().allMatch(i -> i.getStatus() == EstimateStatus.APPROVED);
         if (allApproved && appSettingService.isRevenueReviewEnabled()
                 && request.getPricingReviewStatus() == null) {
             request.setPricingReviewStatus("PENDING");
@@ -1269,30 +1243,7 @@ public class EstimateRequestService {
 
     // ---- derived status ---------------------------------------------------
 
-    /**
-     * Derived status for a request, accounting for INTAKE requests where CONTEXT
-     * items are excluded from the approval gate.
-     *
-     * <p>For INTAKE requests:
-     * <ul>
-     *   <li>CONTEXT items are filtered out before running normal status logic.
-     *   <li>If no SCOPE items exist yet (scoping hasn't started), returns SUBMITTED
-     *       when the CONTEXT item is APPROVED, or DRAFT if it isn't.
-     * </ul>
-     */
     private String computeDerivedStatus(List<EstimateRequestItem> items, EstimateRequest request) {
-        if (request != null && "INTAKE".equals(request.getRequestType())) {
-            List<EstimateRequestItem> scopeItems = items.stream()
-                .filter(i -> !"CONTEXT".equals(i.getItemType()))
-                .toList();
-            if (scopeItems.isEmpty()) {
-                boolean contextDone = items.stream()
-                    .anyMatch(i -> "CONTEXT".equals(i.getItemType())
-                        && i.getStatus() != EstimateStatus.DRAFT);
-                return contextDone ? "SUBMITTED" : "DRAFT";
-            }
-            return getDerivedStatus(scopeItems, request);
-        }
         return getDerivedStatus(items, request);
     }
 
@@ -1471,7 +1422,6 @@ public class EstimateRequestService {
         // Guard: same product/sub-feature not already in this request
         final Long finalSubId = resolvedSubFeatureId;
         boolean duplicate = existingItems.stream()
-            .filter(i -> !"CONTEXT".equals(i.getItemType()))
             .anyMatch(i -> dto.productId().equals(i.getProductId())
                 && java.util.Objects.equals(finalSubId, i.getSubFeatureId()));
         if (duplicate) {
@@ -1519,16 +1469,6 @@ public class EstimateRequestService {
         return toDetail(request, actor);
     }
 
-    /** Prevents SO review actions on CONTEXT items (intake requirements carriers). */
-    private void requireNotContextItem(EstimateRequestItem item) {
-        if ("CONTEXT".equals(item.getItemType())) {
-            throw new ApiException(
-                org.springframework.http.HttpStatus.CONFLICT,
-                "CONTEXT_ITEM",
-                "This item is an intake requirements context — it cannot be reviewed directly."
-            );
-        }
-    }
 
     private EstimateRequest requireOwnedRequest(Long id, User requester) {
         return requestRepository.findByIdAndRequesterId(id, requester.getId())
@@ -1985,9 +1925,6 @@ public class EstimateRequestService {
     private boolean computeIsReviewable(
         EstimateRequestItem item, User reviewer, Set<Long> accessibleProductIds
     ) {
-        // CONTEXT items are auto-approved intake carriers — SOs never review them directly.
-        if ("CONTEXT".equals(item.getItemType())) return false;
-
         boolean productAccessible = reviewer.isAdmin()
             || (accessibleProductIds != null && accessibleProductIds.contains(item.getProductId()));
 

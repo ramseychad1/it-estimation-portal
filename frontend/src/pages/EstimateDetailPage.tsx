@@ -104,9 +104,7 @@ export function EstimateDetailPage() {
   const isOwner = currentUser != null && currentUser.id === detail.requesterId;
   const { variant, label } = estimateStatusBadge(detail.derivedStatus);
 
-  // CONTEXT items are the requirements carrier for INTAKE requests.
-  // On non-draft views, filter them out so they don't appear as estimate items.
-  const scopeItems = detail.items.filter((it) => it.itemType !== "CONTEXT");
+  const scopeItems = detail.items;
 
   const isDraft = detail.derivedStatus === "DRAFT";
   const isSubmitted = detail.derivedStatus === "SUBMITTED";
@@ -629,7 +627,7 @@ function RequestSummaryCard({ detail }: { detail: EstimateRequestDetail }) {
         <div className="flex flex-wrap" style={{ gap: 24 }}>
           <KV label="Products">
             {(() => {
-              const displayItems = detail.items.filter((it) => it.itemType !== "CONTEXT");
+              const displayItems = detail.items;
               return displayItems.length === 1
                 ? (displayItems[0].subFeatureName
                     ? `${displayItems[0].productName} · ${displayItems[0].subFeatureName}`

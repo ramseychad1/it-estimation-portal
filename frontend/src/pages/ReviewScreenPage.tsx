@@ -402,41 +402,6 @@ function ItemReviewCard({
 
   const { variant: itemVariant, label: itemLabel } = estimateStatusBadge(item.status);
 
-  // CONTEXT items (requirements carrier for INTAKE requests) are shown
-  // read-only — all review actions are suppressed.
-  if (item.itemType === "CONTEXT") {
-    return (
-      <Card
-        title="Requester requirements"
-        headerRight={
-          <span
-            style={{
-              fontSize: 10,
-              padding: "2px 7px",
-              borderRadius: 4,
-              background: "rgba(187, 221, 230, 0.35)",
-              border: "1px solid rgba(44, 86, 102, 0.30)",
-              color: "#2C5666",
-              fontWeight: 600,
-              textTransform: "uppercase",
-              letterSpacing: "0.05em",
-            }}
-          >
-            Requirements
-          </span>
-        }
-      >
-        {item.answers.length > 0 ? (
-          <QuestionsSection answers={item.answers} />
-        ) : (
-          <p className="text-warm-gray-med m-0" style={{ fontSize: 13 }}>
-            No requirements captured.
-          </p>
-        )}
-      </Card>
-    );
-  }
-
   return (
     <>
       <Card
