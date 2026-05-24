@@ -57,7 +57,7 @@ public class SecurityConfig {
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .csrf(csrf -> {
                 CookieCsrfTokenRepository csrfRepo = CookieCsrfTokenRepository.withHttpOnlyFalse();
-                csrfRepo.setCookieCustomizer(cookie -> cookie.secure(cookieSecure));
+                csrfRepo.setCookieCustomizer(cookie -> cookie.secure(cookieSecure).sameSite("Lax"));
                 csrf.csrfTokenRepository(csrfRepo)
                     .csrfTokenRequestHandler(csrfHandler);
             })

@@ -37,6 +37,7 @@ server:
         # Set to true in production (Railway: COOKIE_SECURE=true env var).
         # Keep false locally so session cookies work over plain HTTP.
         secure: ${COOKIE_SECURE:false}
+        same-site: lax
 
 # Application-specific properties.
 app:
