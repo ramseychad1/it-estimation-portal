@@ -13,5 +13,7 @@ public record ListReviewQueueFilter(
     String search,
     Long productId,
     Long teamId,
-    boolean mineOnly
+    boolean mineOnly,
+    /** When non-null, restricts results to "CATALOG" or "INTAKE" requests. */
+    String requestType
 ) {}

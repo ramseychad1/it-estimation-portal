@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Download, ExternalLink, Info, MoreVertical } from "lucide-react";
+import { ChevronRight, Download, ExternalLink, Info, MoreVertical, Plus, Search } from "lucide-react";
 import { downloadAttachment } from "../lib/api/documents";
 import { ComplexitySelector } from "../components/ComplexitySelector";
 import { ConfirmModal } from "../components/ConfirmModal";
@@ -32,7 +32,10 @@ import {
   useRequestClarificationMutation,
   useSendBackItemMutation,
   useReviewDetailQuery,
+  useAddScopeItemMutation,
 } from "../lib/queries/reviews";
+import { useProductsQuery } from "../lib/queries/products";
+import { useSubFeaturesForProductQuery } from "../lib/queries/subFeatures";
 import type {
   Complexity,
   EstimateRequestAnswerView,
@@ -60,6 +63,8 @@ export function ReviewScreenPage() {
   const { user } = useAuth();
   const isAdmin = !!user && user.roles.includes(ROLE_ADMIN);
 
+  const [addScopeOpen, setAddScopeOpen] = useState(false);
+
   useEffect(() => {
     document.title = detailQuery.data?.title
       ? `${detailQuery.data.title} — Review`
@@ -81,6 +86,7 @@ export function ReviewScreenPage() {
   const detail = detailQuery.data;
   const { variant, label } = estimateStatusBadge(detail.derivedStatus);
   const currentRate = ratesQuery.data?.current ?? null;
+  const isIntake = detail.requestType === "INTAKE";
 
   const subtitle = (
     <span>
@@ -107,7 +113,28 @@ export function ReviewScreenPage() {
         ]}
         eyebrow={`EST-${detail.id}`}
         title={detail.title}
-        titleSuffix={<StatusBadge variant={variant}>{label}</StatusBadge>}
+        titleSuffix={
+          <div className="flex items-center" style={{ gap: 6 }}>
+            <StatusBadge variant={variant}>{label}</StatusBadge>
+            {isIntake && (
+              <span
+                style={{
+                  fontSize: 10,
+                  padding: "2px 7px",
+                  borderRadius: 4,
+                  background: "rgba(187, 221, 230, 0.35)",
+                  border: "1px solid rgba(44, 86, 102, 0.30)",
+                  color: "#2C5666",
+                  fontWeight: 600,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.05em",
+                }}
+              >
+                Intake
+              </span>
+            )}
+          </div>
+        }
         subtitle={subtitle}
         actions={<KebabMenu items={headerKebabItems} ariaLabel="Review actions" />}
       />
@@ -123,6 +150,37 @@ export function ReviewScreenPage() {
             programName={detail.programName ?? null}
           />
         )}
+
+        {/* INTAKE scoping banner */}
+        {isIntake && (
+          <div
+            className="rounded-lg flex items-start"
+            style={{
+              padding: "14px 16px",
+              gap: 12,
+              background: "rgba(187, 221, 230, 0.18)",
+              border: "1px solid rgba(44, 86, 102, 0.25)",
+            }}
+          >
+            <div style={{ flex: 1 }}>
+              <div className="text-near-black font-semibold" style={{ fontSize: 14, marginBottom: 3 }}>
+                Intake request — scoping required
+              </div>
+              <div className="text-warm-gray-med" style={{ fontSize: 13, lineHeight: "18px" }}>
+                Review the requester's requirements below, then add catalog products your
+                team will estimate. Each product you add is immediately assigned to you
+                for review.
+              </div>
+            </div>
+            {detail.derivedStatus !== "APPROVED" && (
+              <PrimaryButton onClick={() => setAddScopeOpen(true)}>
+                <Plus className="w-3.5 h-3.5" strokeWidth={2.5} />
+                Add scope item
+              </PrimaryButton>
+            )}
+          </div>
+        )}
+
         {detail.items.map((item) => (
           <ItemReviewCard
             key={item.id}
@@ -139,6 +197,15 @@ export function ReviewScreenPage() {
           loading={historyQuery.isLoading}
         />
       </div>
+
+      {isIntake && (
+        <AddScopeItemDialog
+          open={addScopeOpen}
+          requestId={detail.id}
+          userTeamIds={user?.teamIds ?? []}
+          onClose={() => setAddScopeOpen(false)}
+        />
+      )}
     </>
   );
 }
@@ -334,6 +401,41 @@ function ItemReviewCard({
   }
 
   const { variant: itemVariant, label: itemLabel } = estimateStatusBadge(item.status);
+
+  // CONTEXT items (requirements carrier for INTAKE requests) are shown
+  // read-only — all review actions are suppressed.
+  if (item.itemType === "CONTEXT") {
+    return (
+      <Card
+        title="Requester requirements"
+        headerRight={
+          <span
+            style={{
+              fontSize: 10,
+              padding: "2px 7px",
+              borderRadius: 4,
+              background: "rgba(187, 221, 230, 0.35)",
+              border: "1px solid rgba(44, 86, 102, 0.30)",
+              color: "#2C5666",
+              fontWeight: 600,
+              textTransform: "uppercase",
+              letterSpacing: "0.05em",
+            }}
+          >
+            Requirements
+          </span>
+        }
+      >
+        {item.answers.length > 0 ? (
+          <QuestionsSection answers={item.answers} />
+        ) : (
+          <p className="text-warm-gray-med m-0" style={{ fontSize: 13 }}>
+            No requirements captured.
+          </p>
+        )}
+      </Card>
+    );
+  }
 
   return (
     <>
@@ -1260,6 +1362,303 @@ function ClaimedBanner({ reviewerName }: { reviewerName: string }) {
         <strong>{reviewerName}</strong> is reviewing this request. You can view
         the snapshot but only the reviewer can change complexity or approve.
       </span>
+    </div>
+  );
+}
+
+// ====================================================================
+// AddScopeItemDialog — SO picks a catalog product to add to an INTAKE request
+// ====================================================================
+
+function AddScopeItemDialog({
+  open,
+  requestId,
+  userTeamIds,
+  onClose,
+}: {
+  open: boolean;
+  requestId: number;
+  userTeamIds: number[];
+  onClose: () => void;
+}) {
+  const toast = useToast();
+  const addMutation = useAddScopeItemMutation();
+  const productsQuery = useProductsQuery({ status: "ACTIVE", size: 200 });
+
+  const [search, setSearch] = useState("");
+  const [selectedProductId, setSelectedProductId] = useState<number | null>(null);
+  const [selectedSubFeatureId, setSelectedSubFeatureId] = useState<number | null>(null);
+  const [expandedProductId, setExpandedProductId] = useState<number | null>(null);
+
+  // Filter products to teams the SO belongs to (or all products when user has no teams — admins)
+  const myProducts = useMemo(() => {
+    const all = productsQuery.data?.items ?? [];
+    if (userTeamIds.length === 0) return all;
+    return all.filter(
+      (p) => p.team == null || userTeamIds.includes(p.team.id),
+    );
+  }, [productsQuery.data?.items, userTeamIds]);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return myProducts;
+    return myProducts.filter((p) => p.name.toLowerCase().includes(q));
+  }, [myProducts, search]);
+
+  const subFeaturesQuery = useSubFeaturesForProductQuery(expandedProductId);
+  const subFeatures = (subFeaturesQuery.data ?? []).filter((s) => s.active);
+
+  function handleProductSelect(productId: number, mode: string) {
+    if (mode === "ATOMIC") {
+      setSelectedProductId(productId);
+      setSelectedSubFeatureId(null);
+      setExpandedProductId(null);
+    } else {
+      setExpandedProductId((prev) => (prev === productId ? null : productId));
+      setSelectedProductId(null);
+      setSelectedSubFeatureId(null);
+    }
+  }
+
+  function handleSubFeatureSelect(productId: number, subFeatureId: number) {
+    setSelectedProductId(productId);
+    setSelectedSubFeatureId(subFeatureId);
+  }
+
+  function handleConfirm() {
+    if (!selectedProductId) return;
+    addMutation.mutate(
+      {
+        requestId,
+        body: { productId: selectedProductId, subFeatureId: selectedSubFeatureId ?? undefined },
+      },
+      {
+        onSuccess: () => {
+          toast.success("Scope item added and assigned to you for review.");
+          handleClose();
+        },
+        onError: (err) =>
+          toast.error(err instanceof Error ? err.message : "Could not add scope item."),
+      },
+    );
+  }
+
+  function handleClose() {
+    setSearch("");
+    setSelectedProductId(null);
+    setSelectedSubFeatureId(null);
+    setExpandedProductId(null);
+    onClose();
+  }
+
+  if (!open) return null;
+
+  const selectedProduct = myProducts.find((p) => p.id === selectedProductId) ?? null;
+
+  return (
+    <div
+      className="fixed inset-0 flex items-center justify-center"
+      style={{ zIndex: 1000, background: "rgba(0,0,0,0.35)" }}
+      onClick={(e) => { if (e.target === e.currentTarget) handleClose(); }}
+    >
+      <div
+        className="bg-white rounded-lg flex flex-col"
+        style={{ width: 540, maxHeight: "80vh", border: "1px solid var(--color-border)", overflow: "hidden" }}
+      >
+        {/* Header */}
+        <div
+          className="flex items-center justify-between"
+          style={{
+            padding: "14px 16px",
+            borderBottom: "1px solid var(--color-warm-gray-light)",
+          }}
+        >
+          <span className="text-near-black font-semibold" style={{ fontSize: 15 }}>
+            Add scope item
+          </span>
+          <button
+            type="button"
+            onClick={handleClose}
+            className="text-warm-gray-med bg-transparent border-0 cursor-pointer"
+            style={{ fontSize: 18, lineHeight: 1, padding: 4 }}
+          >
+            ×
+          </button>
+        </div>
+
+        {/* Search */}
+        <div
+          style={{
+            padding: "10px 14px",
+            borderBottom: "1px solid var(--color-warm-gray-light)",
+          }}
+        >
+          <label
+            className="flex items-center"
+            style={{
+              gap: 8,
+              padding: "0 10px",
+              height: 32,
+              background: "var(--color-warm-gray-light)",
+              borderRadius: 6,
+              border: "1px solid transparent",
+            }}
+          >
+            <Search style={{ width: 13, height: 13, flexShrink: 0, color: "var(--fg-2)" }} strokeWidth={1.5} />
+            <input
+              type="search"
+              placeholder="Search products…"
+              value={search}
+              onChange={(e) => setSearch(e.currentTarget.value)}
+              className="bg-transparent border-0 outline-none text-near-black"
+              style={{ flex: 1, fontSize: 13 }}
+              autoFocus
+            />
+          </label>
+        </div>
+
+        {/* Product list */}
+        <div style={{ flex: 1, overflowY: "auto" }}>
+          {productsQuery.isPending ? (
+            <p className="text-warm-gray-med" style={{ padding: "16px", fontSize: 13, margin: 0 }}>
+              Loading products…
+            </p>
+          ) : filtered.length === 0 ? (
+            <p className="text-warm-gray-med" style={{ padding: "16px", fontSize: 13, margin: 0 }}>
+              No products found.
+            </p>
+          ) : (
+            filtered.map((product) => {
+              const isAtomic = product.mode === "ATOMIC";
+              const isSelected =
+                selectedProductId === product.id && (isAtomic || selectedSubFeatureId == null);
+              const isExpanded = expandedProductId === product.id;
+
+              return (
+                <div key={product.id}>
+                  <button
+                    type="button"
+                    onClick={() => handleProductSelect(product.id, product.mode)}
+                    className="w-full flex items-center text-left bg-transparent border-0"
+                    style={{
+                      padding: "10px 14px",
+                      gap: 10,
+                      fontSize: 14,
+                      background: isSelected ? "var(--color-light-blue-soft)" : "transparent",
+                      cursor: "pointer",
+                      borderBottom: "1px solid var(--color-warm-gray-light)",
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!isSelected)
+                        (e.currentTarget as HTMLElement).style.background = "var(--color-warm-gray-light)";
+                    }}
+                    onMouseLeave={(e) => {
+                      (e.currentTarget as HTMLElement).style.background = isSelected
+                        ? "var(--color-light-blue-soft)"
+                        : "transparent";
+                    }}
+                  >
+                    {!isAtomic && (
+                      <ChevronRight
+                        style={{
+                          width: 12,
+                          height: 12,
+                          flexShrink: 0,
+                          color: "var(--fg-2)",
+                          transform: isExpanded ? "rotate(90deg)" : "none",
+                          transition: "transform 160ms ease",
+                        }}
+                        strokeWidth={1.7}
+                      />
+                    )}
+                    {isAtomic && (
+                      <span style={{ width: 12, flexShrink: 0, display: "inline-flex", justifyContent: "center" }}>
+                        <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--fg-2)" }} />
+                      </span>
+                    )}
+                    <span style={{ flex: 1 }}>{product.name}</span>
+                    {product.team && (
+                      <span className="text-warm-gray-med" style={{ fontSize: 11 }}>
+                        {product.team.name}
+                      </span>
+                    )}
+                  </button>
+
+                  {/* Sub-features */}
+                  {!isAtomic && isExpanded && (
+                    <div style={{ background: "#FAFAF9" }}>
+                      {subFeaturesQuery.isPending ? (
+                        <div className="text-warm-gray-med" style={{ padding: "8px 14px 8px 38px", fontSize: 13 }}>
+                          Loading…
+                        </div>
+                      ) : subFeatures.length === 0 ? (
+                        <div className="text-warm-gray-med" style={{ padding: "8px 14px 8px 38px", fontSize: 13 }}>
+                          No sub-features available.
+                        </div>
+                      ) : (
+                        subFeatures.map((sf) => {
+                          const sfSelected = selectedProductId === product.id && selectedSubFeatureId === sf.id;
+                          return (
+                            <button
+                              key={sf.id}
+                              type="button"
+                              onClick={() => handleSubFeatureSelect(product.id, sf.id)}
+                              className="w-full flex items-center text-left bg-transparent border-0"
+                              style={{
+                                padding: "9px 14px 9px 38px",
+                                fontSize: 13,
+                                background: sfSelected ? "var(--color-light-blue-soft)" : "transparent",
+                                cursor: "pointer",
+                                borderBottom: "1px solid var(--color-warm-gray-light)",
+                              }}
+                              onMouseEnter={(e) => {
+                                if (!sfSelected)
+                                  (e.currentTarget as HTMLElement).style.background = "var(--color-warm-gray-light)";
+                              }}
+                              onMouseLeave={(e) => {
+                                (e.currentTarget as HTMLElement).style.background = sfSelected
+                                  ? "var(--color-light-blue-soft)"
+                                  : "transparent";
+                              }}
+                            >
+                              {sf.name}
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* Footer */}
+        <div
+          className="flex items-center justify-between"
+          style={{
+            padding: "12px 16px",
+            borderTop: "1px solid var(--color-warm-gray-light)",
+            background: "#FBFBFA",
+          }}
+        >
+          <span className="text-warm-gray-med" style={{ fontSize: 13 }}>
+            {selectedProduct
+              ? `Selected: ${selectedProduct.name}${selectedSubFeatureId ? " (sub-feature)" : ""}`
+              : "Select a product above"}
+          </span>
+          <div className="flex items-center" style={{ gap: 8 }}>
+            <SecondaryButton onClick={handleClose}>Cancel</SecondaryButton>
+            <PrimaryButton
+              disabled={selectedProductId == null || addMutation.isPending}
+              onClick={handleConfirm}
+            >
+              {addMutation.isPending ? "Adding…" : "Add to estimate"}
+            </PrimaryButton>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

@@ -59,7 +59,8 @@ import { ComboboxInput } from "../components/ComboboxInput";
 import { NewClientModal } from "./NewClientModal";
 import { NewProgramModal } from "./NewProgramModal";
 
-const STEPS = ["Products", "Questions", "Review"];
+const CATALOG_STEPS = ["Products", "Questions", "Review"];
+const INTAKE_STEPS = ["Requirements", "Questions", "Review"];
 
 type Step = 1 | 2 | 3;
 
@@ -114,6 +115,8 @@ export function NewEstimateRequestPage() {
   const [itemCounts, setItemCounts] = useState<Array<{ answered: number; total: number }>>([]);
   const [answerFieldErrors, setAnswerFieldErrors] = useState<Record<number, Record<number, string>>>({});
 
+  const [requestType, setRequestType] = useState<"CATALOG" | "INTAKE" | null>(null);
+
   const itemsLocked = draftId != null;
 
   useEffect(() => {
@@ -148,6 +151,7 @@ export function NewEstimateRequestPage() {
     setLocalItems(hydrated);
     setDirty(false);
     setDraftId(d.id);
+    setRequestType((d.requestType as "CATALOG" | "INTAKE") ?? "CATALOG");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [existingQuery.data?.id]);
 
@@ -221,7 +225,7 @@ export function NewEstimateRequestPage() {
   }
 
   async function ensureDraftThen(advanceTo?: Step) {
-    if (localItems.length === 0) {
+    if (requestType === "CATALOG" && localItems.length === 0) {
       toast.error("Add at least one product first.");
       return;
     }
@@ -237,16 +241,42 @@ export function NewEstimateRequestPage() {
           programTypeIds,
           clientId: clientId!,
           programId: programId!,
-          items: localItems.map((item) => ({
-            productId: item.productId,
-            subFeatureId: item.subFeatureId ?? null,
-          })),
+          requestType: requestType ?? "CATALOG",
+          items: requestType === "INTAKE"
+            ? []
+            : localItems.map((item) => ({
+                productId: item.productId,
+                subFeatureId: item.subFeatureId ?? null,
+              })),
         });
         id = created.id;
         setDraftId(id);
-        setLocalItems((prev) =>
-          prev.map((item, i) => ({ ...item, itemId: created.items[i]?.id ?? null })),
-        );
+        if (requestType === "INTAKE") {
+          // Hydrate localItems from the backend-created CONTEXT item
+          const hydrated = created.items.map((item) => ({
+            productId: item.productId,
+            productName: item.productName,
+            subFeatureId: item.subFeatureId,
+            subFeatureName: item.subFeatureName,
+            itemId: item.id,
+            answers: item.answers.reduce(
+              (acc, a) => ({ ...acc, [a.questionId]: a.answerText }),
+              {} as Record<number, string>,
+            ),
+            attachments: item.answers.reduce(
+              (acc, a) =>
+                a.attachments.length > 0
+                  ? { ...acc, [a.questionId]: a.attachments }
+                  : acc,
+              {} as Record<number, AttachmentMeta[]>,
+            ),
+          }));
+          setLocalItems(hydrated);
+        } else {
+          setLocalItems((prev) =>
+            prev.map((item, i) => ({ ...item, itemId: created.items[i]?.id ?? null })),
+          );
+        }
       } else {
         await updateMutation.mutateAsync({
           id,
@@ -316,7 +346,9 @@ export function NewEstimateRequestPage() {
       await persistAllAnswers();
       const submitted = await submitMutation.mutateAsync(draftId);
       toast.success(
-        "Request submitted. The Solution Owner team will review your request.",
+        requestType === "INTAKE"
+          ? "Request submitted. Solution Owners will review your requirements and scope the work."
+          : "Request submitted. The Solution Owner team will review your request.",
       );
       navigate(`/requests/${submitted.id}`);
     } catch (err) {
@@ -399,6 +431,27 @@ export function NewEstimateRequestPage() {
 
   const selectedClient = (clientsQuery.data ?? []).find((c) => c.id === clientId) ?? null;
 
+  const activeSteps = requestType === "INTAKE" ? INTAKE_STEPS : CATALOG_STEPS;
+
+  const catalogContinueDisabled =
+    title.trim() === "" ||
+    description.trim() === "" ||
+    (!goLiveDateUnknown && goLiveDate === "") ||
+    localItems.length === 0 ||
+    categoryId == null ||
+    programTypeIds.length === 0 ||
+    clientId == null ||
+    programId == null;
+
+  const intakeContinueDisabled =
+    title.trim() === "" ||
+    description.trim() === "" ||
+    (!goLiveDateUnknown && goLiveDate === "") ||
+    categoryId == null ||
+    programTypeIds.length === 0 ||
+    clientId == null ||
+    programId == null;
+
   return (
     <>
       <PageHeader
@@ -410,132 +463,136 @@ export function NewEstimateRequestPage() {
         title="New estimate request"
       />
 
-      <div style={{ marginTop: 24, marginBottom: 28 }}>
-        <Stepper steps={STEPS} currentStep={step - 1} />
-      </div>
-
-      {step === 1 && (
-        <Step1
-          title={title}
-          description={description}
-          goLiveDate={goLiveDate}
-          goLiveDateUnknown={goLiveDateUnknown}
-          categoryId={categoryId}
-          programTypeIds={programTypeIds}
-          categories={categoriesQuery.data ?? []}
-          programTypes={programTypesQuery.data ?? []}
-          clients={clientsQuery.data ?? []}
-          programs={programsQuery.data ?? []}
-          clientId={clientId}
-          programId={programId}
-          localItems={localItems}
-          products={products}
-          itemsLocked={itemsLocked}
-          savedFlash={savedFlash}
-          saving={createMutation.isPending || updateMutation.isPending}
-          onTitleChange={(v) => {
-            setTitle(v);
-            setDirty(true);
-          }}
-          onDescriptionChange={(v) => {
-            setDescription(v);
-            setDirty(true);
-          }}
-          onGoLiveDateChange={(v) => {
-            setGoLiveDate(v);
-            setGoLiveDateUnknown(false);
-            setDirty(true);
-          }}
-          onGoLiveDateUnknownChange={(unknown) => {
-            setGoLiveDateUnknown(unknown);
-            if (unknown) setGoLiveDate("");
-            setDirty(true);
-          }}
-          onCategoryChange={(id) => {
-            setCategoryId(id);
-            setDirty(true);
-          }}
-          onProgramTypesChange={(ids) => {
-            setProgramTypeIds(ids);
-            setDirty(true);
-          }}
-          onClientChange={(id) => {
-            setClientId(id);
-            setProgramId(null);
-            setDirty(true);
-          }}
-          onClientClear={() => {
-            setClientId(null);
-            setProgramId(null);
-            setDirty(true);
-          }}
-          onProgramChange={(id) => {
-            setProgramId(id);
-            setDirty(true);
-          }}
-          onProgramClear={() => {
-            setProgramId(null);
-            setDirty(true);
-          }}
-          onOpenNewClientModal={() => setNewClientModalOpen(true)}
-          onOpenNewProgramModal={() => setNewProgramModalOpen(true)}
-          onAddItem={addItem}
-          onRemoveItem={removeItem}
-          onCancel={() => setCancelOpen(true)}
-          onSaveDraft={() => void ensureDraftThen()}
-          onContinue={() => void ensureDraftThen(2)}
-          continueDisabled={
-            title.trim() === "" ||
-            description.trim() === "" ||
-            (!goLiveDateUnknown && goLiveDate === "") ||
-            localItems.length === 0 ||
-            categoryId == null ||
-            programTypeIds.length === 0 ||
-            clientId == null ||
-            programId == null
-          }
-        />
+      {/* Request type selection — shown only before a type is chosen */}
+      {requestType === null && draftId === null && (
+        <RequestTypeSelection onSelect={(t) => setRequestType(t)} />
       )}
 
-      {step === 2 && (
-        <Step2
-          localItems={localItems}
-          products={products}
-          savedFlash={savedFlash}
-          saving={saveItemAnswersMutation.isPending}
-          allItemsReady={allItemsReady}
-          itemCounts={itemCounts}
-          answerFieldErrors={answerFieldErrors}
-          onItemAnswerChange={handleItemAnswerChange}
-          onItemAttachmentChange={handleItemAttachmentChange}
-          onItemReadyChange={handleItemReadyChange}
-          onItemCountChange={handleItemCountChange}
-          onBack={() => setStep(1)}
-          onSaveDraft={() => void persistAllAnswers()}
-          onContinue={() => void persistAllAnswers(3)}
-        />
-      )}
+      {requestType !== null && (
+        <>
+          <div style={{ marginTop: 24, marginBottom: 28 }}>
+            <Stepper steps={activeSteps} currentStep={step - 1} />
+          </div>
 
-      {step === 3 && (
-        <Step3
-          title={title}
-          description={description}
-          goLiveDate={goLiveDate}
-          goLiveDateUnknown={goLiveDateUnknown}
-          categoryName={resolvedCategoryName}
-          programTypeNames={resolvedProgramTypeNames}
-          clientName={resolvedClientName}
-          programName={resolvedProgramName}
-          localItems={localItems}
-          products={products}
-          requesterName={requesterName}
-          submitting={submitMutation.isPending || saveItemAnswersMutation.isPending}
-          onBack={() => setStep(2)}
-          onGoToStep1={() => setStep(1)}
-          onGoToStep2={() => setStep(2)}
-          onSaveDraft={() => void persistAllAnswers()}
-          onSubmit={performSubmit}
-        />
+          {step === 1 && (
+            <Step1
+              title={title}
+              description={description}
+              goLiveDate={goLiveDate}
+              goLiveDateUnknown={goLiveDateUnknown}
+              categoryId={categoryId}
+              programTypeIds={programTypeIds}
+              categories={categoriesQuery.data ?? []}
+              programTypes={programTypesQuery.data ?? []}
+              clients={clientsQuery.data ?? []}
+              programs={programsQuery.data ?? []}
+              clientId={clientId}
+              programId={programId}
+              localItems={localItems}
+              products={products}
+              itemsLocked={itemsLocked}
+              savedFlash={savedFlash}
+              saving={createMutation.isPending || updateMutation.isPending}
+              requestType={requestType}
+              onTitleChange={(v) => {
+                setTitle(v);
+                setDirty(true);
+              }}
+              onDescriptionChange={(v) => {
+                setDescription(v);
+                setDirty(true);
+              }}
+              onGoLiveDateChange={(v) => {
+                setGoLiveDate(v);
+                setGoLiveDateUnknown(false);
+                setDirty(true);
+              }}
+              onGoLiveDateUnknownChange={(unknown) => {
+                setGoLiveDateUnknown(unknown);
+                if (unknown) setGoLiveDate("");
+                setDirty(true);
+              }}
+              onCategoryChange={(id) => {
+                setCategoryId(id);
+                setDirty(true);
+              }}
+              onProgramTypesChange={(ids) => {
+                setProgramTypeIds(ids);
+                setDirty(true);
+              }}
+              onClientChange={(id) => {
+                setClientId(id);
+                setProgramId(null);
+                setDirty(true);
+              }}
+              onClientClear={() => {
+                setClientId(null);
+                setProgramId(null);
+                setDirty(true);
+              }}
+              onProgramChange={(id) => {
+                setProgramId(id);
+                setDirty(true);
+              }}
+              onProgramClear={() => {
+                setProgramId(null);
+                setDirty(true);
+              }}
+              onOpenNewClientModal={() => setNewClientModalOpen(true)}
+              onOpenNewProgramModal={() => setNewProgramModalOpen(true)}
+              onAddItem={addItem}
+              onRemoveItem={removeItem}
+              onCancel={() => setCancelOpen(true)}
+              onSaveDraft={() => void ensureDraftThen()}
+              onContinue={() => void ensureDraftThen(2)}
+              continueDisabled={
+                requestType === "INTAKE" ? intakeContinueDisabled : catalogContinueDisabled
+              }
+            />
+          )}
+
+          {step === 2 && (
+            <Step2
+              localItems={localItems}
+              products={products}
+              savedFlash={savedFlash}
+              saving={saveItemAnswersMutation.isPending}
+              allItemsReady={allItemsReady}
+              itemCounts={itemCounts}
+              answerFieldErrors={answerFieldErrors}
+              onItemAnswerChange={handleItemAnswerChange}
+              onItemAttachmentChange={handleItemAttachmentChange}
+              onItemReadyChange={handleItemReadyChange}
+              onItemCountChange={handleItemCountChange}
+              onBack={() => setStep(1)}
+              onSaveDraft={() => void persistAllAnswers()}
+              onContinue={() => void persistAllAnswers(3)}
+            />
+          )}
+
+          {step === 3 && (
+            <Step3
+              title={title}
+              description={description}
+              goLiveDate={goLiveDate}
+              goLiveDateUnknown={goLiveDateUnknown}
+              categoryName={resolvedCategoryName}
+              programTypeNames={resolvedProgramTypeNames}
+              clientName={resolvedClientName}
+              programName={resolvedProgramName}
+              localItems={localItems}
+              products={products}
+              requesterName={requesterName}
+              requestType={requestType ?? "CATALOG"}
+              submitting={submitMutation.isPending || saveItemAnswersMutation.isPending}
+              onBack={() => setStep(2)}
+              onGoToStep1={() => setStep(1)}
+              onGoToStep2={() => setStep(2)}
+              onSaveDraft={() => void persistAllAnswers()}
+              onSubmit={performSubmit}
+            />
+          )}
+        </>
       )}
 
       <NewClientModal
@@ -596,6 +653,85 @@ export function NewEstimateRequestPage() {
 }
 
 // =====================================================================
+// Request type selection screen (shown before Step 1)
+// =====================================================================
+
+function RequestTypeSelection({ onSelect }: { onSelect: (t: "CATALOG" | "INTAKE") => void }) {
+  return (
+    <div style={{ marginTop: 32, maxWidth: 600 }}>
+      <h2
+        className="text-near-black font-semibold"
+        style={{ fontSize: 18, margin: "0 0 8px", letterSpacing: "-0.005em" }}
+      >
+        What type of estimate do you need?
+      </h2>
+      <p className="text-warm-gray-med" style={{ fontSize: 14, margin: "0 0 24px" }}>
+        Choose how you want to set up this request.
+      </p>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        {/* Catalog option */}
+        <button
+          type="button"
+          onClick={() => onSelect("CATALOG")}
+          className="w-full text-left bg-white rounded-lg"
+          style={{
+            border: "1.5px solid var(--color-border)",
+            padding: "18px 20px",
+            cursor: "pointer",
+            transition: "border-color 120ms ease, box-shadow 120ms ease",
+          }}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLElement).style.borderColor = "var(--color-near-black)";
+            (e.currentTarget as HTMLElement).style.boxShadow = "0 0 0 1px var(--color-near-black)";
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLElement).style.borderColor = "var(--color-border)";
+            (e.currentTarget as HTMLElement).style.boxShadow = "none";
+          }}
+        >
+          <div className="text-near-black font-semibold" style={{ fontSize: 15, marginBottom: 4 }}>
+            Catalog request
+          </div>
+          <div className="text-warm-gray-med" style={{ fontSize: 13, lineHeight: "18px" }}>
+            I know which products I need estimated. I'll select them from the catalog.
+          </div>
+        </button>
+
+        {/* Intake option */}
+        <button
+          type="button"
+          onClick={() => onSelect("INTAKE")}
+          className="w-full text-left bg-white rounded-lg"
+          style={{
+            border: "1.5px solid var(--color-border)",
+            padding: "18px 20px",
+            cursor: "pointer",
+            transition: "border-color 120ms ease, box-shadow 120ms ease",
+          }}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLElement).style.borderColor = "var(--color-near-black)";
+            (e.currentTarget as HTMLElement).style.boxShadow = "0 0 0 1px var(--color-near-black)";
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLElement).style.borderColor = "var(--color-border)";
+            (e.currentTarget as HTMLElement).style.boxShadow = "none";
+          }}
+        >
+          <div className="text-near-black font-semibold" style={{ fontSize: 15, marginBottom: 4 }}>
+            Generic intake request
+          </div>
+          <div className="text-warm-gray-med" style={{ fontSize: 13, lineHeight: "18px" }}>
+            I'm not sure which products are in scope. I'll describe my requirements and
+            Solution Owners will determine what to estimate.
+          </div>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// =====================================================================
 // Step 1 — Products
 // =====================================================================
 
@@ -640,6 +776,7 @@ interface Step1Props {
   onSaveDraft: () => void;
   onContinue: () => void;
   continueDisabled: boolean;
+  requestType: "CATALOG" | "INTAKE";
 }
 
 function Step1({
@@ -660,6 +797,7 @@ function Step1({
   itemsLocked,
   savedFlash,
   saving,
+  requestType,
   onTitleChange,
   onDescriptionChange,
   onGoLiveDateChange,
@@ -868,32 +1006,61 @@ function Step1({
         </div>
       </section>
 
-      {/* Products section */}
-      <div style={{ marginBottom: 12 }}>
-        <h2
-          className="text-near-black font-semibold"
-          style={{ fontSize: 18, letterSpacing: "-0.005em", margin: 0 }}
+      {/* INTAKE info banner */}
+      {requestType === "INTAKE" && (
+        <div
+          className="rounded-lg flex"
+          style={{
+            padding: "13px 16px",
+            marginBottom: 20,
+            gap: 12,
+            background: "rgba(187, 221, 230, 0.18)",
+            border: "1px solid rgba(187, 221, 230, 0.80)",
+            fontSize: 13,
+            color: "var(--fg-1)",
+            lineHeight: "18px",
+            alignItems: "flex-start",
+          }}
         >
-          Products
-        </h2>
-        <p className="text-warm-gray-med" style={{ fontSize: 13, margin: "2px 0 0" }}>
-          {itemsLocked
-            ? "Products are locked once the draft is saved — start a new request to change this list."
-            : "Click a product to add it. Container products expand to show their sub-features."}
-        </p>
-      </div>
+          <div>
+            <strong style={{ color: "#2C5666" }}>Generic intake request</strong>
+            {" — "}
+            Describe your requirements below. Once submitted, Solution Owners will review
+            your requirements and add the relevant products they need to estimate.
+          </div>
+        </div>
+      )}
 
-      <ProductBrowser
-        products={products}
-        localItems={localItems}
-        itemsLocked={itemsLocked}
-        onAddItem={onAddItem}
-        onRemoveItem={onRemoveItem}
-      />
+      {/* Products section — CATALOG only */}
+      {requestType === "CATALOG" && (
+        <>
+          <div style={{ marginBottom: 12 }}>
+            <h2
+              className="text-near-black font-semibold"
+              style={{ fontSize: 18, letterSpacing: "-0.005em", margin: 0 }}
+            >
+              Products
+            </h2>
+            <p className="text-warm-gray-med" style={{ fontSize: 13, margin: "2px 0 0" }}>
+              {itemsLocked
+                ? "Products are locked once the draft is saved — start a new request to change this list."
+                : "Click a product to add it. Container products expand to show their sub-features."}
+            </p>
+          </div>
+
+          <ProductBrowser
+            products={products}
+            localItems={localItems}
+            itemsLocked={itemsLocked}
+            onAddItem={onAddItem}
+            onRemoveItem={onRemoveItem}
+          />
+        </>
+      )}
 
       <FooterRow left={<TertiaryButton onClick={onCancel}>Cancel</TertiaryButton>}>
         <SecondaryButton
-          disabled={saving || title.trim() === "" || localItems.length === 0}
+          disabled={saving || title.trim() === "" || (requestType === "CATALOG" && localItems.length === 0)}
           onClick={onSaveDraft}
         >
           {savedFlash ? "Saved" : "Save draft"}
@@ -2028,6 +2195,7 @@ interface Step3Props {
   localItems: LocalItem[];
   products: ProductDetail[];
   requesterName: string;
+  requestType: "CATALOG" | "INTAKE";
   submitting: boolean;
   onBack: () => void;
   onGoToStep1: () => void;
@@ -2048,6 +2216,7 @@ function Step3({
   localItems,
   products,
   requesterName,
+  requestType,
   submitting,
   onBack,
   onGoToStep1,
@@ -2100,9 +2269,9 @@ function Step3({
             Everything looks ready to submit
           </div>
           <div className="text-warm-gray-med" style={{ fontSize: 13, marginTop: 2 }}>
-            {localItems.length} {localItems.length === 1 ? "product" : "products"}.
-            Once submitted, the estimating team will be notified and you can track
-            progress on the request page.
+            {requestType === "INTAKE"
+              ? "Once submitted, Solution Owners will review your requirements and scope the work."
+              : `${localItems.length} ${localItems.length === 1 ? "product" : "products"}. Once submitted, the estimating team will be notified and you can track progress on the request page.`}
           </div>
         </div>
       </div>
@@ -2134,7 +2303,7 @@ function Step3({
 
       {/* Products & answers */}
       <ReviewSection
-        title={`Products & answers (${localItems.length})`}
+        title={requestType === "INTAKE" ? "Requirements & answers" : `Products & answers (${localItems.length})`}
         onEdit={onGoToStep2}
       >
         <div style={{ display: "flex", flexDirection: "column" }}>
@@ -2177,28 +2346,34 @@ function Step3({
             }}
           />
           <div className="text-near-black" style={{ fontSize: 13, lineHeight: "18px" }}>
-            <strong>I confirm the products and answers above are accurate.</strong>
+            <strong>
+              {requestType === "INTAKE"
+                ? "I confirm my requirements above are accurate."
+                : "I confirm the products and answers above are accurate."}
+            </strong>
             <br />
-            Once submitted, the estimating team will receive this request and the product
-            list cannot be changed. You can still track progress and comment on the request
-            page.
+            {requestType === "INTAKE"
+              ? "Once submitted, Solution Owners will review your requirements and begin scoping the estimate."
+              : "Once submitted, the estimating team will receive this request and the product list cannot be changed. You can still track progress and comment on the request page."}
           </div>
         </label>
-        <div
-          className="flex items-center"
-          style={{
-            gap: 8,
-            fontSize: 12,
-            color: "var(--color-warning)",
-            marginTop: 12,
-            paddingTop: 12,
-            borderTop: "1px solid var(--color-warm-gray-light)",
-          }}
-        >
-          <Lock style={{ width: 12, height: 12 }} strokeWidth={2} />
-          Submitting will lock the product list. To change products later, start a new
-          request.
-        </div>
+        {requestType === "CATALOG" && (
+          <div
+            className="flex items-center"
+            style={{
+              gap: 8,
+              fontSize: 12,
+              color: "var(--color-warning)",
+              marginTop: 12,
+              paddingTop: 12,
+              borderTop: "1px solid var(--color-warm-gray-light)",
+            }}
+          >
+            <Lock style={{ width: 12, height: 12 }} strokeWidth={2} />
+            Submitting will lock the product list. To change products later, start a new
+            request.
+          </div>
+        )}
       </div>
 
       <FooterRow

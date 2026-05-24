@@ -45,6 +45,7 @@ import com.acme.estimator.estimates.dto.ReviseAndResubmitRequest;
 import com.acme.estimator.estimates.dto.SaveAnswersRequest;
 import com.acme.estimator.estimates.dto.UpdateDraftRequest;
 import com.acme.estimator.estimates.dto.RequestPricingReviewRequest;
+import com.acme.estimator.estimates.dto.AddScopeItemRequest;
 import com.acme.estimator.phases.SdlcPhase;
 import com.acme.estimator.phases.SdlcPhaseRepository;
 import com.acme.estimator.rates.BlendedRate;
@@ -106,6 +107,9 @@ public class EstimateRequestService {
     private final ProgramRepository programRepository;
     private final ClientPricingService clientPricingService;
     private final com.acme.estimator.settings.AppSettingService appSettingService;
+
+    @org.springframework.beans.factory.annotation.Value("${intake.system-product-id:0}")
+    private Long intakeSystemProductId;
 
     // ---- reads ---------------------------------------------------------
 
@@ -215,6 +219,18 @@ public class EstimateRequestService {
             throw ApiException.badRequest("Program does not belong to the selected client.");
         }
 
+        String reqType = (req.requestType() == null || req.requestType().isBlank())
+            ? "CATALOG" : req.requestType().toUpperCase();
+        if (!"CATALOG".equals(reqType) && !"INTAKE".equals(reqType)) {
+            throw ApiException.badRequest("Invalid requestType: must be CATALOG or INTAKE.");
+        }
+        if ("CATALOG".equals(reqType) && (req.items() == null || req.items().isEmpty())) {
+            throw ApiException.badRequest("At least one product item is required for CATALOG requests.");
+        }
+        if ("INTAKE".equals(reqType) && req.items() != null && !req.items().isEmpty()) {
+            throw ApiException.badRequest("INTAKE requests must not include items — products are added by Solution Owners during scoping.");
+        }
+
         EstimateRequest entity = new EstimateRequest();
         entity.setTitle(req.title().trim());
         entity.setDescription(blankToNull(req.description()));
@@ -223,6 +239,7 @@ public class EstimateRequestService {
         entity.setClientId(client.getId());
         entity.setProgramId(program.getId());
         entity.setRequesterId(requester.getId());
+        entity.setRequestType(reqType);
         EstimateRequest saved = requestRepository.save(entity);
 
         for (Long ptId : distinctPtIds) {
@@ -232,20 +249,33 @@ public class EstimateRequestService {
             requestProgramTypeRepository.save(erpt);
         }
 
-        // Validate items for duplicate product+subFeature combinations
-        validateNoDuplicateItems(req.items());
-
-        // Create an EstimateRequestItem for each entry in items
-        List<EstimateRequestItem> savedItems = new ArrayList<>();
-        for (int i = 0; i < req.items().size(); i++) {
-            CreateItemRequest itemReq = req.items().get(i);
-            EstimateRequestItem item = buildAndValidateItem(itemReq, saved.getId(), i);
-            EstimateRequestItem savedItem = itemRepository.save(item);
-            savedItems.add(savedItem);
-
-            // Persist any answers provided at creation time
-            if (itemReq.answers() != null && !itemReq.answers().isEmpty()) {
-                saveAnswersForItem(savedItem, itemReq.answers());
+        if ("INTAKE".equals(reqType)) {
+            // Auto-create the CONTEXT item tied to the configured system intake product.
+            if (intakeSystemProductId == null || intakeSystemProductId == 0L) {
+                throw ApiException.badRequest(
+                    "Generic intake requests are not configured. Contact an administrator to set up the intake product.");
+            }
+            productRepository.findById(intakeSystemProductId)
+                .filter(Product::isActive)
+                .orElseThrow(() -> ApiException.badRequest(
+                    "Intake system product is not active or not found. Contact an administrator."));
+            EstimateRequestItem contextItem = new EstimateRequestItem();
+            contextItem.setEstimateRequestId(saved.getId());
+            contextItem.setProductId(intakeSystemProductId);
+            contextItem.setItemType("CONTEXT");
+            contextItem.setStatus(EstimateStatus.DRAFT);
+            contextItem.setDisplayOrder(0);
+            itemRepository.save(contextItem);
+        } else {
+            // CATALOG: validate and create the requester-selected items
+            validateNoDuplicateItems(req.items());
+            for (int i = 0; i < req.items().size(); i++) {
+                CreateItemRequest itemReq = req.items().get(i);
+                EstimateRequestItem item = buildAndValidateItem(itemReq, saved.getId(), i);
+                EstimateRequestItem savedItem = itemRepository.save(item);
+                if (itemReq.answers() != null && !itemReq.answers().isEmpty()) {
+                    saveAnswersForItem(savedItem, itemReq.answers());
+                }
             }
         }
 
@@ -435,6 +465,11 @@ public class EstimateRequestService {
 
         for (EstimateRequestItem item : items) {
             submitItem(item);
+            // CONTEXT items are requirements carriers — auto-approve them immediately
+            // so only SCOPE items gate the approval / pricing-review flow.
+            if ("CONTEXT".equals(item.getItemType())) {
+                autoApproveContextItem(item, request);
+            }
         }
 
         itemRepository.saveAll(items);
@@ -447,12 +482,28 @@ public class EstimateRequestService {
         return toDetail(request, requester);
     }
 
+    private void autoApproveContextItem(EstimateRequestItem item, EstimateRequest request) {
+        BlendedRate currentRate = blendedRateRepository.findCurrentAsOf(LocalDate.now()).orElse(null);
+        item.setComplexity(Complexity.LOW);
+        item.setJustification("Intake requirements context — auto-approved");
+        item.setApprovedBlendedRateId(currentRate == null ? null : currentRate.getId());
+        com.acme.estimator.clientpricing.dto.EffectivePricingDto pricing =
+            clientPricingService.getEffectivePricingForCategory(request.getCategoryId());
+        item.setApprovedPricingModel(pricing.pricingModel());
+        item.setApprovedTmMultiplier(pricing.tmMultiplier());
+        item.setApprovedTmTargetMarginPct(pricing.tmTargetMarginPct());
+        item.setApprovedMatBillableRate(pricing.matBillableRate());
+        item.setApprovedMatDiscountPct(pricing.matDiscountPct());
+        item.setStatus(EstimateStatus.APPROVED);
+        item.setReviewedAt(OffsetDateTime.now());
+    }
+
     @Transactional
     public void discard(Long id, User requester) {
         EstimateRequest request = requireOwnedRequest(id, requester);
         List<EstimateRequestItem> items = itemRepository
             .findByEstimateRequestIdOrderByDisplayOrderAsc(id);
-        String derivedStatus = getDerivedStatus(items);
+        String derivedStatus = computeDerivedStatus(items, request);
         if (!"DRAFT".equals(derivedStatus)
                 && !"NEEDS_REVISION".equals(derivedStatus)
                 && !"NEEDS_CLARIFICATION".equals(derivedStatus)
@@ -484,6 +535,7 @@ public class EstimateRequestService {
         String search = filter == null || filter.search() == null
             ? null : filter.search().trim();
         boolean mineOnly = filter != null && filter.mineOnly();
+        String requestTypeFilter = filter == null ? null : filter.requestType();
 
         // Phase 9b M4: compute accessible product IDs for team scoping.
         // Admin sees everything; other SOs see only their teams + no-team products.
@@ -533,13 +585,28 @@ public class EstimateRequestService {
                 }
 
                 itemSub.where(itemPredicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
-                ps.add(cb.exists(itemSub));
+
+                // Special case: INTAKE requests that have been submitted (CONTEXT item APPROVED,
+                // no SCOPE items yet) must appear in the queue so SOs can add scope items.
+                var intakeScopingSub = query.subquery(Long.class);
+                var intakeItemRoot = intakeScopingSub.from(EstimateRequestItem.class);
+                intakeScopingSub.select(intakeItemRoot.get("estimateRequestId"));
+                intakeScopingSub.where(
+                    cb.equal(intakeItemRoot.get("estimateRequestId"), root.get("id")),
+                    cb.equal(intakeItemRoot.get("itemType"), "CONTEXT"),
+                    cb.equal(intakeItemRoot.get("status"), EstimateStatus.APPROVED)
+                );
+                ps.add(cb.or(cb.exists(itemSub), cb.exists(intakeScopingSub)));
 
                 if (search != null && !search.isEmpty()) {
                     ps.add(cb.like(
                         cb.lower(root.get("title")),
                         "%" + search.toLowerCase() + "%"
                     ));
+                }
+
+                if (requestTypeFilter != null && !requestTypeFilter.isBlank()) {
+                    ps.add(cb.equal(root.get("requestType"), requestTypeFilter));
                 }
 
                 return cb.and(ps.toArray(new jakarta.persistence.criteria.Predicate[0]));
@@ -582,8 +649,11 @@ public class EstimateRequestService {
 
         List<EstimateRequestItem> items =
             itemRepository.findByEstimateRequestIdOrderByDisplayOrderAsc(requestId);
-        boolean allApproved = items.stream()
-            .allMatch(i -> i.getStatus() == EstimateStatus.APPROVED);
+        List<EstimateRequestItem> scopeItemsForPricing = items.stream()
+            .filter(i -> !"CONTEXT".equals(i.getItemType()))
+            .toList();
+        boolean allApproved = !scopeItemsForPricing.isEmpty()
+            && scopeItemsForPricing.stream().allMatch(i -> i.getStatus() == EstimateStatus.APPROVED);
         if (!allApproved) {
             throw new ApiException(org.springframework.http.HttpStatus.CONFLICT,
                 "INVALID_STATE", "All items must be approved before requesting pricing review.");
@@ -646,7 +716,7 @@ public class EstimateRequestService {
             .orElseThrow(() -> ApiException.notFound("Estimate request " + id + " not found."));
         List<EstimateRequestItem> items = itemRepository
             .findByEstimateRequestIdOrderByDisplayOrderAsc(id);
-        String derivedStatus = getDerivedStatus(items);
+        String derivedStatus = computeDerivedStatus(items, request);
         if ("DRAFT".equals(derivedStatus)) {
             // Drafts are private to the requester. Don't leak existence.
             throw ApiException.notFound("Estimate request " + id + " not found.");
@@ -663,6 +733,7 @@ public class EstimateRequestService {
         EstimateRequest request = requestRepository.findById(requestId)
             .orElseThrow(() -> ApiException.notFound("Estimate request " + requestId + " not found."));
         EstimateRequestItem item = requireItemOnRequest(requestId, itemId);
+        requireNotContextItem(item);
 
         // Idempotent: same SO calling start twice on the same item is a no-op
         if (item.getStatus() == EstimateStatus.IN_REVIEW
@@ -798,11 +869,15 @@ public class EstimateRequestService {
             EstimateRequest.ENTITY_TYPE, requestId, ChangeAction.ITEM_APPROVED, reviewer, notes
         );
 
-        // If all items are now approved and revenue review is enabled, queue for pricing review.
+        // If all SCOPE items are now approved and revenue review is enabled, queue for pricing review.
+        // CONTEXT items (auto-approved intake carriers) are excluded from this gate.
         List<EstimateRequestItem> allItems =
             itemRepository.findByEstimateRequestIdOrderByDisplayOrderAsc(requestId);
-        boolean allApproved = allItems.stream()
-            .allMatch(i -> i.getStatus() == EstimateStatus.APPROVED);
+        List<EstimateRequestItem> scopeItems = allItems.stream()
+            .filter(i -> !"CONTEXT".equals(i.getItemType()))
+            .toList();
+        boolean allApproved = !scopeItems.isEmpty()
+            && scopeItems.stream().allMatch(i -> i.getStatus() == EstimateStatus.APPROVED);
         if (allApproved && appSettingService.isRevenueReviewEnabled()
                 && request.getPricingReviewStatus() == null) {
             request.setPricingReviewStatus("PENDING");
@@ -1195,6 +1270,33 @@ public class EstimateRequestService {
     // ---- derived status ---------------------------------------------------
 
     /**
+     * Derived status for a request, accounting for INTAKE requests where CONTEXT
+     * items are excluded from the approval gate.
+     *
+     * <p>For INTAKE requests:
+     * <ul>
+     *   <li>CONTEXT items are filtered out before running normal status logic.
+     *   <li>If no SCOPE items exist yet (scoping hasn't started), returns SUBMITTED
+     *       when the CONTEXT item is APPROVED, or DRAFT if it isn't.
+     * </ul>
+     */
+    private String computeDerivedStatus(List<EstimateRequestItem> items, EstimateRequest request) {
+        if (request != null && "INTAKE".equals(request.getRequestType())) {
+            List<EstimateRequestItem> scopeItems = items.stream()
+                .filter(i -> !"CONTEXT".equals(i.getItemType()))
+                .toList();
+            if (scopeItems.isEmpty()) {
+                boolean contextDone = items.stream()
+                    .anyMatch(i -> "CONTEXT".equals(i.getItemType())
+                        && i.getStatus() != EstimateStatus.DRAFT);
+                return contextDone ? "SUBMITTED" : "DRAFT";
+            }
+            return getDerivedStatus(scopeItems, request);
+        }
+        return getDerivedStatus(items, request);
+    }
+
+    /**
      * Compute the derived status of a request from its items.
      *
      * <p>Rules (in priority order):
@@ -1286,6 +1388,11 @@ public class EstimateRequestService {
     private void requireTeamMembership(User reviewer, EstimateRequestItem item) {
         if (reviewer.isAdmin()) return;
         Product product = productRepository.findById(item.getProductId()).orElse(null);
+        requireTeamMembership(reviewer, product);
+    }
+
+    private void requireTeamMembership(User reviewer, Product product) {
+        if (reviewer.isAdmin()) return;
         if (product == null || product.getTeam() == null) return; // unassigned — permissive
         Long teamId = product.getTeam().getId();
         Set<Long> reviewerTeamIds = userRepository.findTeamIdsByUserId(reviewer.getId());
@@ -1294,6 +1401,131 @@ public class EstimateRequestService {
                 org.springframework.http.HttpStatus.FORBIDDEN,
                 "NOT_ON_TEAM",
                 "You can only review items from products assigned to your team."
+            );
+        }
+    }
+
+    /**
+     * SO adds a catalog scope item to an INTAKE request. The item is created
+     * in IN_REVIEW state with the calling SO as reviewer and the active template
+     * phase lines snapshotted immediately.
+     *
+     * <p>V30: new capability enabling the free-for-all scoping model where
+     * multiple SOs each contribute items from their respective teams.
+     */
+    @Transactional
+    public EstimateRequestDetail addScopeItem(Long requestId, AddScopeItemRequest dto, User actor) {
+        EstimateRequest request = requestRepository.findById(requestId)
+            .orElseThrow(() -> ApiException.notFound("Estimate request " + requestId + " not found."));
+
+        if (!"INTAKE".equals(request.getRequestType())) {
+            throw new ApiException(
+                org.springframework.http.HttpStatus.CONFLICT,
+                "INVALID_REQUEST_TYPE",
+                "Scope items can only be added to INTAKE requests."
+            );
+        }
+
+        List<EstimateRequestItem> existingItems =
+            itemRepository.findByEstimateRequestIdOrderByDisplayOrderAsc(requestId);
+        String derivedStatus = computeDerivedStatus(existingItems, request);
+        if ("APPROVED".equals(derivedStatus) || "PRICING_REVIEW".equals(derivedStatus)) {
+            throw new ApiException(
+                org.springframework.http.HttpStatus.CONFLICT,
+                "INVALID_STATE",
+                "Cannot add scope items to an already-approved request."
+            );
+        }
+
+        Product product = productRepository.findById(dto.productId())
+            .orElseThrow(() -> ApiException.badRequest("Product " + dto.productId() + " not found."));
+        if (!product.isActive()) {
+            throw ApiException.badRequest("Product '" + product.getName() + "' is not active.");
+        }
+
+        requireTeamMembership(actor, product);
+
+        Long resolvedSubFeatureId = null;
+        if (product.getMode() == ProductMode.CONTAINER) {
+            if (dto.subFeatureId() == null) {
+                throw ApiException.badRequest(
+                    "This is a container product — a sub-feature must be selected.");
+            }
+            SubFeature sub = subFeatureRepository.findById(dto.subFeatureId())
+                .orElseThrow(() -> ApiException.badRequest(
+                    "Sub-feature " + dto.subFeatureId() + " not found."));
+            if (!sub.getProductId().equals(product.getId())) {
+                throw ApiException.badRequest("Sub-feature does not belong to the chosen product.");
+            }
+            if (!sub.isActive()) {
+                throw ApiException.badRequest("Sub-feature is not active.");
+            }
+            resolvedSubFeatureId = sub.getId();
+        } else {
+            if (dto.subFeatureId() != null) {
+                throw ApiException.badRequest(
+                    "Atomic products do not have sub-features — leave subFeatureId null.");
+            }
+        }
+
+        // Guard: same product/sub-feature not already in this request
+        final Long finalSubId = resolvedSubFeatureId;
+        boolean duplicate = existingItems.stream()
+            .filter(i -> !"CONTEXT".equals(i.getItemType()))
+            .anyMatch(i -> dto.productId().equals(i.getProductId())
+                && java.util.Objects.equals(finalSubId, i.getSubFeatureId()));
+        if (duplicate) {
+            throw new ApiException(
+                org.springframework.http.HttpStatus.CONFLICT,
+                "DUPLICATE_PRODUCT",
+                "This product/sub-feature is already part of this request."
+            );
+        }
+
+        Optional<EstimateTemplate> activeTemplate = (resolvedSubFeatureId != null)
+            ? templateRepository.findActiveBySubFeatureId(resolvedSubFeatureId)
+            : templateRepository.findActiveByProductId(dto.productId());
+        if (activeTemplate.isEmpty()) {
+            throw new ApiException(
+                org.springframework.http.HttpStatus.CONFLICT,
+                "NO_ACTIVE_TEMPLATE",
+                "No active estimate template exists for this product. Publish a template before scoping."
+            );
+        }
+
+        int displayOrder = existingItems.stream()
+            .mapToInt(EstimateRequestItem::getDisplayOrder)
+            .max().orElse(-1) + 1;
+
+        EstimateRequestItem item = new EstimateRequestItem();
+        item.setEstimateRequestId(requestId);
+        item.setProductId(dto.productId());
+        item.setSubFeatureId(resolvedSubFeatureId);
+        item.setItemType("SCOPE");
+        item.setTemplateId(activeTemplate.get().getId());
+        item.setStatus(EstimateStatus.IN_REVIEW);
+        item.setReviewerId(actor.getId());
+        item.setSubmittedAt(OffsetDateTime.now());
+        item.setDisplayOrder(displayOrder);
+        EstimateRequestItem savedItem = itemRepository.save(item);
+
+        snapshotPhaseLines(savedItem, activeTemplate.get());
+
+        auditService.recordAction(
+            EstimateRequest.ENTITY_TYPE, requestId, ChangeAction.ITEM_REVIEW_STARTED, actor,
+            "Scoped '" + product.getName() + "' into '" + request.getTitle() + "'"
+        );
+
+        return toDetail(request, actor);
+    }
+
+    /** Prevents SO review actions on CONTEXT items (intake requirements carriers). */
+    private void requireNotContextItem(EstimateRequestItem item) {
+        if ("CONTEXT".equals(item.getItemType())) {
+            throw new ApiException(
+                org.springframework.http.HttpStatus.CONFLICT,
+                "CONTEXT_ITEM",
+                "This item is an intake requirements context — it cannot be reviewed directly."
             );
         }
     }
@@ -1567,7 +1799,15 @@ public class EstimateRequestService {
         }
         answerRepository.saveAll(existingAnswerRows);
 
-        // Snapshot the template lines into estimate_request_phase_lines
+        snapshotPhaseLines(item, template);
+
+        item.setTemplateId(template.getId());
+        item.setStatus(EstimateStatus.SUBMITTED);
+        item.setSubmittedAt(OffsetDateTime.now());
+    }
+
+    /** Snapshots template phase lines into {@code estimate_request_phase_lines} for the given item. */
+    private void snapshotPhaseLines(EstimateRequestItem item, EstimateTemplate template) {
         List<EstimateTemplateLine> templateLines =
             templateLineRepository.findAllByTemplateId(template.getId());
         Set<Long> phaseIds = templateLines.stream()
@@ -1594,10 +1834,6 @@ public class EstimateRequestService {
             snapshot.add(line);
         }
         phaseLineRepository.saveAll(snapshot);
-
-        item.setTemplateId(template.getId());
-        item.setStatus(EstimateStatus.SUBMITTED);
-        item.setSubmittedAt(OffsetDateTime.now());
     }
 
     private List<CriticalQuestion> loadQuestionsForItem(EstimateRequestItem item) {
@@ -1622,7 +1858,7 @@ public class EstimateRequestService {
             .map(item -> toItemDto(item, actor, false, categoryId))
             .toList();
 
-        String derivedStatus = getDerivedStatus(items, request);
+        String derivedStatus = computeDerivedStatus(items, request);
         ClassificationView cv = loadClassification(request);
 
         return new EstimateRequestDetail(
@@ -1648,7 +1884,8 @@ public class EstimateRequestService {
             request.getRmDiscountPct(),
             request.getRmNotes(),
             request.getRmReviewedAt(),
-            request.getRequesterPricingContext()
+            request.getRequesterPricingContext(),
+            request.getRequestType()
         );
     }
 
@@ -1705,7 +1942,7 @@ public class EstimateRequestService {
             })
             .toList();
 
-        String derivedStatus = getDerivedStatus(items, request);
+        String derivedStatus = computeDerivedStatus(items, request);
         ClassificationView cv = loadClassification(request);
 
         return new EstimateRequestDetail(
@@ -1731,7 +1968,8 @@ public class EstimateRequestService {
             request.getRmDiscountPct(),
             request.getRmNotes(),
             request.getRmReviewedAt(),
-            request.getRequesterPricingContext()
+            request.getRequesterPricingContext(),
+            request.getRequestType()
         );
     }
 
@@ -1747,6 +1985,9 @@ public class EstimateRequestService {
     private boolean computeIsReviewable(
         EstimateRequestItem item, User reviewer, Set<Long> accessibleProductIds
     ) {
+        // CONTEXT items are auto-approved intake carriers — SOs never review them directly.
+        if ("CONTEXT".equals(item.getItemType())) return false;
+
         boolean productAccessible = reviewer.isAdmin()
             || (accessibleProductIds != null && accessibleProductIds.contains(item.getProductId()));
 
@@ -1915,7 +2156,8 @@ public class EstimateRequestService {
             item.getRmTmMultiplier(),
             item.getRmTmTargetMarginPct(),
             item.getRmMatBillableRate(),
-            item.getRmMatDiscountPct()
+            item.getRmMatDiscountPct(),
+            item.getItemType()
         );
     }
 
@@ -1928,7 +2170,7 @@ public class EstimateRequestService {
         Map<Long, Integer> answeredByItemId,
         Map<Long, Integer> totalByItemId
     ) {
-        String derivedStatus = getDerivedStatus(items, request);
+        String derivedStatus = computeDerivedStatus(items, request);
 
         // Build display string: "Product A, Sub B; Product C" etc., truncated at 3
         List<String> nameList = new ArrayList<>();
@@ -1997,7 +2239,8 @@ public class EstimateRequestService {
             reviewerSummary,
             approvedItemCount,
             totalQuestionsCount,
-            answeredQuestionsCount
+            answeredQuestionsCount,
+            request.getRequestType()
         );
     }
 

@@ -63,6 +63,7 @@ function makeDraftDetail(d: MockDraft) {
     title: d.title,
     description: d.description,
     requesterId: 1,
+    requestType: "CATALOG",
     derivedStatus: d.status,
     createdAt: "2026-04-01T00:00:00Z",
     updatedAt: "2026-04-01T00:00:00Z",
@@ -76,6 +77,7 @@ function makeDraftDetail(d: MockDraft) {
         subFeatureId: it.subFeatureId ?? null,
         subFeatureName: s?.name ?? null,
         teamName: null,
+        itemType: "SCOPE",
         templateId: null,
         templateVersionNumber: null,
         status: d.status,
@@ -284,8 +286,11 @@ describe("<NewEstimateRequestPage>", () => {
     renderAt("/requests/new");
     const user = userEvent.setup();
 
+    // Select catalog request type to reach Step 1
+    await user.click(await screen.findByRole("button", { name: /Catalog request/i }));
+
     // Wait for the product browser to load
-    await screen.findByLabelText(/Estimate name/i);
+    await screen.findByLabelText(/Estimate title/i);
 
     // Click the Container product — it expands an inline sub-feature list
     await user.click(await screen.findByRole("button", { name: /Container/i }));
@@ -304,8 +309,11 @@ describe("<NewEstimateRequestPage>", () => {
     renderAt("/requests/new");
     const user = userEvent.setup();
 
+    // Select catalog request type to reach Step 1
+    await user.click(await screen.findByRole("button", { name: /Catalog request/i }));
+
     await user.type(
-      await screen.findByLabelText(/Estimate name/i),
+      await screen.findByLabelText(/Estimate title/i),
       "Persist test",
     );
 

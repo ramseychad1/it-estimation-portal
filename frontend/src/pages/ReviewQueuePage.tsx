@@ -61,6 +61,7 @@ export function ReviewQueuePage() {
   const [productFilter, setProductFilter] = useState<"" | string>("");
   const [teamFilter, setTeamFilter] = useState<"" | string>("");
   const [mineOnly, setMineOnly] = useState(false);
+  const [intakeOnly, setIntakeOnly] = useState(false);
   const [page, setPage] = useState(0);
   const [hiddenCols, setHiddenCols] = useColumnsVisibility(
     "review-queue-columns",
@@ -78,10 +79,11 @@ export function ReviewQueuePage() {
       productId: productFilter ? Number(productFilter) : undefined,
       teamId: teamFilter ? Number(teamFilter) : undefined,
       mineOnly: mineOnly || undefined,
+      requestType: intakeOnly ? "INTAKE" : undefined,
       page,
       size: PAGE_SIZE,
     }),
-    [statusFilter, debouncedSearch, productFilter, teamFilter, mineOnly, page],
+    [statusFilter, debouncedSearch, productFilter, teamFilter, mineOnly, intakeOnly, page],
   );
 
   const queueQuery = useReviewQueueQuery(queryParams);
@@ -106,7 +108,8 @@ export function ReviewQueuePage() {
     statusFilter !== "ALL_OPEN" ||
     productFilter !== "" ||
     teamFilter !== "" ||
-    mineOnly;
+    mineOnly ||
+    intakeOnly;
   const isEmpty = !queueQuery.isLoading && items.length === 0;
 
   function resetFilters() {
@@ -115,6 +118,7 @@ export function ReviewQueuePage() {
     setProductFilter("");
     setTeamFilter("");
     setMineOnly(false);
+    setIntakeOnly(false);
     setPage(0);
   }
 
@@ -143,10 +147,30 @@ export function ReviewQueuePage() {
       sortable: false,
       accessor: (r) => r.title,
       render: (r) => (
-        <div className="flex flex-col">
-          <span className="font-semibold text-near-black" style={{ fontSize: 14 }}>
-            {r.title}
-          </span>
+        <div className="flex flex-col" style={{ gap: 2 }}>
+          <div className="flex items-center" style={{ gap: 6 }}>
+            <span className="font-semibold text-near-black" style={{ fontSize: 14 }}>
+              {r.title}
+            </span>
+            {r.requestType === "INTAKE" && (
+              <span
+                className="inline-flex items-center font-medium"
+                style={{
+                  fontSize: 10,
+                  padding: "1px 6px",
+                  borderRadius: 4,
+                  background: "rgba(187, 221, 230, 0.35)",
+                  border: "1px solid rgba(44, 86, 102, 0.30)",
+                  color: "#2C5666",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.05em",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                Intake
+              </span>
+            )}
+          </div>
           <span className="text-warm-gray-med" style={{ fontSize: 12 }}>
             {r.productNames}
           </span>
@@ -300,6 +324,11 @@ export function ReviewQueuePage() {
             checked={mineOnly}
             onCheckedChange={setMineOnly}
             label="Mine only"
+          />
+          <Toggle
+            checked={intakeOnly}
+            onCheckedChange={setIntakeOnly}
+            label="Intake only"
           />
           <ListToolbar.Spacer />
           <span className="text-warm-gray-med" style={{ fontSize: 12 }}>

@@ -37,6 +37,8 @@ export interface EstimateRequestListItem {
   totalQuestionsCount: number;
   /** Number of questions that have a saved answer across all items. */
   answeredQuestionsCount: number;
+  /** "CATALOG" or "INTAKE". */
+  requestType: string;
 }
 
 export interface EstimateRequestPhaseLineView {
@@ -119,6 +121,9 @@ export interface EstimateRequestItemDto {
   rmTmTargetMarginPct: number | null;
   rmMatBillableRate: number | null;
   rmMatDiscountPct: number | null;
+  // ---- V30: intake workflow ----
+  /** "SCOPE" (normal estimation item) or "CONTEXT" (intake requirements carrier). */
+  itemType: string;
 }
 
 // Updated: parent-level detail with items[]
@@ -151,6 +156,8 @@ export interface EstimateRequestDetail {
   rmReviewedAt: string | null;
   /** Context the requester supplied when sending this estimate for (re-)pricing review. */
   requesterPricingContext: string | null;
+  /** "CATALOG" or "INTAKE". */
+  requestType: string;
 }
 
 // For creating a new item in the draft
@@ -168,7 +175,10 @@ export interface CreateDraftRequest {
   programTypeIds: number[];
   clientId: number;
   programId: number;
-  items: CreateItemRequest[];
+  /** Required for CATALOG requests; omit (or empty) for INTAKE. */
+  items?: CreateItemRequest[];
+  /** "CATALOG" (default) or "INTAKE". */
+  requestType?: string;
 }
 
 export interface UpdateDraftRequest {

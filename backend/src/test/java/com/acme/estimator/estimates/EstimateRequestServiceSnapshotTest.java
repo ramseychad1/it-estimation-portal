@@ -130,7 +130,7 @@ class EstimateRequestServiceSnapshotTest {
 
         EstimateRequestDetail draft = service.createDraft(
             new CreateDraftRequest("Member portal v2", "Background context", null, 1L, List.of(1L),
-                1L, 1L, List.of(new CreateItemRequest(product.getId(), null, null))),
+                1L, 1L, List.of(new CreateItemRequest(product.getId(), null, null)), "CATALOG"),
             requester
         );
         // Use first item id for answer save
@@ -204,7 +204,7 @@ class EstimateRequestServiceSnapshotTest {
 
         EstimateRequestDetail draft = service.createDraft(
             new CreateDraftRequest("R", null, null, 1L, List.of(1L),
-                1L, 1L, List.of(new CreateItemRequest(product.getId(), null, null))),
+                1L, 1L, List.of(new CreateItemRequest(product.getId(), null, null)), "CATALOG"),
             requester
         );
         Long itemId = draft.items().get(0).id();
@@ -242,7 +242,7 @@ class EstimateRequestServiceSnapshotTest {
 
         EstimateRequestDetail draft = service.createDraft(
             new CreateDraftRequest("R", null, null, 1L, List.of(1L),
-                1L, 1L, List.of(new CreateItemRequest(product.getId(), null, null))),
+                1L, 1L, List.of(new CreateItemRequest(product.getId(), null, null)), "CATALOG"),
             requester
         );
 
@@ -271,7 +271,7 @@ class EstimateRequestServiceSnapshotTest {
 
         EstimateRequestDetail draft = service.createDraft(
             new CreateDraftRequest("R", null, null, 1L, List.of(1L),
-                1L, 1L, List.of(new CreateItemRequest(product.getId(), null, null))),
+                1L, 1L, List.of(new CreateItemRequest(product.getId(), null, null)), "CATALOG"),
             requester
         );
         Long itemId = draft.items().get(0).id();
@@ -302,7 +302,7 @@ class EstimateRequestServiceSnapshotTest {
 
         EstimateRequestDetail draft = service.createDraft(
             new CreateDraftRequest("R", null, null, 1L, List.of(1L),
-                1L, 1L, List.of(new CreateItemRequest(container.getId(), sub.getId(), null))),
+                1L, 1L, List.of(new CreateItemRequest(container.getId(), sub.getId(), null)), "CATALOG"),
             requester
         );
         EstimateRequestDetail submitted = service.submit(draft.id(), requester);
@@ -327,7 +327,7 @@ class EstimateRequestServiceSnapshotTest {
                 1L, 1L, List.of(
                     new CreateItemRequest(product1.getId(), null, null),
                     new CreateItemRequest(product2.getId(), null, null)
-                )),
+                ), "CATALOG"),
             requester
         );
         assertThat(draft.items()).hasSize(2);

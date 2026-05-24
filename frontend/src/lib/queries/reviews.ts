@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  addScopeItem,
   approveItem,
   getReviewDetail,
   listReviewQueue,
@@ -8,6 +9,7 @@ import {
   requestClarification,
   sendBackItem,
   startItemReview,
+  type AddScopeItemRequest,
   type ApproveItemRequest,
   type ListReviewQueueParams,
   type RejectItemRequest,
@@ -137,6 +139,20 @@ export function useRequestClarificationMutation() {
       itemId: number;
       body: RequestClarificationRequest;
     }) => requestClarification(requestId, itemId, body),
+    onSuccess: (_data, { requestId }) => invalidateAfterTransition(qc, requestId),
+  });
+}
+
+export function useAddScopeItemMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      requestId,
+      body,
+    }: {
+      requestId: number;
+      body: AddScopeItemRequest;
+    }) => addScopeItem(requestId, body),
     onSuccess: (_data, { requestId }) => invalidateAfterTransition(qc, requestId),
   });
 }

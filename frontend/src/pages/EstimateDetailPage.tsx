@@ -104,6 +104,10 @@ export function EstimateDetailPage() {
   const isOwner = currentUser != null && currentUser.id === detail.requesterId;
   const { variant, label } = estimateStatusBadge(detail.derivedStatus);
 
+  // CONTEXT items are the requirements carrier for INTAKE requests.
+  // On non-draft views, filter them out so they don't appear as estimate items.
+  const scopeItems = detail.items.filter((it) => it.itemType !== "CONTEXT");
+
   const isDraft = detail.derivedStatus === "DRAFT";
   const isSubmitted = detail.derivedStatus === "SUBMITTED";
   const isInReview = detail.derivedStatus === "IN_REVIEW";
@@ -245,7 +249,28 @@ export function EstimateDetailPage() {
       ]}
       eyebrow={`EST-${detail.id}`}
       title={detail.title}
-      titleSuffix={<StatusBadge variant={variant}>{label}</StatusBadge>}
+      titleSuffix={
+        <div className="flex items-center" style={{ gap: 6 }}>
+          <StatusBadge variant={variant}>{label}</StatusBadge>
+          {detail.requestType === "INTAKE" && (
+            <span
+              style={{
+                fontSize: 10,
+                padding: "2px 7px",
+                borderRadius: 4,
+                background: "rgba(187, 221, 230, 0.35)",
+                border: "1px solid rgba(44, 86, 102, 0.30)",
+                color: "#2C5666",
+                fontWeight: 600,
+                textTransform: "uppercase",
+                letterSpacing: "0.05em",
+              }}
+            >
+              Intake
+            </span>
+          )}
+        </div>
+      }
       subtitle={subtitle}
       actions={
         isApproved ? (
@@ -318,7 +343,7 @@ export function EstimateDetailPage() {
               </p>
             </Card>
           )}
-          {detail.items.map((it) => (
+          {scopeItems.map((it) => (
             <ItemRevisionCard
               key={it.id}
               item={it}
@@ -346,7 +371,7 @@ export function EstimateDetailPage() {
               <p className="m-0 text-near-black" style={{ fontSize: 14 }}>{detail.description}</p>
             </Card>
           )}
-          {detail.items.map((it) =>
+          {scopeItems.map((it) =>
             it.status === "NEEDS_CLARIFICATION" ? (
               <ClarificationNeededItemCard
                 key={it.id}
@@ -378,7 +403,7 @@ export function EstimateDetailPage() {
               <p className="m-0 text-near-black" style={{ fontSize: 14 }}>{detail.description}</p>
             </Card>
           )}
-          {detail.items.map((it) =>
+          {scopeItems.map((it) =>
             it.status === "RECALLED" ? (
               <RecalledItemCard
                 key={it.id}
@@ -407,7 +432,7 @@ export function EstimateDetailPage() {
         <div className="flex flex-col" style={{ gap: 16, marginTop: 24 }}>
           <RequestSummaryCard detail={detail} />
           <PendingReviewPanel status={detail.derivedStatus} />
-          {detail.items.map((it) => (
+          {scopeItems.map((it) => (
             <SubmittedItemCard key={it.id} item={it} requestId={detail.id} isOwner={isOwner} />
           ))}
           <ActivityCard history={historyQuery.data ?? []} loading={historyQuery.isLoading} />
@@ -441,7 +466,7 @@ export function EstimateDetailPage() {
               All items have been approved. This estimate is awaiting Revenue & Pricing Review before it is finalized.
             </span>
           </div>
-          {detail.items.map((it) => (
+          {scopeItems.map((it) => (
             <CollapsibleApprovedItemCard key={it.id} item={it} currentRate={currentRate} />
           ))}
           <ActivityCard history={historyQuery.data ?? []} loading={historyQuery.isLoading} />
@@ -453,7 +478,7 @@ export function EstimateDetailPage() {
 
   // ── APPROVED / PARTIALLY_APPROVED / REJECTED ──────────────────────────────
   if (isApproved || isPartiallyApproved || detail.derivedStatus === "REJECTED") {
-    const rateHasChanged = currentRate != null && detail.items.some(
+    const rateHasChanged = currentRate != null && scopeItems.some(
       (it) => it.status === "APPROVED" &&
               it.approvedBlendedRateId != null &&
               it.approvedBlendedRateId !== currentRate.id,
@@ -500,8 +525,8 @@ export function EstimateDetailPage() {
               </span>
             </div>
           )}
-          <EstimateRollupCard items={detail.items} currentRate={currentRate} rmDiscountPct={detail.rmDiscountPct} />
-          {detail.items.map((it) => (
+          <EstimateRollupCard items={scopeItems} currentRate={currentRate} rmDiscountPct={detail.rmDiscountPct} />
+          {scopeItems.map((it) => (
             <CollapsibleApprovedItemCard key={it.id} item={it} currentRate={currentRate} />
           ))}
           <ActivityCard history={historyQuery.data ?? []} loading={historyQuery.isLoading} />
@@ -603,25 +628,27 @@ function RequestSummaryCard({ detail }: { detail: EstimateRequestDetail }) {
         )}
         <div className="flex flex-wrap" style={{ gap: 24 }}>
           <KV label="Products">
-            {detail.items.length === 1
-              ? (detail.items[0].subFeatureName
-                  ? `${detail.items[0].productName} · ${detail.items[0].subFeatureName}`
-                  : detail.items[0].productName)
-              : (
-                <ul className="m-0 p-0 list-none flex flex-col" style={{ gap: 2 }}>
-                  {detail.items.map((it) => (
-                    <li key={it.id} style={{ fontSize: 14 }}>
-                      {it.subFeatureName ? `${it.productName} · ${it.subFeatureName}` : it.productName}
-                      {it.teamName && (
-                        <span className="text-warm-gray-med" style={{ fontSize: 12, marginLeft: 6 }}>
-                          ({it.teamName})
-                        </span>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              )
-            }
+            {(() => {
+              const displayItems = detail.items.filter((it) => it.itemType !== "CONTEXT");
+              return displayItems.length === 1
+                ? (displayItems[0].subFeatureName
+                    ? `${displayItems[0].productName} · ${displayItems[0].subFeatureName}`
+                    : displayItems[0].productName)
+                : (
+                  <ul className="m-0 p-0 list-none flex flex-col" style={{ gap: 2 }}>
+                    {displayItems.map((it) => (
+                      <li key={it.id} style={{ fontSize: 14 }}>
+                        {it.subFeatureName ? `${it.productName} · ${it.subFeatureName}` : it.productName}
+                        {it.teamName && (
+                          <span className="text-warm-gray-med" style={{ fontSize: 12, marginLeft: 6 }}>
+                            ({it.teamName})
+                          </span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                );
+              })()}
           </KV>
           <KV label="Go Live Date">
             {detail.goLiveDate

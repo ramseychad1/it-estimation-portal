@@ -48,5 +48,7 @@ public record EstimateRequestListItem(
      * Compare with {@link #totalQuestionsCount} to show a "N / M answered" indicator
      * on the review queue row.
      */
-    int answeredQuestionsCount
+    int answeredQuestionsCount,
+    /** "CATALOG" or "INTAKE". Used by the queue to show the INTAKE badge. */
+    String requestType
 ) {}

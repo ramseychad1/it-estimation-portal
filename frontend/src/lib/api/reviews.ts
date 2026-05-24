@@ -12,6 +12,8 @@ export interface ListReviewQueueParams {
   productId?: number;
   teamId?: number;
   mineOnly?: boolean;
+  /** "CATALOG" or "INTAKE" to filter by request type. */
+  requestType?: string;
   page?: number;
   size?: number;
 }
@@ -112,4 +114,18 @@ export function requestClarification(
   body: RequestClarificationRequest,
 ): Promise<EstimateRequestDetail> {
   return api(`/estimates/review/${requestId}/items/${itemId}/request-clarification`, { method: "POST", body });
+}
+
+// ---- INTAKE: SO adds a catalog scope item (V30) -----------------------
+
+export interface AddScopeItemRequest {
+  productId: number;
+  subFeatureId?: number | null;
+}
+
+export function addScopeItem(
+  requestId: number,
+  body: AddScopeItemRequest,
+): Promise<EstimateRequestDetail> {
+  return api(`/estimates/review/${requestId}/scope-item`, { method: "POST", body });
 }

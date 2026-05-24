@@ -77,5 +77,12 @@ public record EstimateRequestItemDto(
     BigDecimal rmTmMultiplier,
     BigDecimal rmTmTargetMarginPct,
     BigDecimal rmMatBillableRate,
-    BigDecimal rmMatDiscountPct
+    BigDecimal rmMatDiscountPct,
+    // ── V30: intake workflow ──────────────────────────────────────────────
+    /**
+     * "SCOPE" (default, normal estimation item) or "CONTEXT" (intake requirements carrier).
+     * CONTEXT items are auto-approved at submit and excluded from the approval gate.
+     * The frontend uses this to suppress review action buttons on CONTEXT items.
+     */
+    String itemType
 ) {}

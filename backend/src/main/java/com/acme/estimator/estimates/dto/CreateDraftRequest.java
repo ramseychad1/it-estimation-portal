@@ -11,13 +11,13 @@ import java.util.List;
 /**
  * Phase 9a: multi-product draft creation.
  *
- * <p>The items list must contain at least one entry. Each item targets a
- * specific product (and optional sub-feature for CONTAINER products).
- * The same product may not appear twice in the list (enforced at the service
- * layer, mirroring the database partial-unique-index constraint).
+ * <p>CATALOG requests (default): items list must contain at least one entry; each item targets
+ * a specific catalog product. INTAKE requests: items must be null/empty — the system
+ * auto-creates a CONTEXT item tied to the configured intake system product.
  *
  * <p>V21: categoryId (required) and programTypeIds (required, ≥1) added.
  * <p>V22: clientId (required) and programId (required) added.
+ * <p>V30: requestType added ("CATALOG" default, "INTAKE" for SO-scoped requests).
  */
 public record CreateDraftRequest(
     @NotBlank @Size(max = 255) String title,
@@ -27,5 +27,8 @@ public record CreateDraftRequest(
     @NotNull @NotEmpty List<Long> programTypeIds,
     @NotNull Long clientId,
     @NotNull Long programId,
-    @NotNull @NotEmpty @Valid List<CreateItemRequest> items
+    /** Required for CATALOG requests; must be null/empty for INTAKE requests. */
+    @Valid List<CreateItemRequest> items,
+    /** "CATALOG" (default) or "INTAKE". */
+    String requestType
 ) {}

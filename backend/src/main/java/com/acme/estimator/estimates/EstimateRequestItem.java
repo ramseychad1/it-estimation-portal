@@ -149,6 +149,14 @@ public class EstimateRequestItem {
     @Column(name = "display_order", nullable = false)
     private int displayOrder;
 
+    /**
+     * SCOPE (default) — normal estimation item that goes through the full review cycle.
+     * CONTEXT — intake requirements carrier auto-created for INTAKE requests; auto-approved
+     * at submit time and excluded from the approval gate.
+     */
+    @Column(name = "item_type", nullable = false, length = 20)
+    private String itemType = "SCOPE";
+
     // ── Revenue Manager pricing overrides (V27) ───────────────────────────────
     // Non-null values replace the corresponding approved_* columns when
     // computing client price. Cleared if Admin sends the item back.

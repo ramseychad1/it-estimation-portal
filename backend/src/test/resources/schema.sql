@@ -362,6 +362,8 @@ CREATE TABLE estimate_requests (
     rm_reviewed_at             TIMESTAMP WITH TIME ZONE,
     -- V28: requester context for re-review requests
     requester_pricing_context  TEXT         CONSTRAINT chk_requester_pricing_context_length CHECK (char_length(requester_pricing_context) <= 4000),
+    -- V30: intake request type
+    request_type               VARCHAR(20)  NOT NULL DEFAULT 'CATALOG',
     created_at                 TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at                 TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT estimate_requests_pk PRIMARY KEY (id)
@@ -380,6 +382,8 @@ CREATE TABLE estimate_request_items (
     sub_feature_id           BIGINT,
     template_id              BIGINT,
     status                   VARCHAR(20)  NOT NULL DEFAULT 'DRAFT',
+    -- V30: intake item type
+    item_type                VARCHAR(20)  NOT NULL DEFAULT 'SCOPE',
     complexity               VARCHAR(8),
     reviewer_id              BIGINT,
     justification            TEXT,

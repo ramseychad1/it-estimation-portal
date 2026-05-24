@@ -45,5 +45,8 @@ public record EstimateRequestDetail(
     String rmNotes,
     OffsetDateTime rmReviewedAt,
     /** Free-form context the requester supplied when sending this estimate for (re-)pricing review. */
-    String requesterPricingContext
+    String requesterPricingContext,
+    // ── V30: intake workflow ──────────────────────────────────────────────
+    /** "CATALOG" (requester-selected products) or "INTAKE" (SO-scoped free-form request). */
+    String requestType
 ) {}

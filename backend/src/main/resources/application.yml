@@ -46,6 +46,12 @@ app:
   # env var. The dev value points at the Vite dev server.
   base-url: http://localhost:5173
 
+intake:
+  # ID of the system catalog product used as the requirements-carrier (CONTEXT item)
+  # for INTAKE requests. Admin must create this product and set the ID here (or via
+  # INTAKE_SYSTEM_PRODUCT_ID env var in production). 0 = not configured.
+  system-product-id: ${INTAKE_SYSTEM_PRODUCT_ID:0}
+
 logging:
   level:
     org.springframework.security: INFO

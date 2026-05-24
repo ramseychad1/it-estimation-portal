@@ -5,6 +5,7 @@ import com.acme.estimator.auth.User;
 import com.acme.estimator.auth.UserRepository;
 import com.acme.estimator.common.ApiException;
 import com.acme.estimator.common.PageResponse;
+import com.acme.estimator.estimates.dto.AddScopeItemRequest;
 import com.acme.estimator.estimates.dto.ApproveItemRequest;
 import com.acme.estimator.estimates.dto.EstimateRequestDetail;
 import com.acme.estimator.estimates.dto.EstimateRequestListItem;
@@ -54,12 +55,13 @@ public class EstimateReviewController {
         @RequestParam(required = false) Long productId,
         @RequestParam(required = false) Long teamId,
         @RequestParam(required = false, defaultValue = "false") boolean mineOnly,
+        @RequestParam(required = false) String requestType,
         @RequestParam(defaultValue = "0") int page,
         @RequestParam(defaultValue = "25") int size,
         @AuthenticationPrincipal AppUserDetails principal
     ) {
         Sort sort = Sort.by(Sort.Direction.ASC, "id");
-        var filter = new ListReviewQueueFilter(status, search, productId, teamId, mineOnly);
+        var filter = new ListReviewQueueFilter(status, search, productId, teamId, mineOnly, requestType);
         Page<EstimateRequestListItem> result = service.reviewQueue(
             filter, PageRequest.of(page, size, sort), currentUser(principal)
         );
@@ -121,6 +123,21 @@ public class EstimateReviewController {
         @AuthenticationPrincipal AppUserDetails principal
     ) {
         return service.requestClarification(requestId, itemId, body, currentUser(principal));
+    }
+
+    /**
+     * SO adds a catalog scope item to an INTAKE request. The item is created in
+     * IN_REVIEW state with the calling SO as reviewer. Only ADMIN and SOLUTION_OWNER
+     * roles may call this endpoint — REVENUE_MANAGER is excluded.
+     */
+    @PostMapping("/{requestId}/scope-item")
+    @PreAuthorize("hasAnyRole('ADMIN','SOLUTION_OWNER')")
+    public EstimateRequestDetail addScopeItem(
+        @PathVariable Long requestId,
+        @Valid @RequestBody AddScopeItemRequest body,
+        @AuthenticationPrincipal AppUserDetails principal
+    ) {
+        return service.addScopeItem(requestId, body, currentUser(principal));
     }
 
     private User currentUser(AppUserDetails principal) {

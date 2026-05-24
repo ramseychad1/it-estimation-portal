@@ -97,6 +97,13 @@ public class EstimateRequest {
     @Column(name = "requester_pricing_context")
     private String requesterPricingContext;
 
+    /**
+     * CATALOG (default) — requester selects catalog products.
+     * INTAKE — requester describes requirements in free-form text; SOs scope and add catalog items.
+     */
+    @Column(name = "request_type", nullable = false, length = 20)
+    private String requestType = "CATALOG";
+
     @Column(name = "created_at", nullable = false, updatable = false, insertable = false)
     private OffsetDateTime createdAt;
 
