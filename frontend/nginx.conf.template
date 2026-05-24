@@ -19,6 +19,11 @@
 # CRITICAL (per the user's CLAUDE.md monorepo lessons): proxy_set_header
 # Host MUST be the backend hostname, not $host. Railway routes by Host
 # header; sending the frontend's hostname makes Railway 404.
+#
+# Security headers note: nginx add_header is NOT inherited by location
+# blocks that define their own add_header directives. The two locations
+# below that set Cache-Control therefore repeat the security headers
+# explicitly to maintain coverage.
 
 server {
     listen ${PORT};
@@ -26,12 +31,21 @@ server {
     root /usr/share/nginx/html;
     index index.html;
 
+    # Security headers — applied to all responses via server-level directive.
+    # Locations that set their own add_header repeat these (see note above).
+    add_header X-Frame-Options "DENY" always;
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+
     # Tighter cache headers for hashed assets (Vite outputs them with
     # content hashes in the filename, so they're safe to cache forever).
     location /assets/ {
         access_log off;
         expires 1y;
         add_header Cache-Control "public, immutable";
+        add_header X-Frame-Options "DENY" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
     }
 
     location /api/ {
@@ -58,6 +72,9 @@ server {
     # changes the asset hash chain isn't masked by a stale shell.
     location = /index.html {
         add_header Cache-Control "no-cache";
+        add_header X-Frame-Options "DENY" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
     }
     location / {
         try_files $uri /index.html;

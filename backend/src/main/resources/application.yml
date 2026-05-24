@@ -33,6 +33,10 @@ server:
   servlet:
     session:
       timeout: 8h
+      cookie:
+        # Set to true in production (Railway: COOKIE_SECURE=true env var).
+        # Keep false locally so session cookies work over plain HTTP.
+        secure: ${COOKIE_SECURE:false}
 
 # Application-specific properties.
 app:
