@@ -92,16 +92,15 @@ public class SecurityConfig {
      * </ul>
      *
      * <p>Uses {@code setAllowedOriginPatterns} (not {@code setAllowedOrigins})
-     * so the {@code https://*.up.railway.app} wildcard works alongside
-     * {@code allowCredentials=true}. This is the per-the-CLAUDE.md
-     * monorepo lesson — the non-pattern variant rejects wildcards when
-     * credentials are enabled.
+     * so the explicit Railway origin works alongside {@code allowCredentials=true}.
+     * The non-pattern variant rejects pattern strings even when no wildcard is
+     * present on some Spring versions — patterns is the safe default.
      */
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration cfg = new CorsConfiguration();
         cfg.setAllowedOriginPatterns(List.of(
-            "https://*.up.railway.app",
+            "https://frontend-production-4228.up.railway.app",
             "http://localhost:5173"
         ));
         cfg.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
