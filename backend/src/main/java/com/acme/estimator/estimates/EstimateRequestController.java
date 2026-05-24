@@ -45,7 +45,7 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @RestController
 @RequestMapping("/api/estimates/my")
-@PreAuthorize("hasAnyRole('ADMIN','REQUESTER','REVENUE_MANAGER')")
+@PreAuthorize("hasAnyRole('ADMIN','REQUESTER')")
 @RequiredArgsConstructor
 public class EstimateRequestController {
 
@@ -172,9 +172,10 @@ public class EstimateRequestController {
 
     /** Requester sends a fully-approved estimate for (or back to) pricing review. */
     @PostMapping("/{id}/request-pricing-review")
+    @PreAuthorize("hasAnyRole('ADMIN','REQUESTER')")
     public EstimateRequestDetail requestPricingReview(
         @PathVariable Long id,
-        @RequestBody com.acme.estimator.estimates.dto.RequestPricingReviewRequest dto,
+        @Valid @RequestBody com.acme.estimator.estimates.dto.RequestPricingReviewRequest dto,
         @AuthenticationPrincipal AppUserDetails principal
     ) {
         return service.requestPricingReview(id, dto, currentUser(principal));
