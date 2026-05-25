@@ -88,7 +88,7 @@ public class DocumentService {
 
         boolean isOwner = request.getRequesterId().equals(actor.getId());
         boolean canReview = actor.isAdmin()
-            || actor.getRoles().stream().anyMatch(r -> r.getName().equals("SOLUTION_OWNER"));
+            || actor.getRoles().stream().anyMatch(r -> r.getName().equals("Solution Owner"));
 
         if (!isOwner && !canReview) {
             throw ApiException.notFound("Attachment " + attachmentId + " not found.");

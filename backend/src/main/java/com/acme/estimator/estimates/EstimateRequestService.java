@@ -1291,7 +1291,7 @@ public class EstimateRequestService {
         if (product == null || product.getTeam() == null) return List.of();
         return userRepository.findByTeamId(product.getTeam().getId()).stream()
             .filter(u -> u.isActive() && u.getRoles().stream()
-                .anyMatch(r -> "SOLUTION_OWNER".equals(r.getName())))
+                .anyMatch(r -> "Solution Owner".equals(r.getName())))
             .toList();
     }
 
