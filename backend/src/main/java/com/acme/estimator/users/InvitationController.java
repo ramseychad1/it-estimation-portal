@@ -54,6 +54,12 @@ public class InvitationController {
         return ResponseEntity.noContent().build();
     }
 
+    @PostMapping("/{userId}/send-email")
+    public ResponseEntity<Void> sendEmail(@PathVariable Long userId) {
+        invitationService.sendInvitationEmail(userId);
+        return ResponseEntity.noContent().build();
+    }
+
     private User currentUser(AppUserDetails principal) {
         if (principal == null) throw ApiException.forbidden("Authenticated user required");
         return userRepository.findById(principal.getUserId())

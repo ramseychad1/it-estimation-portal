@@ -28,9 +28,11 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import com.acme.estimator.notifications.InvitationEmailRequestedEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -61,6 +63,7 @@ public class InvitationService {
     private final TokenGenerator tokenGenerator;
     private final TeamRepository teamRepository;
     private final EntityManager em;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Value("${app.base-url}")
     private String baseUrl;
@@ -268,6 +271,32 @@ public class InvitationService {
         Objects.requireNonNull(entry.getId(), "audit row should have been assigned an id");
 
         return new AcceptInviteResult(user.getEmail());
+    }
+
+    // ---- email ---------------------------------------------------------
+
+    /**
+     * Sends the active invitation URL to the invited user's email address.
+     * Throws {@link ApiException} if the user has no active pending token.
+     * The email is dispatched via {@link InvitationEmailRequestedEvent} so that
+     * a failed send never rolls back the caller's transaction.
+     */
+    @Transactional(readOnly = true)
+    public void sendInvitationEmail(Long userId) {
+        User user = userRepository.findById(userId)
+            .orElseThrow(() -> ApiException.notFound("User " + userId + " not found"));
+        if (user.getInvitationStatus() != InvitationStatus.PENDING_INVITE) {
+            throw ApiException.badRequest("Only pending invitations can have their email sent.");
+        }
+        InvitationToken token = tokenRepository
+            .findFirstByUserIdAndUsedAtIsNullAndRevokedAtIsNullOrderByCreatedAtDesc(userId)
+            .orElseThrow(() -> ApiException.badRequest("No active invitation token found for this user."));
+
+        eventPublisher.publishEvent(new InvitationEmailRequestedEvent(
+            user, buildInviteUrl(token.getToken()), token.getExpiresAt()
+        ));
+        log.info("Invitation email event published for {} (token prefix {})",
+            user.getEmail(), TokenGenerator.shortPrefix(token.getToken()));
     }
 
     // ---- helpers -------------------------------------------------------

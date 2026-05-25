@@ -76,3 +76,10 @@ export function updateAppSettings(
     body: JSON.stringify(updates),
   });
 }
+
+export function sendTestEmail(toAddress: string): Promise<void> {
+  return api<void>("/admin/settings/test-email", {
+    method: "POST",
+    body: JSON.stringify({ toAddress }),
+  });
+}

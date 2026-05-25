@@ -40,6 +40,10 @@ export function revokeInvitation(userId: number): Promise<void> {
   return api(`/admin/users/invitations/${userId}`, { method: "DELETE" });
 }
 
+export function sendInvitationEmail(userId: number): Promise<void> {
+  return api(`/admin/users/invitations/${userId}/send-email`, { method: "POST" });
+}
+
 export function validateInvitationToken(token: string): Promise<ValidateTokenResponse> {
   return api(`/auth/invitations/${encodeURIComponent(token)}`);
 }

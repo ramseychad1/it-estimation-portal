@@ -16,6 +16,7 @@ import {
   inviteUser,
   resendInvitation,
   revokeInvitation,
+  sendInvitationEmail,
   validateInvitationToken,
   type InviteUserRequest,
 } from "../api/invitations";
@@ -142,5 +143,11 @@ export function useAcceptInvitationMutation() {
   return useMutation({
     mutationFn: ({ token, password }: { token: string; password: string }) =>
       acceptInvitation(token, password),
+  });
+}
+
+export function useSendInvitationEmailMutation() {
+  return useMutation({
+    mutationFn: (userId: number) => sendInvitationEmail(userId),
   });
 }

@@ -75,7 +75,7 @@ export function UsersPage() {
   const [drawer, setDrawer] = useState<DrawerState>({ mode: "closed" });
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteAdminPrefill, setInviteAdminPrefill] = useState(false);
-  const [createdInvite, setCreatedInvite] = useState<{ email: string; inviteUrl: string } | null>(null);
+  const [createdInvite, setCreatedInvite] = useState<{ userId: number; email: string; inviteUrl: string } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<UserDetail | null>(null);
   const [revokeTarget, setRevokeTarget] = useState<UserDetail | null>(null);
   const [hiddenCols, setHiddenCols] = useColumnsVisibility("users", USERS_REQUIRED_COLS);
@@ -472,13 +472,14 @@ export function UsersPage() {
         onClose={() => setInviteOpen(false)}
         onCreated={(result) => {
           setInviteOpen(false);
-          setCreatedInvite({ email: result.user.email, inviteUrl: result.inviteUrl });
+          setCreatedInvite({ userId: result.user.id, email: result.user.email, inviteUrl: result.inviteUrl });
         }}
         prefillAdmin={inviteAdminPrefill}
       />
 
       <InviteCreatedModal
         open={!!createdInvite}
+        userId={createdInvite?.userId ?? 0}
         email={createdInvite?.email ?? ""}
         inviteUrl={createdInvite?.inviteUrl ?? ""}
         onDone={() => setCreatedInvite(null)}

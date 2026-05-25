@@ -1,21 +1,33 @@
 import { CopyToClipboardButton } from "../../components/CopyToClipboardButton";
-import { PrimaryButton } from "../../components/buttons";
+import { PrimaryButton, SecondaryButton } from "../../components/buttons";
+import { useSendInvitationEmailMutation } from "../../lib/queries/users";
+import { useToast } from "../../components/Toast";
+import { ApiError } from "../../lib/api";
 
 interface InviteCreatedModalProps {
   open: boolean;
+  userId: number;
   email: string;
   inviteUrl: string;
   onDone: () => void;
 }
 
-/**
- * Follow-up modal shown after a successful invite. Surfaces the invite URL
- * with a Copy button because email infrastructure isn't wired up — the admin
- * pastes the link to the invitee manually. Goes away once email sending is
- * added.
- */
-export function InviteCreatedModal({ open, email, inviteUrl, onDone }: InviteCreatedModalProps) {
+export function InviteCreatedModal({ open, userId, email, inviteUrl, onDone }: InviteCreatedModalProps) {
+  const toast = useToast();
+  const sendEmailMutation = useSendInvitationEmailMutation();
+
   if (!open) return null;
+
+  async function handleSendEmail() {
+    try {
+      await sendEmailMutation.mutateAsync(userId);
+      toast.success(`Invitation email sent to ${email}.`);
+    } catch (err) {
+      const msg = err instanceof ApiError ? (err.body as { message?: string })?.message ?? "" : "";
+      toast.error(msg || "Failed to send invitation email. Check your SMTP configuration in Global Settings.");
+    }
+  }
+
   return (
     <>
       <div
@@ -42,8 +54,9 @@ export function InviteCreatedModal({ open, email, inviteUrl, onDone }: InviteCre
           </header>
           <div className="text-near-black" style={{ padding: "0 24px 20px", fontSize: 14, lineHeight: "20px" }}>
             <p className="m-0 text-warm-gray-med">
-              Email sending isn't configured yet. Copy this invite link and send it to{" "}
-              <strong className="text-near-black">{email}</strong> manually.
+              Send the invite link to{" "}
+              <strong className="text-near-black">{email}</strong> by email, or copy it to share
+              manually.
             </p>
             <div
               className="flex items-center gap-2 mt-4"
@@ -64,13 +77,19 @@ export function InviteCreatedModal({ open, email, inviteUrl, onDone }: InviteCre
             </div>
           </div>
           <footer
-            className="flex items-center justify-end"
+            className="flex items-center justify-between"
             style={{
               padding: "14px 24px",
               borderTop: "1px solid var(--color-warm-gray-light)",
               background: "#FBFBFA",
             }}
           >
+            <SecondaryButton
+              onClick={handleSendEmail}
+              disabled={sendEmailMutation.isPending}
+            >
+              {sendEmailMutation.isPending ? "Sending…" : "Send Email Invite"}
+            </SecondaryButton>
             <PrimaryButton onClick={onDone}>Done</PrimaryButton>
           </footer>
         </div>

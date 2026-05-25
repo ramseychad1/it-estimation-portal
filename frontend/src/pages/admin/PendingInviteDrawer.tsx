@@ -1,5 +1,5 @@
 import { ApiError } from "../../lib/api";
-import { useResendInvitationMutation } from "../../lib/queries/users";
+import { useResendInvitationMutation, useSendInvitationEmailMutation } from "../../lib/queries/users";
 import { useToast } from "../../components/Toast";
 import { Drawer } from "../../components/Drawer";
 import { CopyToClipboardButton } from "../../components/CopyToClipboardButton";
@@ -35,6 +35,7 @@ export function PendingInviteDrawer({
   onRequestRevoke,
 }: PendingInviteDrawerProps) {
   const resendMutation = useResendInvitationMutation();
+  const sendEmailMutation = useSendInvitationEmailMutation();
   const toast = useToast();
 
   if (!user) {
@@ -57,6 +58,17 @@ export function PendingInviteDrawer({
     } catch (err) {
       const msg = err instanceof ApiError ? (err.body as { message?: string })?.message ?? "" : "";
       toast.error(msg || "Could not resend the invitation.");
+    }
+  }
+
+  async function handleSendEmail() {
+    if (!user) return;
+    try {
+      await sendEmailMutation.mutateAsync(user.id);
+      toast.success(`Invitation email sent to ${user.email}.`);
+    } catch (err) {
+      const msg = err instanceof ApiError ? (err.body as { message?: string })?.message ?? "" : "";
+      toast.error(msg || "Failed to send invitation email. Check your SMTP configuration in Global Settings.");
     }
   }
 
@@ -108,15 +120,26 @@ export function PendingInviteDrawer({
           >
             Invite
           </div>
-          <button
-            type="button"
-            onClick={handleResend}
-            disabled={resendMutation.isPending}
-            className="text-near-black font-medium bg-transparent border-0 cursor-pointer hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
-            style={{ fontSize: 12 }}
-          >
-            {resendMutation.isPending ? "Sending…" : "Resend invite"}
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={handleSendEmail}
+              disabled={sendEmailMutation.isPending || expired}
+              className="text-near-black font-medium bg-transparent border-0 cursor-pointer hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
+              style={{ fontSize: 12 }}
+            >
+              {sendEmailMutation.isPending ? "Sending…" : "Send email"}
+            </button>
+            <button
+              type="button"
+              onClick={handleResend}
+              disabled={resendMutation.isPending}
+              className="text-near-black font-medium bg-transparent border-0 cursor-pointer hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
+              style={{ fontSize: 12 }}
+            >
+              {resendMutation.isPending ? "Sending…" : "Resend invite"}
+            </button>
+          </div>
         </div>
 
         <DetailRow label="Invited by">

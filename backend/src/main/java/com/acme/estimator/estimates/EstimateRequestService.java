@@ -60,7 +60,15 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
+import com.acme.estimator.notifications.ClarificationRespondedEvent;
+import com.acme.estimator.notifications.ItemApprovedEvent;
+import com.acme.estimator.notifications.ItemNeedsClarificationEvent;
+import com.acme.estimator.notifications.ItemRecalledEvent;
+import com.acme.estimator.notifications.ItemRejectedEvent;
+import com.acme.estimator.notifications.ItemSentBackEvent;
+import com.acme.estimator.notifications.ItemSubmittedEvent;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -107,6 +115,7 @@ public class EstimateRequestService {
     private final ProgramRepository programRepository;
     private final ClientPricingService clientPricingService;
     private final com.acme.estimator.settings.AppSettingService appSettingService;
+    private final ApplicationEventPublisher eventPublisher;
 
     @org.springframework.beans.factory.annotation.Value("${intake.system-product-id:0}")
     private Long intakeSystemProductId;
@@ -473,6 +482,14 @@ public class EstimateRequestService {
             EstimateRequest.ENTITY_TYPE, request.getId(),
             ChangeAction.SUBMITTED, requester, null
         );
+
+        for (EstimateRequestItem item : items) {
+            List<User> soRecipients = sosByProduct(item);
+            eventPublisher.publishEvent(new ItemSubmittedEvent(
+                request.getId(), request.getTitle(), item.getId(),
+                productName(item), soRecipients
+            ));
+        }
 
         return toDetail(request, requester);
     }
@@ -847,6 +864,11 @@ public class EstimateRequestService {
             EstimateRequest.ENTITY_TYPE, requestId, ChangeAction.ITEM_APPROVED, reviewer, notes
         );
 
+        User requester = userRepository.findById(request.getRequesterId()).orElse(null);
+        eventPublisher.publishEvent(new ItemApprovedEvent(
+            requestId, request.getTitle(), itemId, productName, requester
+        ));
+
         // If all items are now approved and revenue review is enabled, queue for pricing review.
         List<EstimateRequestItem> allItems =
             itemRepository.findByEstimateRequestIdOrderByDisplayOrderAsc(requestId);
@@ -892,6 +914,12 @@ public class EstimateRequestService {
             EstimateRequest.ENTITY_TYPE, requestId, ChangeAction.ITEM_REJECTED, reviewer,
             "Rejected '" + productName + "' in '" + request.getTitle() + "'. Reason: " + preview
         );
+
+        User requester = userRepository.findById(request.getRequesterId()).orElse(null);
+        eventPublisher.publishEvent(new ItemRejectedEvent(
+            requestId, request.getTitle(), itemId, productName, requester, reason
+        ));
+
         return toDetail(request, reviewer);
     }
 
@@ -1023,6 +1051,11 @@ public class EstimateRequestService {
                 requester,
                 "Responded to clarification for '" + productName + "' in '" + request.getTitle() + "'"
             );
+            User reviewer = preservedReviewerId != null
+                ? userRepository.findById(preservedReviewerId).orElse(null) : null;
+            eventPublisher.publishEvent(new ClarificationRespondedEvent(
+                requestId, request.getTitle(), itemId, productName, reviewer
+            ));
         } else {
             itemRepository.save(item);
             if (!isRecalled) {
@@ -1149,6 +1182,12 @@ public class EstimateRequestService {
             EstimateRequest.ENTITY_TYPE, requestId, ChangeAction.ITEM_SENT_BACK, actor,
             "Sent back '" + productName + "' in '" + request.getTitle() + "'. Reason: " + reason
         );
+
+        User requester = userRepository.findById(request.getRequesterId()).orElse(null);
+        eventPublisher.publishEvent(new ItemSentBackEvent(
+            requestId, request.getTitle(), itemId, productName, requester
+        ));
+
         return toDetail(request, actor);
     }
 
@@ -1187,6 +1226,12 @@ public class EstimateRequestService {
             "Requested clarification for '" + productName + "' in '" + request.getTitle()
                 + "'. Note: " + preview
         );
+
+        User requester = userRepository.findById(request.getRequesterId()).orElse(null);
+        eventPublisher.publishEvent(new ItemNeedsClarificationEvent(
+            requestId, request.getTitle(), itemId, productName, requester, note
+        ));
+
         return toDetail(request, actor);
     }
 
@@ -1208,12 +1253,14 @@ public class EstimateRequestService {
             );
         }
 
+        boolean wasInReview = item.getStatus() == EstimateStatus.IN_REVIEW;
+        User priorReviewer = wasInReview && item.getReviewerId() != null
+            ? userRepository.findById(item.getReviewerId()).orElse(null) : null;
+
         String auditNote = "Recalled '" + productName(item) + "' from '"
             + request.getTitle() + "'";
-        if (item.getStatus() == EstimateStatus.IN_REVIEW && item.getReviewerId() != null) {
-            String reviewerName = userRepository.findById(item.getReviewerId())
-                .map(User::fullName).orElse("a reviewer");
-            auditNote += " (was in review by " + reviewerName + ")";
+        if (wasInReview && priorReviewer != null) {
+            auditNote += " (was in review by " + priorReviewer.fullName() + ")";
         }
 
         item.setStatus(EstimateStatus.RECALLED);
@@ -1224,12 +1271,28 @@ public class EstimateRequestService {
         auditService.recordAction(
             EstimateRequest.ENTITY_TYPE, requestId, ChangeAction.ITEM_RECALLED, requester, auditNote
         );
+
+        if (wasInReview) {
+            eventPublisher.publishEvent(new ItemRecalledEvent(
+                requestId, request.getTitle(), itemId, productName(item), priorReviewer
+            ));
+        }
+
         return toDetail(request, requester);
     }
 
     private String productName(EstimateRequestItem item) {
         return productRepository.findById(item.getProductId())
             .map(Product::getName).orElse("item");
+    }
+
+    private List<User> sosByProduct(EstimateRequestItem item) {
+        Product product = productRepository.findById(item.getProductId()).orElse(null);
+        if (product == null || product.getTeam() == null) return List.of();
+        return userRepository.findByTeamId(product.getTeam().getId()).stream()
+            .filter(u -> u.isActive() && u.getRoles().stream()
+                .anyMatch(r -> "SOLUTION_OWNER".equals(r.getName())))
+            .toList();
     }
 
     @Transactional

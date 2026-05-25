@@ -7,6 +7,7 @@ import {
   getPricingReviewQueue,
   releasePricingReview,
   savePricingReview,
+  sendTestEmail,
   updateAppSettings,
   type SavePricingReviewRequest,
 } from "../api/pricingReview";
@@ -94,5 +95,11 @@ export function useUpdateAppSettingsMutation() {
     onSuccess: (data) => {
       qc.setQueryData(SETTINGS_KEY, data);
     },
+  });
+}
+
+export function useSendTestEmailMutation() {
+  return useMutation({
+    mutationFn: (toAddress: string) => sendTestEmail(toAddress),
   });
 }
