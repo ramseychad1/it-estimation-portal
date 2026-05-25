@@ -28,6 +28,7 @@ import { CategoriesPage } from "./pages/admin/CategoriesPage";
 import { ClientsPage } from "./pages/admin/ClientsPage";
 import { ProgramsPage } from "./pages/admin/ProgramsPage";
 import { AcceptInvitePage } from "./pages/AcceptInvitePage";
+import { ProfilePage } from "./pages/ProfilePage";
 import { GlobalSettingsPage } from "./pages/admin/GlobalSettingsPage";
 import { PricingReviewQueuePage } from "./pages/PricingReviewQueuePage";
 import { PricingReviewDetailPage } from "./pages/PricingReviewDetailPage";
@@ -70,6 +71,7 @@ export default function App() {
       <Route path="/invite/:token" element={<AcceptInvitePage />} />
 
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
+      <Route path="/profile" element={<ProtectedShell><ProfilePage /></ProtectedShell>} />
 
       {/* Dashboard visible to every authenticated user (the page itself
           adapts content by role). */}

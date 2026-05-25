@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   activateUser,
+  changePassword,
   deactivateUser,
   deleteUser,
   getUser,
@@ -149,5 +150,12 @@ export function useAcceptInvitationMutation() {
 export function useSendInvitationEmailMutation() {
   return useMutation({
     mutationFn: (userId: number) => sendInvitationEmail(userId),
+  });
+}
+
+export function useChangePasswordMutation() {
+  return useMutation({
+    mutationFn: ({ currentPassword, newPassword }: { currentPassword: string; newPassword: string }) =>
+      changePassword(currentPassword, newPassword),
   });
 }

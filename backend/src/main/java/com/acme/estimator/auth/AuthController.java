@@ -1,7 +1,9 @@
 package com.acme.estimator.auth;
 
+import com.acme.estimator.auth.dto.ChangePasswordRequest;
 import com.acme.estimator.auth.dto.CurrentUserResponse;
 import com.acme.estimator.auth.dto.LoginRequest;
+import com.acme.estimator.common.ApiException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
@@ -14,12 +16,15 @@ import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.context.SecurityContextHolderStrategy;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -35,6 +40,7 @@ public class AuthController {
 
     private final AuthenticationManager authenticationManager;
     private final UserRepository userRepository;
+    private final PasswordEncoder passwordEncoder;
 
     private final SecurityContextHolderStrategy contextHolder = SecurityContextHolder.getContextHolderStrategy();
     private final SecurityContextRepository contextRepository = new HttpSessionSecurityContextRepository();
@@ -74,6 +80,21 @@ public class AuthController {
             session.invalidate();
         }
         contextHolder.clearContext();
+        return ResponseEntity.noContent().build();
+    }
+
+    @PatchMapping("/me/password")
+    public ResponseEntity<Void> changePassword(
+            @Valid @RequestBody ChangePasswordRequest body,
+            @AuthenticationPrincipal AppUserDetails principal
+    ) {
+        User user = userRepository.findById(principal.getUserId())
+            .orElseThrow(() -> ApiException.notFound("User not found."));
+        if (!passwordEncoder.matches(body.currentPassword(), user.getPasswordHash())) {
+            throw ApiException.badRequest("Current password is incorrect.");
+        }
+        user.setPasswordHash(passwordEncoder.encode(body.newPassword()));
+        userRepository.save(user);
         return ResponseEntity.noContent().build();
     }
 

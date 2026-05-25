@@ -129,6 +129,10 @@ export function listUserHistory(id: number): Promise<UserHistoryItem[]> {
   return api(`/admin/users/${id}/history`);
 }
 
+export function changePassword(currentPassword: string, newPassword: string): Promise<void> {
+  return api("/auth/me/password", { method: "PATCH", body: { currentPassword, newPassword } });
+}
+
 export function usersExportUrl(params: ListUsersParams = {}): string {
   return `/api/admin/users/export${toQuery(params as Record<string, unknown>)}`;
 }

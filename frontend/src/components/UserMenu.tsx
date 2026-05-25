@@ -76,7 +76,7 @@ export function UserMenu({ onClose }: UserMenuProps) {
       <button
         type="button"
         role="menuitem"
-        onClick={onClose}
+        onClick={() => { onClose(); navigate("/profile"); }}
         className="w-full flex items-center gap-2.5 px-3.5 py-2 text-small text-near-black hover:bg-warm-gray-light text-left"
       >
         <UserCircle className="w-3.5 h-3.5 text-warm-gray-med" strokeWidth={1.5} />
