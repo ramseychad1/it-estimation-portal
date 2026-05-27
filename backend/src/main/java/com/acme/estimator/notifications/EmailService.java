@@ -1,5 +1,6 @@
 package com.acme.estimator.notifications;
 
+import com.acme.estimator.common.ApiException;
 import com.acme.estimator.settings.AppSettingService;
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.InternetAddress;
@@ -33,27 +34,24 @@ public class EmailService {
         JavaMailSenderImpl sender = buildSender();
         if (sender == null) return;
 
-        String fromName    = settings.getString(KEY_EMAIL_FROM_NAME, "IT Estimation Portal");
-        String fromAddress = settings.getString(KEY_EMAIL_FROM_ADDRESS, "");
-        if (fromAddress.isBlank()) {
-            fromAddress = settings.getString(KEY_EMAIL_SMTP_USERNAME, "");
-        }
-
         try {
-            MimeMessage message = sender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
-            helper.setTo(to);
-            helper.setSubject(subject);
-            helper.setText(htmlBody, true);
-            helper.setFrom(new InternetAddress(fromAddress, fromName));
-            sender.send(message);
+            sender.send(buildMessage(sender, to, subject, htmlBody));
             log.info("Email sent to {} — subject: {}", to, subject);
-        } catch (MessagingException | UnsupportedEncodingException e) {
+        } catch (Exception e) {
+            // Never let email failure roll back a business transaction or crash a caller.
             log.warn("Failed to send email to {}: {}", to, e.getMessage());
         }
     }
 
+    /**
+     * Like sendHtml but throws on failure so the admin UI can surface the reason.
+     * Only called from the test-email endpoint — not from notification handlers.
+     */
     public void sendTestEmail(String toAddress) {
+        JavaMailSenderImpl sender = buildSender();
+        if (sender == null) {
+            throw ApiException.badRequest("SMTP username or password is not configured.");
+        }
         String html = """
             <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:32px 24px">
               <h2 style="color:#1a1a1a;margin:0 0 16px">IT Estimation Portal</h2>
@@ -65,7 +63,27 @@ public class EmailService {
               </p>
             </div>
             """;
-        sendHtml(toAddress, "IT Estimation Portal — Test Email", html);
+        try {
+            sender.send(buildMessage(sender, toAddress, "IT Estimation Portal — Test Email", html));
+        } catch (Exception e) {
+            throw ApiException.badRequest("Could not connect to SMTP server: " + rootMessage(e));
+        }
+    }
+
+    private MimeMessage buildMessage(JavaMailSenderImpl sender, String to, String subject, String htmlBody)
+            throws MessagingException, UnsupportedEncodingException {
+        String fromName    = settings.getString(KEY_EMAIL_FROM_NAME, "IT Estimation Portal");
+        String fromAddress = settings.getString(KEY_EMAIL_FROM_ADDRESS, "");
+        if (fromAddress.isBlank()) {
+            fromAddress = settings.getString(KEY_EMAIL_SMTP_USERNAME, "");
+        }
+        MimeMessage message = sender.createMimeMessage();
+        MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+        helper.setTo(to);
+        helper.setSubject(subject);
+        helper.setText(htmlBody, true);
+        helper.setFrom(new InternetAddress(fromAddress, fromName));
+        return message;
     }
 
     private JavaMailSenderImpl buildSender() {
@@ -88,11 +106,25 @@ public class EmailService {
         Properties props = sender.getJavaMailProperties();
         props.put("mail.transport.protocol", "smtp");
         props.put("mail.smtp.auth", "true");
-        props.put("mail.smtp.starttls.enable", "true");
-        props.put("mail.smtp.connectiontimeout", "5000");
-        props.put("mail.smtp.timeout", "5000");
-        props.put("mail.smtp.writetimeout", "5000");
+        if (port == 465) {
+            // SSL/TLS — encrypted from the first packet (required on Railway; port 587/STARTTLS is blocked)
+            props.put("mail.smtp.ssl.enable", "true");
+            props.put("mail.smtp.ssl.trust", host);
+        } else {
+            // STARTTLS — upgrades a plain connection to TLS (port 587)
+            props.put("mail.smtp.starttls.enable", "true");
+            props.put("mail.smtp.starttls.required", "true");
+        }
+        props.put("mail.smtp.connectiontimeout", "10000");
+        props.put("mail.smtp.timeout", "10000");
+        props.put("mail.smtp.writetimeout", "10000");
 
         return sender;
+    }
+
+    private static String rootMessage(Throwable t) {
+        Throwable cause = t;
+        while (cause.getCause() != null) cause = cause.getCause();
+        return cause.getMessage() != null ? cause.getMessage() : t.getMessage();
     }
 }
