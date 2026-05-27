@@ -4,7 +4,7 @@
 INSERT INTO app_settings (key, value, updated_at, updated_by) VALUES
     ('email_enabled',       'false',                NOW(), NULL),
     ('email_smtp_host',     'smtp.gmail.com',       NOW(), NULL),
-    ('email_smtp_port',     '465',                  NOW(), NULL),
+    ('email_smtp_port',     '587',                  NOW(), NULL),
     ('email_smtp_username', '',                     NOW(), NULL),
     ('email_smtp_password', '',                     NOW(), NULL),
     ('email_from_name',     'IT Estimation Portal', NOW(), NULL),
