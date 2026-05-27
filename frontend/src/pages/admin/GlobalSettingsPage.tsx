@@ -7,6 +7,7 @@ import {
   useUpdateAppSettingsMutation,
 } from "../../lib/queries/pricingReview";
 import { useToast } from "../../components/Toast";
+import { ApiError } from "../../lib/api";
 
 export function GlobalSettingsPage() {
   useEffect(() => {
@@ -22,27 +23,44 @@ export function GlobalSettingsPage() {
   const revenueReviewEnabled = settings["revenue_review_enabled"] === "true";
   const emailEnabled = settings["email_enabled"] === "true";
 
-  // SMTP local form state — populated once settings load
+  // ── Provider selection ──────────────────────────────────────────────────
+  const [emailProvider, setEmailProvider] = useState<"smtp" | "resend">("smtp");
+  const [providerPopulated, setProviderPopulated] = useState(false);
+
+  // ── Resend config ───────────────────────────────────────────────────────
+  const [resendApiKey, setResendApiKey] = useState("");
+  const [resendApiKeyDirty, setResendApiKeyDirty] = useState(false);
+
+  // ── SMTP config ─────────────────────────────────────────────────────────
   const [smtpHost, setSmtpHost] = useState("");
   const [smtpPort, setSmtpPort] = useState("");
   const [smtpUsername, setSmtpUsername] = useState("");
   const [smtpPassword, setSmtpPassword] = useState("");
   const [passwordDirty, setPasswordDirty] = useState(false);
+
+  // ── Shared from fields ──────────────────────────────────────────────────
   const [fromName, setFromName] = useState("");
   const [fromAddress, setFromAddress] = useState("");
+
   const [smtpPopulated, setSmtpPopulated] = useState(false);
 
   // Populate form from loaded settings (once only)
   useEffect(() => {
     if (settingsQuery.data && !smtpPopulated) {
-      setSmtpHost(settingsQuery.data["email_smtp_host"] ?? "smtp.gmail.com");
-      setSmtpPort(settingsQuery.data["email_smtp_port"] ?? "587");
-      setSmtpUsername(settingsQuery.data["email_smtp_username"] ?? "");
-      setFromName(settingsQuery.data["email_from_name"] ?? "IT Estimation Portal");
-      setFromAddress(settingsQuery.data["email_from_address"] ?? "");
+      const d = settingsQuery.data;
+      const provider = (d["email_provider"] ?? "smtp") as "smtp" | "resend";
+      if (!providerPopulated) {
+        setEmailProvider(provider);
+        setProviderPopulated(true);
+      }
+      setSmtpHost(d["email_smtp_host"] ?? "smtp.gmail.com");
+      setSmtpPort(d["email_smtp_port"] ?? "587");
+      setSmtpUsername(d["email_smtp_username"] ?? "");
+      setFromName(d["email_from_name"] ?? "IT Estimation Portal");
+      setFromAddress(d["email_from_address"] ?? "");
       setSmtpPopulated(true);
     }
-  }, [settingsQuery.data, smtpPopulated]);
+  }, [settingsQuery.data, smtpPopulated, providerPopulated]);
 
   // Test email state
   const [testEmailAddress, setTestEmailAddress] = useState("");
@@ -78,24 +96,31 @@ export function GlobalSettingsPage() {
     );
   }
 
-  function handleSaveSmtp() {
+  function handleSaveEmailConfig() {
     const updates: Record<string, string> = {
-      email_smtp_host: smtpHost,
-      email_smtp_port: smtpPort,
-      email_smtp_username: smtpUsername,
+      email_provider: emailProvider,
       email_from_name: fromName,
       email_from_address: fromAddress,
     };
-    if (passwordDirty) {
-      updates["email_smtp_password"] = smtpPassword;
+
+    if (emailProvider === "resend") {
+      if (resendApiKeyDirty) updates["email_resend_api_key"] = resendApiKey;
+    } else {
+      updates["email_smtp_host"] = smtpHost;
+      updates["email_smtp_port"] = smtpPort;
+      updates["email_smtp_username"] = smtpUsername;
+      if (passwordDirty) updates["email_smtp_password"] = smtpPassword;
     }
+
     updateMutation.mutate(updates, {
       onSuccess: () => {
-        toast.success("SMTP settings saved.");
+        toast.success("Email settings saved.");
         setPasswordDirty(false);
         setSmtpPassword("");
+        setResendApiKeyDirty(false);
+        setResendApiKey("");
       },
-      onError: () => toast.error("Failed to save SMTP settings."),
+      onError: () => toast.error("Failed to save email settings."),
     });
   }
 
@@ -107,12 +132,17 @@ export function GlobalSettingsPage() {
         setTestEmailAddress("");
         setShowTestEmailInput(false);
       },
-      onError: () =>
-        toast.error("Failed to send test email. Check your SMTP configuration."),
+      onError: (err) => {
+        const msg =
+          err instanceof ApiError
+            ? (err.body as { message?: string })?.message ?? ""
+            : "";
+        toast.error(msg || "Failed to send test email.");
+      },
     });
   }
 
-  const smtpBusy = settingsQuery.isLoading || updateMutation.isPending;
+  const busy = settingsQuery.isLoading || updateMutation.isPending;
 
   return (
     <div>
@@ -157,186 +187,176 @@ export function GlobalSettingsPage() {
             <Toggle
               checked={emailEnabled}
               onCheckedChange={handleToggleEmailEnabled}
-              disabled={settingsQuery.isLoading || updateMutation.isPending}
+              disabled={busy}
               label="Toggle Email Notifications"
             />
           </SettingRow>
 
-          {/* SMTP config card */}
+          {/* Email config card */}
           <div
             style={{
               marginTop: 24,
-              padding: "20px 24px",
               border: "1px solid var(--color-warm-gray-light)",
               borderRadius: 8,
               background: "var(--color-surface, #fafaf9)",
+              overflow: "hidden",
             }}
           >
-            <div
-              className="font-semibold text-near-black"
-              style={{ fontSize: 13, marginBottom: 16 }}
-            >
-              SMTP Configuration
-            </div>
-
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px 16px" }}>
-              <SmtpField
-                label="Host"
-                value={smtpHost}
-                onChange={setSmtpHost}
-                placeholder="smtp.gmail.com"
-                disabled={smtpBusy}
-              />
-              <SmtpField
-                label="Port"
-                value={smtpPort}
-                onChange={setSmtpPort}
-                placeholder="587"
-                inputMode="numeric"
-                disabled={smtpBusy}
-              />
-              <SmtpField
-                label="Username"
-                value={smtpUsername}
-                onChange={setSmtpUsername}
-                placeholder="you@gmail.com"
-                disabled={smtpBusy}
-                style={{ gridColumn: "1 / -1" }}
-              />
-              <SmtpField
-                label="Password / App Password"
-                value={smtpPassword}
-                onChange={(v) => { setSmtpPassword(v); setPasswordDirty(true); }}
-                placeholder="Leave blank to keep existing password"
-                type="password"
-                disabled={smtpBusy}
-                style={{ gridColumn: "1 / -1" }}
-              />
-              <SmtpField
-                label="From Name"
-                value={fromName}
-                onChange={setFromName}
-                placeholder="IT Estimation Portal"
-                disabled={smtpBusy}
-              />
-              <SmtpField
-                label='From Address ("Send mail as" alias)'
-                value={fromAddress}
-                onChange={setFromAddress}
-                placeholder="Leave blank to use Username"
-                disabled={smtpBusy}
-              />
-            </div>
-
+            {/* Provider tabs */}
             <div
               style={{
-                marginTop: 16,
                 display: "flex",
-                alignItems: "center",
-                gap: 8,
-                flexWrap: "wrap",
+                borderBottom: "1px solid var(--color-warm-gray-light)",
               }}
             >
-              <button
-                onClick={handleSaveSmtp}
-                disabled={smtpBusy}
-                className="font-medium"
+              {(["resend", "smtp"] as const).map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => setEmailProvider(p)}
+                  style={{
+                    flex: 1,
+                    padding: "10px 0",
+                    fontSize: 13,
+                    fontWeight: emailProvider === p ? 600 : 400,
+                    background: emailProvider === p ? "#fff" : "transparent",
+                    border: "none",
+                    borderBottom:
+                      emailProvider === p
+                        ? "2px solid var(--color-near-black)"
+                        : "2px solid transparent",
+                    cursor: "pointer",
+                    color:
+                      emailProvider === p
+                        ? "var(--color-near-black)"
+                        : "var(--color-warm-gray-med)",
+                  }}
+                >
+                  {p === "resend" ? "Resend (recommended)" : "SMTP"}
+                </button>
+              ))}
+            </div>
+
+            <div style={{ padding: "20px 24px" }}>
+              {emailProvider === "resend" ? (
+                <ResendConfig
+                  apiKey={resendApiKey}
+                  onApiKeyChange={(v) => { setResendApiKey(v); setResendApiKeyDirty(true); }}
+                  fromName={fromName}
+                  onFromNameChange={setFromName}
+                  fromAddress={fromAddress}
+                  onFromAddressChange={setFromAddress}
+                  disabled={busy}
+                />
+              ) : (
+                <SmtpConfig
+                  host={smtpHost}
+                  onHostChange={setSmtpHost}
+                  port={smtpPort}
+                  onPortChange={setSmtpPort}
+                  username={smtpUsername}
+                  onUsernameChange={setSmtpUsername}
+                  password={smtpPassword}
+                  onPasswordChange={(v) => { setSmtpPassword(v); setPasswordDirty(true); }}
+                  fromName={fromName}
+                  onFromNameChange={setFromName}
+                  fromAddress={fromAddress}
+                  onFromAddressChange={setFromAddress}
+                  disabled={busy}
+                />
+              )}
+
+              {/* Save + test row */}
+              <div
                 style={{
-                  padding: "7px 16px",
-                  background: "var(--color-near-black, #1a1a1a)",
-                  color: "#fff",
-                  border: "none",
-                  borderRadius: 6,
-                  fontSize: 13,
-                  cursor: smtpBusy ? "not-allowed" : "pointer",
-                  opacity: smtpBusy ? 0.6 : 1,
+                  marginTop: 20,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  flexWrap: "wrap",
                 }}
               >
-                {updateMutation.isPending ? "Saving…" : "Save SMTP Settings"}
-              </button>
+                <button
+                  onClick={handleSaveEmailConfig}
+                  disabled={busy}
+                  className="font-medium"
+                  style={{
+                    padding: "7px 16px",
+                    background: "var(--color-near-black, #1a1a1a)",
+                    color: "#fff",
+                    border: "none",
+                    borderRadius: 6,
+                    fontSize: 13,
+                    cursor: busy ? "not-allowed" : "pointer",
+                    opacity: busy ? 0.6 : 1,
+                  }}
+                >
+                  {updateMutation.isPending ? "Saving…" : "Save Settings"}
+                </button>
 
-              {showTestEmailInput ? (
-                <>
-                  <input
-                    type="email"
-                    value={testEmailAddress}
-                    onChange={(e) => setTestEmailAddress(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && handleSendTestEmail()}
-                    placeholder="Recipient address"
-                    style={{
-                      padding: "6px 10px",
-                      border: "1px solid var(--color-warm-gray-light)",
-                      borderRadius: 6,
-                      fontSize: 13,
-                      width: 200,
-                    }}
-                    autoFocus
-                  />
+                {showTestEmailInput ? (
+                  <>
+                    <input
+                      type="email"
+                      value={testEmailAddress}
+                      onChange={(e) => setTestEmailAddress(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && handleSendTestEmail()}
+                      placeholder="Recipient address"
+                      style={{
+                        padding: "6px 10px",
+                        border: "1px solid var(--color-warm-gray-light)",
+                        borderRadius: 6,
+                        fontSize: 13,
+                        width: 200,
+                      }}
+                      autoFocus
+                    />
+                    <button
+                      onClick={handleSendTestEmail}
+                      disabled={testEmailMutation.isPending || !testEmailAddress.trim()}
+                      style={{
+                        padding: "7px 14px",
+                        background: "transparent",
+                        border: "1px solid var(--color-warm-gray-light)",
+                        borderRadius: 6,
+                        fontSize: 13,
+                        cursor: testEmailMutation.isPending ? "not-allowed" : "pointer",
+                        opacity: testEmailMutation.isPending ? 0.6 : 1,
+                      }}
+                    >
+                      {testEmailMutation.isPending ? "Sending…" : "Send"}
+                    </button>
+                    <button
+                      onClick={() => { setShowTestEmailInput(false); setTestEmailAddress(""); }}
+                      style={{
+                        padding: "7px 10px",
+                        background: "transparent",
+                        border: "none",
+                        fontSize: 13,
+                        color: "var(--color-warm-gray-med)",
+                        cursor: "pointer",
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </>
+                ) : (
                   <button
-                    onClick={handleSendTestEmail}
-                    disabled={testEmailMutation.isPending || !testEmailAddress.trim()}
-                    className="font-medium"
+                    onClick={() => setShowTestEmailInput(true)}
                     style={{
                       padding: "7px 14px",
                       background: "transparent",
                       border: "1px solid var(--color-warm-gray-light)",
                       borderRadius: 6,
                       fontSize: 13,
-                      cursor: testEmailMutation.isPending ? "not-allowed" : "pointer",
-                      opacity: testEmailMutation.isPending ? 0.6 : 1,
-                    }}
-                  >
-                    {testEmailMutation.isPending ? "Sending…" : "Send"}
-                  </button>
-                  <button
-                    onClick={() => { setShowTestEmailInput(false); setTestEmailAddress(""); }}
-                    style={{
-                      padding: "7px 10px",
-                      background: "transparent",
-                      border: "none",
-                      fontSize: 13,
-                      color: "var(--color-warm-gray-med)",
                       cursor: "pointer",
                     }}
                   >
-                    Cancel
+                    Send Test Email
                   </button>
-                </>
-              ) : (
-                <button
-                  onClick={() => setShowTestEmailInput(true)}
-                  style={{
-                    padding: "7px 14px",
-                    background: "transparent",
-                    border: "1px solid var(--color-warm-gray-light)",
-                    borderRadius: 6,
-                    fontSize: 13,
-                    cursor: "pointer",
-                  }}
-                >
-                  Send Test Email
-                </button>
-              )}
+                )}
+              </div>
             </div>
-
-            <p
-              className="text-warm-gray-med"
-              style={{ fontSize: 12, marginTop: 12, lineHeight: 1.5 }}
-            >
-              Use a Gmail <strong>App Password</strong> (not your regular password) — generate one
-              at{" "}
-              <a
-                href="https://myaccount.google.com/apppasswords"
-                target="_blank"
-                rel="noreferrer"
-                style={{ color: "inherit", textDecoration: "underline" }}
-              >
-                myaccount.google.com/apppasswords
-              </a>
-              . The <em>From Address</em> field supports Gmail{" "}
-              <strong>&ldquo;Send mail as&rdquo;</strong> verified aliases — leave it blank to
-              send from your Username address.
-            </p>
           </div>
         </section>
       </div>
@@ -344,65 +364,139 @@ export function GlobalSettingsPage() {
   );
 }
 
-// ── Sub-components ──────────────────────────────────────────────────────────
+// ── Provider config sections ─────────────────────────────────────────────────
 
-function SettingRow({
-  label,
-  description,
-  children,
+function ResendConfig({
+  apiKey, onApiKeyChange,
+  fromName, onFromNameChange,
+  fromAddress, onFromAddressChange,
+  disabled,
 }: {
-  label: string;
-  description: string;
-  children: React.ReactNode;
+  apiKey: string; onApiKeyChange: (v: string) => void;
+  fromName: string; onFromNameChange: (v: string) => void;
+  fromAddress: string; onFromAddressChange: (v: string) => void;
+  disabled?: boolean;
 }) {
   return (
-    <div
-      className="flex items-start justify-between gap-6"
-      style={{
-        padding: "16px 0",
-        borderBottom: "1px solid var(--color-warm-gray-light)",
-      }}
-    >
-      <div style={{ flex: 1 }}>
-        <div className="font-medium text-near-black" style={{ fontSize: 14 }}>
-          {label}
-        </div>
-        <div className="text-warm-gray-med" style={{ fontSize: 13, marginTop: 4 }}>
-          {description}
-        </div>
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <ConfigField
+        label="API Key"
+        value={apiKey}
+        onChange={onApiKeyChange}
+        placeholder="re_xxxxxxxxxxxxxxxxxxxx  (leave blank to keep existing)"
+        type="password"
+        disabled={disabled}
+        style={{ gridColumn: "1 / -1" }}
+      />
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px 16px" }}>
+        <ConfigField
+          label="From Name"
+          value={fromName}
+          onChange={onFromNameChange}
+          placeholder="IT Estimation Portal"
+          disabled={disabled}
+        />
+        <ConfigField
+          label="From Address"
+          value={fromAddress}
+          onChange={onFromAddressChange}
+          placeholder="noreply@yourdomain.com"
+          disabled={disabled}
+        />
       </div>
-      <div className="flex-none" style={{ paddingTop: 2 }}>
-        {children}
-      </div>
+      <p className="text-warm-gray-med" style={{ fontSize: 12, lineHeight: 1.5, margin: 0 }}>
+        Get your API key from{" "}
+        <a
+          href="https://resend.com/api-keys"
+          target="_blank"
+          rel="noreferrer"
+          style={{ color: "inherit", textDecoration: "underline" }}
+        >
+          resend.com/api-keys
+        </a>
+        . The <em>From Address</em> must be on a domain you've verified in Resend.
+        Free tier: 3,000 emails/month.
+      </p>
     </div>
   );
 }
 
-function SmtpField({
-  label,
-  value,
-  onChange,
-  placeholder,
-  type = "text",
-  inputMode,
+function SmtpConfig({
+  host, onHostChange,
+  port, onPortChange,
+  username, onUsernameChange,
+  password, onPasswordChange,
+  fromName, onFromNameChange,
+  fromAddress, onFromAddressChange,
   disabled,
-  style,
 }: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-  type?: string;
-  inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"];
+  host: string; onHostChange: (v: string) => void;
+  port: string; onPortChange: (v: string) => void;
+  username: string; onUsernameChange: (v: string) => void;
+  password: string; onPasswordChange: (v: string) => void;
+  fromName: string; onFromNameChange: (v: string) => void;
+  fromAddress: string; onFromAddressChange: (v: string) => void;
   disabled?: boolean;
-  style?: React.CSSProperties;
+}) {
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px 16px" }}>
+      <ConfigField label="Host" value={host} onChange={onHostChange} placeholder="smtp.gmail.com" disabled={disabled} />
+      <ConfigField label="Port" value={port} onChange={onPortChange} placeholder="587" inputMode="numeric" disabled={disabled} />
+      <ConfigField label="Username" value={username} onChange={onUsernameChange} placeholder="you@gmail.com" disabled={disabled} style={{ gridColumn: "1 / -1" }} />
+      <ConfigField
+        label="Password / App Password"
+        value={password}
+        onChange={onPasswordChange}
+        placeholder="Leave blank to keep existing password"
+        type="password"
+        disabled={disabled}
+        style={{ gridColumn: "1 / -1" }}
+      />
+      <ConfigField label="From Name" value={fromName} onChange={onFromNameChange} placeholder="IT Estimation Portal" disabled={disabled} />
+      <ConfigField label='From Address ("Send mail as" alias)' value={fromAddress} onChange={onFromAddressChange} placeholder="Leave blank to use Username" disabled={disabled} />
+      <p className="text-warm-gray-med" style={{ fontSize: 12, lineHeight: 1.5, margin: 0, gridColumn: "1 / -1" }}>
+        Use a Gmail <strong>App Password</strong> — generate one at{" "}
+        <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noreferrer" style={{ color: "inherit", textDecoration: "underline" }}>
+          myaccount.google.com/apppasswords
+        </a>
+        . Note: Gmail SMTP may be blocked on some cloud hosting providers.
+      </p>
+    </div>
+  );
+}
+
+// ── Shared sub-components ────────────────────────────────────────────────────
+
+function SettingRow({
+  label, description, children,
+}: {
+  label: string; description: string; children: React.ReactNode;
+}) {
+  return (
+    <div
+      className="flex items-start justify-between gap-6"
+      style={{ padding: "16px 0", borderBottom: "1px solid var(--color-warm-gray-light)" }}
+    >
+      <div style={{ flex: 1 }}>
+        <div className="font-medium text-near-black" style={{ fontSize: 14 }}>{label}</div>
+        <div className="text-warm-gray-med" style={{ fontSize: 13, marginTop: 4 }}>{description}</div>
+      </div>
+      <div className="flex-none" style={{ paddingTop: 2 }}>{children}</div>
+    </div>
+  );
+}
+
+function ConfigField({
+  label, value, onChange, placeholder, type = "text", inputMode, disabled, style,
+}: {
+  label: string; value: string; onChange: (v: string) => void;
+  placeholder?: string; type?: string;
+  inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"];
+  disabled?: boolean; style?: React.CSSProperties;
 }) {
   return (
     <div style={style}>
-      <label
-        className="text-near-black"
-        style={{ fontSize: 12, fontWeight: 500, display: "block", marginBottom: 4 }}
-      >
+      <label style={{ fontSize: 12, fontWeight: 500, display: "block", marginBottom: 4, color: "var(--color-near-black)" }}>
         {label}
       </label>
       <input

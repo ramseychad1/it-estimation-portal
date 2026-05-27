@@ -15,13 +15,15 @@ public class AppSettingService {
 
     static final String KEY_REVENUE_REVIEW_ENABLED = "revenue_review_enabled";
 
-    public static final String KEY_EMAIL_ENABLED       = "email_enabled";
-    public static final String KEY_EMAIL_SMTP_HOST     = "email_smtp_host";
-    public static final String KEY_EMAIL_SMTP_PORT     = "email_smtp_port";
-    public static final String KEY_EMAIL_SMTP_USERNAME = "email_smtp_username";
-    public static final String KEY_EMAIL_SMTP_PASSWORD = "email_smtp_password";
-    public static final String KEY_EMAIL_FROM_NAME     = "email_from_name";
-    public static final String KEY_EMAIL_FROM_ADDRESS  = "email_from_address";
+    public static final String KEY_EMAIL_ENABLED        = "email_enabled";
+    public static final String KEY_EMAIL_PROVIDER       = "email_provider";   // "smtp" | "resend"
+    public static final String KEY_EMAIL_SMTP_HOST      = "email_smtp_host";
+    public static final String KEY_EMAIL_SMTP_PORT      = "email_smtp_port";
+    public static final String KEY_EMAIL_SMTP_USERNAME  = "email_smtp_username";
+    public static final String KEY_EMAIL_SMTP_PASSWORD  = "email_smtp_password";
+    public static final String KEY_EMAIL_FROM_NAME      = "email_from_name";
+    public static final String KEY_EMAIL_FROM_ADDRESS   = "email_from_address";
+    public static final String KEY_EMAIL_RESEND_API_KEY = "email_resend_api_key";
 
     private final AppSettingRepository repo;
 

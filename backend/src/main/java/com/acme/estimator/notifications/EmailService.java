@@ -6,57 +6,65 @@ import jakarta.mail.MessagingException;
 import jakarta.mail.internet.InternetAddress;
 import jakarta.mail.internet.MimeMessage;
 import java.io.UnsupportedEncodingException;
+import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.mail.javamail.JavaMailSenderImpl;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.RestTemplate;
 
 import static com.acme.estimator.settings.AppSettingService.*;
 
 /**
- * Sends HTML emails via a dynamically configured JavaMailSenderImpl.
- * SMTP settings are read from app_settings on each call so that admin
- * changes take effect immediately without a restart.
+ * Sends HTML emails via either Resend (HTTP API) or JavaMail (SMTP).
+ * Provider is selected by the email_provider setting ("resend" or "smtp").
+ * Settings are read from app_settings on each call so admin changes take
+ * effect immediately without a restart.
  *
- * email_from_address supports Gmail "Send mail as" verified aliases.
- * Leave it blank to use email_smtp_username as the From address.
+ * Railway blocks outbound SMTP (ports 587 and 465 both time out due to
+ * Google Cloud IP restrictions). Use Resend for production deployments on Railway.
  */
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class EmailService {
 
+    private static final String PROVIDER_RESEND = "resend";
+
     private final AppSettingService settings;
 
+    /**
+     * Fire-and-forget send. Logs on failure, never throws.
+     * Used by NotificationService so email errors can never roll back a business transaction.
+     */
     public void sendHtml(String to, String subject, String htmlBody) {
-        JavaMailSenderImpl sender = buildSender();
-        if (sender == null) return;
-
         try {
-            sender.send(buildMessage(sender, to, subject, htmlBody));
+            dispatch(to, subject, htmlBody);
             log.info("Email sent to {} — subject: {}", to, subject);
         } catch (Exception e) {
-            // Never let email failure roll back a business transaction or crash a caller.
             log.warn("Failed to send email to {}: {}", to, e.getMessage());
         }
     }
 
     /**
-     * Like sendHtml but throws on failure so the admin UI can surface the reason.
-     * Only called from the test-email endpoint — not from notification handlers.
+     * Same send but throws ApiException on failure so the admin UI gets a real error message.
+     * Only called from the test-email endpoint.
      */
     public void sendTestEmail(String toAddress) {
-        JavaMailSenderImpl sender = buildSender();
-        if (sender == null) {
-            throw ApiException.badRequest("SMTP username or password is not configured.");
-        }
         String html = """
             <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:32px 24px">
               <h2 style="color:#1a1a1a;margin:0 0 16px">IT Estimation Portal</h2>
               <p style="color:#555;line-height:1.6;margin:0 0 24px">
-                This is a test email confirming that your SMTP configuration is working correctly.
+                This is a test email confirming that your email configuration is working correctly.
               </p>
               <p style="color:#888;font-size:13px;margin:0">
                 This message was sent from the IT Estimation Portal notification system.
@@ -64,10 +72,75 @@ public class EmailService {
             </div>
             """;
         try {
-            sender.send(buildMessage(sender, toAddress, "IT Estimation Portal — Test Email", html));
+            dispatch(toAddress, "IT Estimation Portal — Test Email", html);
         } catch (Exception e) {
-            throw ApiException.badRequest("Could not connect to SMTP server: " + rootMessage(e));
+            throw ApiException.badRequest("Could not send email: " + rootMessage(e));
         }
+    }
+
+    // ---- internal -------------------------------------------------------
+
+    private void dispatch(String to, String subject, String htmlBody) throws Exception {
+        String provider = settings.getString(KEY_EMAIL_PROVIDER, "smtp");
+        if (PROVIDER_RESEND.equalsIgnoreCase(provider)) {
+            sendViaResend(to, subject, htmlBody);
+        } else {
+            sendViaSmtp(to, subject, htmlBody);
+        }
+    }
+
+    // ---- Resend ----------------------------------------------------------
+
+    private void sendViaResend(String to, String subject, String htmlBody) {
+        String apiKey = settings.getString(KEY_EMAIL_RESEND_API_KEY, "");
+        if (apiKey.isBlank()) {
+            throw new IllegalStateException("Resend API key is not configured.");
+        }
+
+        String fromName    = settings.getString(KEY_EMAIL_FROM_NAME, "IT Estimation Portal");
+        String fromAddress = settings.getString(KEY_EMAIL_FROM_ADDRESS, "");
+        if (fromAddress.isBlank()) {
+            fromAddress = settings.getString(KEY_EMAIL_SMTP_USERNAME, "");
+        }
+        String from = fromAddress.isBlank()
+            ? fromName
+            : fromName + " <" + fromAddress + ">";
+
+        Map<String, Object> body = Map.of(
+            "from", from,
+            "to", List.of(to),
+            "subject", subject,
+            "html", htmlBody
+        );
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(apiKey);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
+        try {
+            ResponseEntity<Map<String, Object>> response = new RestTemplate().exchange(
+                "https://api.resend.com/emails",
+                HttpMethod.POST,
+                new HttpEntity<>(body, headers),
+                new org.springframework.core.ParameterizedTypeReference<>() {}
+            );
+            if (!response.getStatusCode().is2xxSuccessful()) {
+                throw new IllegalStateException("Resend returned " + response.getStatusCode());
+            }
+        } catch (HttpClientErrorException e) {
+            throw new IllegalStateException("Resend API error: " + e.getResponseBodyAsString(), e);
+        }
+    }
+
+    // ---- SMTP ------------------------------------------------------------
+
+    private void sendViaSmtp(String to, String subject, String htmlBody)
+            throws MessagingException, UnsupportedEncodingException {
+        JavaMailSenderImpl sender = buildSmtpSender();
+        if (sender == null) {
+            throw new IllegalStateException("SMTP username or password is not configured.");
+        }
+        sender.send(buildMessage(sender, to, subject, htmlBody));
     }
 
     private MimeMessage buildMessage(JavaMailSenderImpl sender, String to, String subject, String htmlBody)
@@ -86,14 +159,13 @@ public class EmailService {
         return message;
     }
 
-    private JavaMailSenderImpl buildSender() {
+    private JavaMailSenderImpl buildSmtpSender() {
         String host     = settings.getString(KEY_EMAIL_SMTP_HOST, "smtp.gmail.com");
         int    port     = settings.getInt(KEY_EMAIL_SMTP_PORT, 587);
         String username = settings.getString(KEY_EMAIL_SMTP_USERNAME, "");
         String password = settings.getString(KEY_EMAIL_SMTP_PASSWORD, "");
 
         if (username.isBlank() || password.isBlank()) {
-            log.warn("Email SMTP username or password is not configured — skipping send");
             return null;
         }
 
@@ -107,11 +179,9 @@ public class EmailService {
         props.put("mail.transport.protocol", "smtp");
         props.put("mail.smtp.auth", "true");
         if (port == 465) {
-            // SSL/TLS — encrypted from the first packet (required on Railway; port 587/STARTTLS is blocked)
             props.put("mail.smtp.ssl.enable", "true");
             props.put("mail.smtp.ssl.trust", host);
         } else {
-            // STARTTLS — upgrades a plain connection to TLS (port 587)
             props.put("mail.smtp.starttls.enable", "true");
             props.put("mail.smtp.starttls.required", "true");
         }
@@ -121,6 +191,8 @@ public class EmailService {
 
         return sender;
     }
+
+    // ---- util ------------------------------------------------------------
 
     private static String rootMessage(Throwable t) {
         Throwable cause = t;
