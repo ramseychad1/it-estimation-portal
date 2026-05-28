@@ -43,7 +43,7 @@ public class NotificationService {
         for (User so : e.soRecipients()) {
             email.sendHtml(
                 so.getEmail(),
-                "New estimate item ready for review — " + e.productName(),
+                "New estimate ready for review — " + e.requestTitle(),
                 renderItemSubmitted(so, e)
             );
         }
@@ -59,7 +59,7 @@ public class NotificationService {
         if (e.requester() == null) return;
         email.sendHtml(
             e.requester().getEmail(),
-            "Your estimate item has been approved — " + e.productName(),
+            "Your estimate has been approved — " + e.requestTitle(),
             renderItemApproved(e)
         );
     }
@@ -102,7 +102,7 @@ public class NotificationService {
         if (!settings.isEmailEnabled()) return;
         email.sendHtml(
             e.requester().getEmail(),
-            "Your estimate item needs revision — " + e.productName(),
+            "Your estimate item needs revision — " + e.requestTitle(),
             renderItemRejected(e)
         );
     }
@@ -113,7 +113,7 @@ public class NotificationService {
         if (!settings.isEmailEnabled()) return;
         email.sendHtml(
             e.requester().getEmail(),
-            "Clarification requested on your estimate — " + e.productName(),
+            "Clarification requested on your estimate — " + e.requestTitle(),
             renderItemNeedsClarification(e)
         );
     }
@@ -125,7 +125,7 @@ public class NotificationService {
         if (e.reviewer() == null) return;
         email.sendHtml(
             e.reviewer().getEmail(),
-            "Clarification received — " + e.productName(),
+            "Clarification received — " + e.requestTitle(),
             renderClarificationResponded(e)
         );
     }
@@ -137,7 +137,7 @@ public class NotificationService {
         if (e.reviewer() == null) return;
         email.sendHtml(
             e.reviewer().getEmail(),
-            "Estimate item recalled — " + e.productName(),
+            "Estimate item recalled — " + e.requestTitle(),
             renderItemRecalled(e)
         );
     }
@@ -148,7 +148,7 @@ public class NotificationService {
         if (!settings.isEmailEnabled()) return;
         email.sendHtml(
             e.requester().getEmail(),
-            "Estimate approval withdrawn — " + e.productName(),
+            "Estimate approval withdrawn — " + e.requestTitle(),
             renderItemSentBack(e)
         );
     }
