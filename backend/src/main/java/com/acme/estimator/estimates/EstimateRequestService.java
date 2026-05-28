@@ -67,6 +67,7 @@ import com.acme.estimator.notifications.ItemRecalledEvent;
 import com.acme.estimator.notifications.ItemRejectedEvent;
 import com.acme.estimator.notifications.ItemSentBackEvent;
 import com.acme.estimator.notifications.ItemSubmittedEvent;
+import com.acme.estimator.notifications.RequestSentToPricingReviewEvent;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
@@ -878,6 +879,10 @@ public class EstimateRequestService {
                 && request.getPricingReviewStatus() == null) {
             request.setPricingReviewStatus("PENDING");
             requestRepository.save(request);
+            List<User> revenueManagers = userRepository.findActiveUsersByRoleName("Revenue Manager");
+            eventPublisher.publishEvent(new RequestSentToPricingReviewEvent(
+                requestId, request.getTitle(), requester, revenueManagers
+            ));
         }
 
         return toDetail(request, reviewer);

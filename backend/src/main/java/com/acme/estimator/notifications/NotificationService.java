@@ -53,10 +53,46 @@ public class NotificationService {
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void handle(ItemApprovedEvent e) {
         if (!settings.isEmailEnabled()) return;
+        // When revenue review is enabled, the request moves to pricing review after all items are
+        // approved — the RequestSentToPricingReviewEvent handles the requester notification instead.
+        if (settings.isRevenueReviewEnabled()) return;
+        if (e.requester() == null) return;
         email.sendHtml(
             e.requester().getEmail(),
             "Your estimate item has been approved — " + e.productName(),
             renderItemApproved(e)
+        );
+    }
+
+    @Async
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    public void handle(RequestSentToPricingReviewEvent e) {
+        if (!settings.isEmailEnabled()) return;
+        if (e.requester() != null) {
+            email.sendHtml(
+                e.requester().getEmail(),
+                "Your estimate is now in Client Pricing Review — " + e.requestTitle(),
+                renderSentToPricingReview(e)
+            );
+        }
+        for (User rm : e.revenueManagers()) {
+            email.sendHtml(
+                rm.getEmail(),
+                "New estimate ready for Client Pricing Review — " + e.requestTitle(),
+                renderPricingReviewReady(rm, e)
+            );
+        }
+    }
+
+    @Async
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    public void handle(PricingReviewApprovedEvent e) {
+        if (!settings.isEmailEnabled()) return;
+        if (e.requester() == null) return;
+        email.sendHtml(
+            e.requester().getEmail(),
+            "Your estimate is fully approved — " + e.requestTitle(),
+            renderPricingReviewApproved(e)
         );
     }
 
@@ -213,6 +249,36 @@ public class NotificationService {
             "An approved estimate item has been sent back for re-review by an administrator.",
             "<strong>Request:</strong> " + esc(e.requestTitle()) + "<br>" +
             "<strong>Product:</strong> " + esc(e.productName()),
+            "View Estimate", link
+        );
+    }
+
+    private String renderSentToPricingReview(RequestSentToPricingReviewEvent e) {
+        String link = portalLink("/requests/" + e.requestId());
+        return frame(
+            "Hi " + firstName(e.requester()) + ",",
+            "Your estimate has been reviewed and approved by the Solution Owner and is now in Client Pricing Review.",
+            "<strong>Request:</strong> " + esc(e.requestTitle()),
+            "View Estimate", link
+        );
+    }
+
+    private String renderPricingReviewReady(User rm, RequestSentToPricingReviewEvent e) {
+        String link = portalLink("/pricing-review");
+        return frame(
+            "Hi " + firstName(rm) + ",",
+            "A new estimate is ready for Client Pricing Review.",
+            "<strong>Request:</strong> " + esc(e.requestTitle()),
+            "Open Pricing Review Queue", link
+        );
+    }
+
+    private String renderPricingReviewApproved(PricingReviewApprovedEvent e) {
+        String link = portalLink("/requests/" + e.requestId());
+        return frame(
+            "Hi " + firstName(e.requester()) + ",",
+            "Your estimate has completed Client Pricing Review and is now fully approved.",
+            "<strong>Request:</strong> " + esc(e.requestTitle()),
             "View Estimate", link
         );
     }

@@ -4,15 +4,18 @@ import com.acme.estimator.audit.AuditService;
 import com.acme.estimator.audit.ChangeAction;
 import com.acme.estimator.auth.AppUserDetails;
 import com.acme.estimator.auth.User;
+import com.acme.estimator.auth.UserRepository;
 import com.acme.estimator.common.ApiException;
 import com.acme.estimator.estimates.dto.EstimateRequestDetail;
 import com.acme.estimator.estimates.dto.RmItemOverrideInput;
 import com.acme.estimator.estimates.dto.SavePricingReviewRequest;
+import com.acme.estimator.notifications.PricingReviewApprovedEvent;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -38,6 +41,8 @@ public class PricingReviewService {
     private final EstimateRequestItemRepository itemRepository;
     private final AuditService auditService;
     private final EstimateRequestService estimateRequestService;
+    private final UserRepository userRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     // ---- reads ---------------------------------------------------------------
 
@@ -107,6 +112,10 @@ public class PricingReviewService {
             "Revenue Manager approved pricing review for '" + request.getTitle() + "'."
                 + (dto.discountPct() != null ? " Discount: " + dto.discountPct() + "%." : "")
         );
+        User requester = userRepository.findById(request.getRequesterId()).orElse(null);
+        eventPublisher.publishEvent(new PricingReviewApprovedEvent(
+            requestId, request.getTitle(), requester
+        ));
         return estimateRequestService.toDetail(request, actor);
     }
 

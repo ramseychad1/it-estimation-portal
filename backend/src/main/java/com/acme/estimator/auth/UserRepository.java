@@ -61,4 +61,13 @@ public interface UserRepository
     )
     java.util.Set<Long> findTeamIdsByUserId(
         @org.springframework.data.repository.query.Param("userId") Long userId);
+
+    /** Notification routing: finds all ACTIVE users holding the given role name (e.g. "Revenue Manager"). */
+    @org.springframework.data.jpa.repository.Query("""
+        SELECT DISTINCT u FROM User u JOIN u.roles r
+        WHERE r.name = :roleName
+        AND u.invitationStatus = com.acme.estimator.auth.InvitationStatus.ACTIVE
+    """)
+    java.util.List<User> findActiveUsersByRoleName(
+        @org.springframework.data.repository.query.Param("roleName") String roleName);
 }

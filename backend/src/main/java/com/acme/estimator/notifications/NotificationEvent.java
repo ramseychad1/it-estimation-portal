@@ -15,5 +15,7 @@ public sealed interface NotificationEvent
         ClarificationRespondedEvent,
         ItemRecalledEvent,
         ItemSentBackEvent,
-        InvitationEmailRequestedEvent {
+        InvitationEmailRequestedEvent,
+        RequestSentToPricingReviewEvent,
+        PricingReviewApprovedEvent {
 }
