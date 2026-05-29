@@ -1,5 +1,7 @@
 ALTER TABLE users
-    ADD COLUMN IF NOT EXISTS notifications_enabled BOOLEAN NOT NULL DEFAULT TRUE;
+    ADD COLUMN IF NOT EXISTS notifications_enabled BOOLEAN NOT NULL DEFAULT FALSE;
+
+UPDATE users SET notifications_enabled = FALSE WHERE notifications_enabled = TRUE;
 
 CREATE TABLE user_notification_preferences (
     id                  BIGSERIAL PRIMARY KEY,

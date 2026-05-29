@@ -73,7 +73,7 @@ public class User {
     private OffsetDateTime lastActiveAt;
 
     @Column(name = "notifications_enabled", nullable = false)
-    private boolean notificationsEnabled = true;
+    private boolean notificationsEnabled = false;
 
     @Column(name = "created_at", nullable = false, updatable = false, insertable = false)
     private OffsetDateTime createdAt;

@@ -2,6 +2,7 @@ package com.acme.estimator.notifications;
 
 import com.acme.estimator.auth.User;
 import com.acme.estimator.auth.UserRepository;
+import com.acme.estimator.settings.AppSettingService;
 import java.time.OffsetDateTime;
 import java.util.Arrays;
 import java.util.List;
@@ -18,6 +19,7 @@ public class NotificationPreferenceService {
 
     private final UserRepository userRepo;
     private final UserNotificationPreferenceRepository prefRepo;
+    private final AppSettingService appSettings;
 
     @Transactional(readOnly = true)
     public NotificationPrefsResponse getPrefs(Long userId) {
@@ -42,7 +44,7 @@ public class NotificationPreferenceService {
             })
             .toList();
 
-        return new NotificationPrefsResponse(user.isNotificationsEnabled(), items);
+        return new NotificationPrefsResponse(appSettings.isEmailEnabled(), user.isNotificationsEnabled(), items);
     }
 
     @Transactional

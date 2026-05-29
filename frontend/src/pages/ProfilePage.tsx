@@ -207,7 +207,9 @@ function NotificationPrefsCard({
   onToggleMaster: (next: boolean) => void;
   onToggleType: (type: string, next: boolean) => void;
 }) {
+  const globalOff = !data.globalEmailEnabled;
   const masterOn = data.masterEnabled;
+
   return (
     <div
       className="bg-white rounded-lg"
@@ -215,7 +217,7 @@ function NotificationPrefsCard({
     >
       {/* Header row with master toggle */}
       <div
-        className="px-5 py-4 flex items-center justify-between border-b"
+        className={`px-5 py-4 flex items-center justify-between border-b ${globalOff ? "opacity-50" : ""}`}
         style={{ borderColor: "var(--color-warm-gray-light)" }}
       >
         <div>
@@ -229,13 +231,29 @@ function NotificationPrefsCard({
         <Toggle
           checked={masterOn}
           onCheckedChange={onToggleMaster}
+          disabled={globalOff}
           label="Toggle all email notifications"
         />
       </div>
 
-      {/* Individual toggles */}
-      <div className={masterOn ? "" : "opacity-50 pointer-events-none"}>
-        {!masterOn && (
+      {/* Global-off banner */}
+      {globalOff && (
+        <div
+          className="px-5 py-3 border-b"
+          style={{
+            borderColor: "var(--color-warm-gray-light)",
+            background: "var(--color-warm-gray-light)",
+          }}
+        >
+          <p className="text-warm-gray-med" style={{ fontSize: 13 }}>
+            Email notifications are disabled system-wide. An administrator must enable email in Global Settings before individual preferences take effect.
+          </p>
+        </div>
+      )}
+
+      {/* Individual toggles — muted when master or global is off */}
+      <div className={!globalOff && masterOn ? "" : "opacity-50 pointer-events-none"}>
+        {!globalOff && !masterOn && (
           <div className="px-5 pt-4 pb-2">
             <p className="text-warm-gray-med" style={{ fontSize: 13 }}>
               Turn on email notifications above to manage individual types.

@@ -9,6 +9,7 @@ export interface NotificationPrefItem {
 }
 
 export interface NotificationPrefsResponse {
+  globalEmailEnabled: boolean;
   masterEnabled: boolean;
   preferences: NotificationPrefItem[];
 }
