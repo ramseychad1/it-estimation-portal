@@ -33,7 +33,7 @@ public class GmailOAuthController {
 
     private static final String GMAIL_AUTH_URL   = "https://accounts.google.com/o/oauth2/v2/auth";
     private static final String GMAIL_TOKEN_URL  = "https://oauth2.googleapis.com/token";
-    private static final String GMAIL_SCOPE      = "https://www.googleapis.com/auth/gmail.send";
+    private static final String GMAIL_SCOPE      = "https://www.googleapis.com/auth/gmail.send email";
     private static final String USERINFO_URL     = "https://www.googleapis.com/oauth2/v1/userinfo";
 
     // In-memory state store — admin-only flow, short-lived (5 min TTL)
