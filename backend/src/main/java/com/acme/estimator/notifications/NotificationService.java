@@ -30,6 +30,7 @@ public class NotificationService {
 
     private final EmailService email;
     private final AppSettingService settings;
+    private final NotificationPreferenceService notifPrefs;
 
     @Value("${app.base-url}")
     private String baseUrl;
@@ -41,6 +42,7 @@ public class NotificationService {
     public void handle(ItemSubmittedEvent e) {
         if (!settings.isEmailEnabled()) return;
         for (User so : e.soRecipients()) {
+            if (!notifPrefs.isEnabled(so.getId(), NotificationType.ITEM_SUBMITTED)) continue;
             email.sendHtml(
                 so.getEmail(),
                 "New estimate ready for review — " + e.requestTitle(),
@@ -57,6 +59,7 @@ public class NotificationService {
         // approved — the RequestSentToPricingReviewEvent handles the requester notification instead.
         if (settings.isRevenueReviewEnabled()) return;
         if (e.requester() == null) return;
+        if (!notifPrefs.isEnabled(e.requester().getId(), NotificationType.ITEM_APPROVED)) return;
         email.sendHtml(
             e.requester().getEmail(),
             "Your estimate has been approved — " + e.requestTitle(),
@@ -68,7 +71,8 @@ public class NotificationService {
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void handle(RequestSentToPricingReviewEvent e) {
         if (!settings.isEmailEnabled()) return;
-        if (e.requester() != null) {
+        if (e.requester() != null
+                && notifPrefs.isEnabled(e.requester().getId(), NotificationType.REQUEST_SENT_TO_PRICING_REVIEW)) {
             email.sendHtml(
                 e.requester().getEmail(),
                 "Your estimate is now in Client Pricing Review — " + e.requestTitle(),
@@ -76,6 +80,7 @@ public class NotificationService {
             );
         }
         for (User rm : e.revenueManagers()) {
+            if (!notifPrefs.isEnabled(rm.getId(), NotificationType.PRICING_REVIEW_READY)) continue;
             email.sendHtml(
                 rm.getEmail(),
                 "New estimate ready for Client Pricing Review — " + e.requestTitle(),
@@ -89,6 +94,7 @@ public class NotificationService {
     public void handle(PricingReviewApprovedEvent e) {
         if (!settings.isEmailEnabled()) return;
         if (e.requester() == null) return;
+        if (!notifPrefs.isEnabled(e.requester().getId(), NotificationType.ITEM_APPROVED)) return;
         email.sendHtml(
             e.requester().getEmail(),
             "Your estimate is fully approved — " + e.requestTitle(),
@@ -100,6 +106,7 @@ public class NotificationService {
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void handle(ItemRejectedEvent e) {
         if (!settings.isEmailEnabled()) return;
+        if (!notifPrefs.isEnabled(e.requester().getId(), NotificationType.ITEM_REJECTED)) return;
         email.sendHtml(
             e.requester().getEmail(),
             "Your estimate item needs revision — " + e.requestTitle(),
@@ -111,6 +118,7 @@ public class NotificationService {
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void handle(ItemNeedsClarificationEvent e) {
         if (!settings.isEmailEnabled()) return;
+        if (!notifPrefs.isEnabled(e.requester().getId(), NotificationType.ITEM_NEEDS_CLARIFICATION)) return;
         email.sendHtml(
             e.requester().getEmail(),
             "Clarification requested on your estimate — " + e.requestTitle(),
@@ -123,6 +131,7 @@ public class NotificationService {
     public void handle(ClarificationRespondedEvent e) {
         if (!settings.isEmailEnabled()) return;
         if (e.reviewer() == null) return;
+        if (!notifPrefs.isEnabled(e.reviewer().getId(), NotificationType.CLARIFICATION_RESPONDED)) return;
         email.sendHtml(
             e.reviewer().getEmail(),
             "Clarification received — " + e.requestTitle(),
@@ -135,6 +144,7 @@ public class NotificationService {
     public void handle(ItemRecalledEvent e) {
         if (!settings.isEmailEnabled()) return;
         if (e.reviewer() == null) return;
+        if (!notifPrefs.isEnabled(e.reviewer().getId(), NotificationType.ITEM_RECALLED)) return;
         email.sendHtml(
             e.reviewer().getEmail(),
             "Estimate item recalled — " + e.requestTitle(),
@@ -146,6 +156,7 @@ public class NotificationService {
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void handle(ItemSentBackEvent e) {
         if (!settings.isEmailEnabled()) return;
+        if (!notifPrefs.isEnabled(e.requester().getId(), NotificationType.ITEM_SENT_BACK)) return;
         email.sendHtml(
             e.requester().getEmail(),
             "Estimate approval withdrawn — " + e.requestTitle(),
