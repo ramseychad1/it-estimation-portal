@@ -78,12 +78,12 @@ export function GlobalSettingsPage() {
   useEffect(() => {
     const gmailParam = searchParams.get("gmail");
     if (gmailParam === "connected") {
-      toast.success("Gmail connected successfully.");
+      toast.success("GCP OAuth connected successfully.");
       settingsQuery.refetch();
       setSearchParams({}, { replace: true });
     } else if (gmailParam === "error") {
       const reason = searchParams.get("reason") ?? "unknown error";
-      toast.error(`Gmail connection failed: ${reason}`);
+      toast.error(`GCP OAuth connection failed: ${reason}`);
       setSearchParams({}, { replace: true });
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -176,7 +176,7 @@ export function GlobalSettingsPage() {
       const msg = err instanceof ApiError
         ? (err.body as { message?: string })?.message ?? ""
         : "";
-      toast.error(msg || "Failed to start Gmail authorization.");
+      toast.error(msg || "Failed to start GCP OAuth authorization.");
       setGmailConnecting(false);
     }
   }
@@ -186,9 +186,9 @@ export function GlobalSettingsPage() {
       await disconnectGmail();
       setGmailConnectedEmail("");
       settingsQuery.refetch();
-      toast.success("Gmail account disconnected.");
+      toast.success("GCP OAuth account disconnected.");
     } catch {
-      toast.error("Failed to disconnect Gmail.");
+      toast.error("Failed to disconnect GCP OAuth.");
     }
   }
 
@@ -300,7 +300,7 @@ export function GlobalSettingsPage() {
                         : "var(--color-warm-gray-med)",
                   }}
                 >
-                  {p === "gmail" ? "Gmail (recommended)" : p === "resend" ? "Resend" : "SMTP"}
+                  {p === "gmail" ? "GCP OAuth (recommended)" : p === "resend" ? "Resend" : "SMTP"}
                 </button>
               ))}
             </div>
@@ -621,14 +621,14 @@ function GmailConfig({
             opacity: (disabled || connecting || !clientId.trim()) ? 0.5 : 1,
           }}
         >
-          {connecting ? "Redirecting…" : isConnected ? "Reconnect Gmail" : "Connect Gmail Account"}
+          {connecting ? "Redirecting…" : isConnected ? "Reconnect GCP OAuth" : "Connect GCP OAuth"}
         </button>
       </div>
 
       <p className="text-warm-gray-med" style={{ fontSize: 12, lineHeight: 1.5, margin: 0 }}>
-        Sends emails directly via your connected Gmail account using Google's API — no domain
-        purchase required. Clicking <strong>Connect Gmail Account</strong> will open Google's
-        consent screen in this tab. You'll be redirected back automatically.
+        Sends emails via Google's API using your GCP OAuth credentials — no domain purchase
+        required. Clicking <strong>Connect GCP OAuth</strong> will open Google's consent screen
+        in this tab. You'll be redirected back automatically.
       </p>
     </div>
   );
