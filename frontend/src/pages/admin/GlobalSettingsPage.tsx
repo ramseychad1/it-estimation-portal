@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { PageHeader } from "../../components/PageHeader";
 import { Toggle } from "../../components/Toggle";
 import {
@@ -6,6 +7,7 @@ import {
   useSendTestEmailMutation,
   useUpdateAppSettingsMutation,
 } from "../../lib/queries/pricingReview";
+import { getGmailAuthorizeUrl, disconnectGmail } from "../../lib/api/pricingReview";
 import { useToast } from "../../components/Toast";
 import { ApiError } from "../../lib/api";
 
@@ -15,6 +17,7 @@ export function GlobalSettingsPage() {
   }, []);
 
   const toast = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
   const settingsQuery = useAppSettingsQuery();
   const updateMutation = useUpdateAppSettingsMutation();
   const testEmailMutation = useSendTestEmailMutation();
@@ -24,7 +27,7 @@ export function GlobalSettingsPage() {
   const emailEnabled = settings["email_enabled"] === "true";
 
   // ── Provider selection ──────────────────────────────────────────────────
-  const [emailProvider, setEmailProvider] = useState<"smtp" | "resend">("smtp");
+  const [emailProvider, setEmailProvider] = useState<"smtp" | "resend" | "gmail">("smtp");
   const [providerPopulated, setProviderPopulated] = useState(false);
 
   // ── Resend config ───────────────────────────────────────────────────────
@@ -38,17 +41,24 @@ export function GlobalSettingsPage() {
   const [smtpPassword, setSmtpPassword] = useState("");
   const [passwordDirty, setPasswordDirty] = useState(false);
 
+  // ── Gmail OAuth config ──────────────────────────────────────────────────
+  const [gmailClientId, setGmailClientId] = useState("");
+  const [gmailClientSecret, setGmailClientSecret] = useState("");
+  const [gmailClientSecretDirty, setGmailClientSecretDirty] = useState(false);
+  const [gmailConnectedEmail, setGmailConnectedEmail] = useState("");
+  const [gmailConnecting, setGmailConnecting] = useState(false);
+
   // ── Shared from fields ──────────────────────────────────────────────────
   const [fromName, setFromName] = useState("");
   const [fromAddress, setFromAddress] = useState("");
 
-  const [smtpPopulated, setSmtpPopulated] = useState(false);
+  const [populated, setPopulated] = useState(false);
 
   // Populate form from loaded settings (once only)
   useEffect(() => {
-    if (settingsQuery.data && !smtpPopulated) {
+    if (settingsQuery.data && !populated) {
       const d = settingsQuery.data;
-      const provider = (d["email_provider"] ?? "smtp") as "smtp" | "resend";
+      const provider = (d["email_provider"] ?? "smtp") as "smtp" | "resend" | "gmail";
       if (!providerPopulated) {
         setEmailProvider(provider);
         setProviderPopulated(true);
@@ -58,9 +68,25 @@ export function GlobalSettingsPage() {
       setSmtpUsername(d["email_smtp_username"] ?? "");
       setFromName(d["email_from_name"] ?? "IT Estimation Portal");
       setFromAddress(d["email_from_address"] ?? "");
-      setSmtpPopulated(true);
+      setGmailClientId(d["email_gmail_client_id"] ?? "");
+      setGmailConnectedEmail(d["email_gmail_connected_email"] ?? "");
+      setPopulated(true);
     }
-  }, [settingsQuery.data, smtpPopulated, providerPopulated]);
+  }, [settingsQuery.data, populated, providerPopulated]);
+
+  // Handle redirect back from Google OAuth consent screen
+  useEffect(() => {
+    const gmailParam = searchParams.get("gmail");
+    if (gmailParam === "connected") {
+      toast.success("Gmail connected successfully.");
+      settingsQuery.refetch();
+      setSearchParams({}, { replace: true });
+    } else if (gmailParam === "error") {
+      const reason = searchParams.get("reason") ?? "unknown error";
+      toast.error(`Gmail connection failed: ${reason}`);
+      setSearchParams({}, { replace: true });
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Test email state
   const [testEmailAddress, setTestEmailAddress] = useState("");
@@ -100,12 +126,16 @@ export function GlobalSettingsPage() {
     const updates: Record<string, string> = {
       email_provider: emailProvider,
       email_from_name: fromName,
-      email_from_address: fromAddress,
     };
 
     if (emailProvider === "resend") {
+      updates["email_from_address"] = fromAddress;
       if (resendApiKeyDirty) updates["email_resend_api_key"] = resendApiKey;
+    } else if (emailProvider === "gmail") {
+      updates["email_gmail_client_id"] = gmailClientId;
+      if (gmailClientSecretDirty) updates["email_gmail_client_secret"] = gmailClientSecret;
     } else {
+      updates["email_from_address"] = fromAddress;
       updates["email_smtp_host"] = smtpHost;
       updates["email_smtp_port"] = smtpPort;
       updates["email_smtp_username"] = smtpUsername;
@@ -119,9 +149,47 @@ export function GlobalSettingsPage() {
         setSmtpPassword("");
         setResendApiKeyDirty(false);
         setResendApiKey("");
+        setGmailClientSecretDirty(false);
+        setGmailClientSecret("");
       },
       onError: () => toast.error("Failed to save email settings."),
     });
+  }
+
+  async function handleConnectGmail() {
+    // Save client ID + secret first so the backend has them for the OAuth flow
+    const saveUpdates: Record<string, string> = {
+      email_provider: "gmail",
+      email_from_name: fromName,
+      email_gmail_client_id: gmailClientId,
+    };
+    if (gmailClientSecretDirty) saveUpdates["email_gmail_client_secret"] = gmailClientSecret;
+
+    setGmailConnecting(true);
+    try {
+      await new Promise<void>((resolve, reject) => {
+        updateMutation.mutate(saveUpdates, { onSuccess: () => resolve(), onError: reject });
+      });
+      const { authUrl } = await getGmailAuthorizeUrl();
+      window.location.href = authUrl;
+    } catch (err) {
+      const msg = err instanceof ApiError
+        ? (err.body as { message?: string })?.message ?? ""
+        : "";
+      toast.error(msg || "Failed to start Gmail authorization.");
+      setGmailConnecting(false);
+    }
+  }
+
+  async function handleDisconnectGmail() {
+    try {
+      await disconnectGmail();
+      setGmailConnectedEmail("");
+      settingsQuery.refetch();
+      toast.success("Gmail account disconnected.");
+    } catch {
+      toast.error("Failed to disconnect Gmail.");
+    }
   }
 
   function handleSendTestEmail() {
@@ -209,7 +277,7 @@ export function GlobalSettingsPage() {
                 borderBottom: "1px solid var(--color-warm-gray-light)",
               }}
             >
-              {(["resend", "smtp"] as const).map((p) => (
+              {(["gmail", "resend", "smtp"] as const).map((p) => (
                 <button
                   key={p}
                   type="button"
@@ -232,13 +300,27 @@ export function GlobalSettingsPage() {
                         : "var(--color-warm-gray-med)",
                   }}
                 >
-                  {p === "resend" ? "Resend (recommended)" : "SMTP"}
+                  {p === "gmail" ? "Gmail (recommended)" : p === "resend" ? "Resend" : "SMTP"}
                 </button>
               ))}
             </div>
 
             <div style={{ padding: "20px 24px" }}>
-              {emailProvider === "resend" ? (
+              {emailProvider === "gmail" ? (
+                <GmailConfig
+                  clientId={gmailClientId}
+                  onClientIdChange={setGmailClientId}
+                  clientSecret={gmailClientSecret}
+                  onClientSecretChange={(v) => { setGmailClientSecret(v); setGmailClientSecretDirty(true); }}
+                  connectedEmail={gmailConnectedEmail}
+                  fromName={fromName}
+                  onFromNameChange={setFromName}
+                  onConnect={handleConnectGmail}
+                  onDisconnect={handleDisconnectGmail}
+                  connecting={gmailConnecting}
+                  disabled={busy}
+                />
+              ) : emailProvider === "resend" ? (
                 <ResendConfig
                   apiKey={resendApiKey}
                   onApiKeyChange={(v) => { setResendApiKey(v); setResendApiKeyDirty(true); }}
@@ -266,96 +348,175 @@ export function GlobalSettingsPage() {
                 />
               )}
 
-              {/* Save + test row */}
-              <div
-                style={{
-                  marginTop: 20,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  flexWrap: "wrap",
-                }}
-              >
-                <button
-                  onClick={handleSaveEmailConfig}
-                  disabled={busy}
-                  className="font-medium"
+              {/* Save + test row — hidden for Gmail (Connect button handles the save) */}
+              {emailProvider !== "gmail" && (
+                <div
                   style={{
-                    padding: "7px 16px",
-                    background: "var(--color-near-black, #1a1a1a)",
-                    color: "#fff",
-                    border: "none",
-                    borderRadius: 6,
-                    fontSize: 13,
-                    cursor: busy ? "not-allowed" : "pointer",
-                    opacity: busy ? 0.6 : 1,
+                    marginTop: 20,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    flexWrap: "wrap",
                   }}
                 >
-                  {updateMutation.isPending ? "Saving…" : "Save Settings"}
-                </button>
+                  <button
+                    onClick={handleSaveEmailConfig}
+                    disabled={busy}
+                    className="font-medium"
+                    style={{
+                      padding: "7px 16px",
+                      background: "var(--color-near-black, #1a1a1a)",
+                      color: "#fff",
+                      border: "none",
+                      borderRadius: 6,
+                      fontSize: 13,
+                      cursor: busy ? "not-allowed" : "pointer",
+                      opacity: busy ? 0.6 : 1,
+                    }}
+                  >
+                    {updateMutation.isPending ? "Saving…" : "Save Settings"}
+                  </button>
 
-                {showTestEmailInput ? (
-                  <>
-                    <input
-                      type="email"
-                      value={testEmailAddress}
-                      onChange={(e) => setTestEmailAddress(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && handleSendTestEmail()}
-                      placeholder="Recipient address"
-                      style={{
-                        padding: "6px 10px",
-                        border: "1px solid var(--color-warm-gray-light)",
-                        borderRadius: 6,
-                        fontSize: 13,
-                        width: 200,
-                      }}
-                      autoFocus
-                    />
+                  {showTestEmailInput ? (
+                    <>
+                      <input
+                        type="email"
+                        value={testEmailAddress}
+                        onChange={(e) => setTestEmailAddress(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && handleSendTestEmail()}
+                        placeholder="Recipient address"
+                        style={{
+                          padding: "6px 10px",
+                          border: "1px solid var(--color-warm-gray-light)",
+                          borderRadius: 6,
+                          fontSize: 13,
+                          width: 200,
+                        }}
+                        autoFocus
+                      />
+                      <button
+                        onClick={handleSendTestEmail}
+                        disabled={testEmailMutation.isPending || !testEmailAddress.trim()}
+                        style={{
+                          padding: "7px 14px",
+                          background: "transparent",
+                          border: "1px solid var(--color-warm-gray-light)",
+                          borderRadius: 6,
+                          fontSize: 13,
+                          cursor: testEmailMutation.isPending ? "not-allowed" : "pointer",
+                          opacity: testEmailMutation.isPending ? 0.6 : 1,
+                        }}
+                      >
+                        {testEmailMutation.isPending ? "Sending…" : "Send"}
+                      </button>
+                      <button
+                        onClick={() => { setShowTestEmailInput(false); setTestEmailAddress(""); }}
+                        style={{
+                          padding: "7px 10px",
+                          background: "transparent",
+                          border: "none",
+                          fontSize: 13,
+                          color: "var(--color-warm-gray-med)",
+                          cursor: "pointer",
+                        }}
+                      >
+                        Cancel
+                      </button>
+                    </>
+                  ) : (
                     <button
-                      onClick={handleSendTestEmail}
-                      disabled={testEmailMutation.isPending || !testEmailAddress.trim()}
+                      onClick={() => setShowTestEmailInput(true)}
                       style={{
                         padding: "7px 14px",
                         background: "transparent",
                         border: "1px solid var(--color-warm-gray-light)",
                         borderRadius: 6,
                         fontSize: 13,
-                        cursor: testEmailMutation.isPending ? "not-allowed" : "pointer",
-                        opacity: testEmailMutation.isPending ? 0.6 : 1,
-                      }}
-                    >
-                      {testEmailMutation.isPending ? "Sending…" : "Send"}
-                    </button>
-                    <button
-                      onClick={() => { setShowTestEmailInput(false); setTestEmailAddress(""); }}
-                      style={{
-                        padding: "7px 10px",
-                        background: "transparent",
-                        border: "none",
-                        fontSize: 13,
-                        color: "var(--color-warm-gray-med)",
                         cursor: "pointer",
                       }}
                     >
-                      Cancel
+                      Send Test Email
                     </button>
-                  </>
-                ) : (
-                  <button
-                    onClick={() => setShowTestEmailInput(true)}
-                    style={{
-                      padding: "7px 14px",
-                      background: "transparent",
-                      border: "1px solid var(--color-warm-gray-light)",
-                      borderRadius: 6,
-                      fontSize: 13,
-                      cursor: "pointer",
-                    }}
-                  >
-                    Send Test Email
-                  </button>
-                )}
-              </div>
+                  )}
+                </div>
+              )}
+
+              {/* Gmail tab: Save + Test row shown separately from Connect */}
+              {emailProvider === "gmail" && (
+                <div
+                  style={{
+                    marginTop: 16,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    flexWrap: "wrap",
+                  }}
+                >
+                  {showTestEmailInput ? (
+                    <>
+                      <input
+                        type="email"
+                        value={testEmailAddress}
+                        onChange={(e) => setTestEmailAddress(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && handleSendTestEmail()}
+                        placeholder="Recipient address"
+                        style={{
+                          padding: "6px 10px",
+                          border: "1px solid var(--color-warm-gray-light)",
+                          borderRadius: 6,
+                          fontSize: 13,
+                          width: 200,
+                        }}
+                        autoFocus
+                      />
+                      <button
+                        onClick={handleSendTestEmail}
+                        disabled={testEmailMutation.isPending || !testEmailAddress.trim()}
+                        style={{
+                          padding: "7px 14px",
+                          background: "transparent",
+                          border: "1px solid var(--color-warm-gray-light)",
+                          borderRadius: 6,
+                          fontSize: 13,
+                          cursor: testEmailMutation.isPending ? "not-allowed" : "pointer",
+                          opacity: testEmailMutation.isPending ? 0.6 : 1,
+                        }}
+                      >
+                        {testEmailMutation.isPending ? "Sending…" : "Send"}
+                      </button>
+                      <button
+                        onClick={() => { setShowTestEmailInput(false); setTestEmailAddress(""); }}
+                        style={{
+                          padding: "7px 10px",
+                          background: "transparent",
+                          border: "none",
+                          fontSize: 13,
+                          color: "var(--color-warm-gray-med)",
+                          cursor: "pointer",
+                        }}
+                      >
+                        Cancel
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      onClick={() => setShowTestEmailInput(true)}
+                      disabled={!gmailConnectedEmail}
+                      style={{
+                        padding: "7px 14px",
+                        background: "transparent",
+                        border: "1px solid var(--color-warm-gray-light)",
+                        borderRadius: 6,
+                        fontSize: 13,
+                        cursor: !gmailConnectedEmail ? "not-allowed" : "pointer",
+                        opacity: !gmailConnectedEmail ? 0.4 : 1,
+                      }}
+                    >
+                      Send Test Email
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </section>
@@ -365,6 +526,113 @@ export function GlobalSettingsPage() {
 }
 
 // ── Provider config sections ─────────────────────────────────────────────────
+
+function GmailConfig({
+  clientId, onClientIdChange,
+  clientSecret, onClientSecretChange,
+  connectedEmail,
+  fromName, onFromNameChange,
+  onConnect, onDisconnect,
+  connecting, disabled,
+}: {
+  clientId: string; onClientIdChange: (v: string) => void;
+  clientSecret: string; onClientSecretChange: (v: string) => void;
+  connectedEmail: string;
+  fromName: string; onFromNameChange: (v: string) => void;
+  onConnect: () => void;
+  onDisconnect: () => void;
+  connecting: boolean;
+  disabled?: boolean;
+}) {
+  const isConnected = !!connectedEmail;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <ConfigField
+        label="Client ID"
+        value={clientId}
+        onChange={onClientIdChange}
+        placeholder="319681305866-xxxx.apps.googleusercontent.com"
+        disabled={disabled}
+        style={{ gridColumn: "1 / -1" }}
+      />
+      <ConfigField
+        label="Client Secret"
+        value={clientSecret}
+        onChange={onClientSecretChange}
+        placeholder="Leave blank to keep existing"
+        type="password"
+        disabled={disabled}
+        style={{ gridColumn: "1 / -1" }}
+      />
+      <ConfigField
+        label="From Name"
+        value={fromName}
+        onChange={onFromNameChange}
+        placeholder="IT Estimation Portal"
+        disabled={disabled}
+      />
+
+      {/* Connection status + action */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+          padding: "12px 14px",
+          borderRadius: 6,
+          background: isConnected ? "var(--color-success-bg, #f0fdf4)" : "var(--color-warn-bg, #fefce8)",
+          border: `1px solid ${isConnected ? "var(--color-success-border, #bbf7d0)" : "var(--color-warn-border, #fde68a)"}`,
+          flexWrap: "wrap",
+        }}
+      >
+        <span style={{ fontSize: 13, flex: 1, color: isConnected ? "#166534" : "#92400e" }}>
+          {isConnected ? `✓ Connected as ${connectedEmail}` : "Not connected — enter Client ID and Secret, then click Connect."}
+        </span>
+        {isConnected && (
+          <button
+            onClick={onDisconnect}
+            disabled={disabled}
+            style={{
+              padding: "5px 12px",
+              background: "transparent",
+              border: "1px solid var(--color-warm-gray-light)",
+              borderRadius: 6,
+              fontSize: 12,
+              cursor: disabled ? "not-allowed" : "pointer",
+              opacity: disabled ? 0.5 : 1,
+            }}
+          >
+            Disconnect
+          </button>
+        )}
+        <button
+          onClick={onConnect}
+          disabled={disabled || connecting || !clientId.trim()}
+          className="font-medium"
+          style={{
+            padding: "5px 14px",
+            background: "var(--color-near-black, #1a1a1a)",
+            color: "#fff",
+            border: "none",
+            borderRadius: 6,
+            fontSize: 12,
+            cursor: (disabled || connecting || !clientId.trim()) ? "not-allowed" : "pointer",
+            opacity: (disabled || connecting || !clientId.trim()) ? 0.5 : 1,
+          }}
+        >
+          {connecting ? "Redirecting…" : isConnected ? "Reconnect Gmail" : "Connect Gmail Account"}
+        </button>
+      </div>
+
+      <p className="text-warm-gray-med" style={{ fontSize: 12, lineHeight: 1.5, margin: 0 }}>
+        Sends emails directly via your connected Gmail account using Google's API — no domain
+        purchase required. Clicking <strong>Connect Gmail Account</strong> will open Google's
+        consent screen in this tab. You'll be redirected back automatically.
+      </p>
+    </div>
+  );
+}
 
 function ResendConfig({
   apiKey, onApiKeyChange,

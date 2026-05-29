@@ -83,3 +83,11 @@ export function sendTestEmail(toAddress: string): Promise<void> {
     body: JSON.stringify({ toAddress }),
   });
 }
+
+export function getGmailAuthorizeUrl(): Promise<{ authUrl: string }> {
+  return api<{ authUrl: string }>("/admin/settings/gmail/authorize");
+}
+
+export function disconnectGmail(): Promise<void> {
+  return api<void>("/admin/settings/gmail/disconnect");
+}

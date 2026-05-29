@@ -25,6 +25,11 @@ public class AppSettingService {
     public static final String KEY_EMAIL_FROM_ADDRESS   = "email_from_address";
     public static final String KEY_EMAIL_RESEND_API_KEY = "email_resend_api_key";
 
+    public static final String KEY_EMAIL_GMAIL_CLIENT_ID      = "email_gmail_client_id";
+    public static final String KEY_EMAIL_GMAIL_CLIENT_SECRET  = "email_gmail_client_secret";
+    public static final String KEY_EMAIL_GMAIL_REFRESH_TOKEN  = "email_gmail_refresh_token";
+    public static final String KEY_EMAIL_GMAIL_CONNECTED_EMAIL = "email_gmail_connected_email";
+
     private final AppSettingRepository repo;
 
     @Transactional(readOnly = true)

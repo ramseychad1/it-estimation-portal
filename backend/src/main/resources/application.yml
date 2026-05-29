@@ -45,6 +45,9 @@ app:
   # InvitationResult responses. Override per environment via APP_BASE_URL
   # env var. The dev value points at the Vite dev server.
   base-url: http://localhost:5173
+  # Used to construct the Gmail OAuth callback URL. Override via APP_BACKEND_URL
+  # env var in production (e.g. https://backend-production-cedb.up.railway.app).
+  backend-url: http://localhost:8080
 
 intake:
   # ID of the system catalog product used as the requirements-carrier (CONTEXT item)
