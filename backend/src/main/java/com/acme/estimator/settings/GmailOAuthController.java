@@ -28,7 +28,6 @@ import static com.acme.estimator.settings.AppSettingService.*;
 
 @RestController
 @RequestMapping("/api/admin/settings/gmail")
-@PreAuthorize("hasRole('ADMIN')")
 @RequiredArgsConstructor
 public class GmailOAuthController {
 
@@ -49,6 +48,7 @@ public class GmailOAuthController {
     private String frontendUrl;
 
     /** Returns the Google OAuth2 authorization URL for the admin to open. */
+    @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/authorize")
     public Map<String, String> authorize() {
         String clientId = settings.getString(KEY_EMAIL_GMAIL_CLIENT_ID, "");
@@ -157,6 +157,7 @@ public class GmailOAuthController {
     }
 
     /** Clears the stored Gmail authorization (refresh token + connected email). */
+    @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/disconnect")
     public void disconnect() {
         settings.setAll(Map.of(
