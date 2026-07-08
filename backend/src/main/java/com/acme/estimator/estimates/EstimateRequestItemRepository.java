@@ -40,4 +40,32 @@ public interface EstimateRequestItemRepository
      */
     @Query("SELECT COUNT(i) FROM EstimateRequestItem i WHERE i.status = 'IN_REVIEW' AND i.reviewerId = :reviewerId")
     long countInReviewByReviewer(@Param("reviewerId") Long reviewerId);
+
+    // ---- Team workload reporting (UX-3: rebuilt after the Phase 9a stub) ----
+
+    /**
+     * [teamId, status, count] for non-draft items whose product belongs to
+     * one of the teams. Drafts are the requester's private workspace and
+     * don't count as team workload.
+     */
+    @Query("""
+        SELECT p.team.id, i.status, COUNT(i)
+        FROM EstimateRequestItem i, Product p
+        WHERE i.productId = p.id AND p.team.id IN :teamIds AND i.status <> com.acme.estimator.estimates.EstimateStatus.DRAFT
+        GROUP BY p.team.id, i.status
+        """)
+    List<Object[]> countItemsByTeamAndStatus(@Param("teamIds") List<Long> teamIds);
+
+    /**
+     * Approved items with reporting context: [item, teamId, productName,
+     * requestTitle]. Hours/cost are computed in the service from each
+     * item's phase-line snapshot at its approved complexity.
+     */
+    @Query("""
+        SELECT i, p.team.id, p.name, r.title
+        FROM EstimateRequestItem i, Product p, EstimateRequest r
+        WHERE i.productId = p.id AND r.id = i.estimateRequestId
+          AND p.team.id IN :teamIds AND i.status = com.acme.estimator.estimates.EstimateStatus.APPROVED
+        """)
+    List<Object[]> findApprovedItemsWithContextByTeamIds(@Param("teamIds") List<Long> teamIds);
 }

@@ -43,12 +43,28 @@ export const GRID_COLS = "minmax(180px, 1.2fr) repeat(6, 84px) 80px 100px";
 /** Narrow variant used when no rate data is available (no Total $ column). */
 export const GRID_COLS_NO_COST = "minmax(180px, 1.2fr) repeat(6, 84px) 80px";
 
-export function fmtHrs(n: number): number {
-  return Math.ceil(n);
+/**
+ * gridTemplateColumns for an arbitrary column count (UX-3's collapsed
+ * reviewer view renders only the chosen ONS/OFF pair). Collapsed columns
+ * get more breathing room than the packed 6-column layout.
+ */
+export function gridColsFor(nCols: number, showCost: boolean): string {
+  const cellWidth = nCols <= 2 ? "120px" : "84px";
+  return `minmax(180px, 1.2fr) repeat(${nCols}, ${cellWidth}) 80px${showCost ? " 100px" : ""}`;
+}
+
+/**
+ * One rounding rule for hours everywhere (UX-3): integers render bare,
+ * fractions get one decimal. Pre-UX-3 the grid footers ceil'd while the
+ * decision totals kept one decimal, so the same estimate showed 155 and
+ * 154.6 on one screen.
+ */
+export function fmtHrs(n: number): string {
+  return Number.isInteger(n) ? String(n) : n.toFixed(1);
 }
 
 export function fmtCost(n: number): string {
-  return "$" + Math.ceil(n).toLocaleString();
+  return "$" + Math.round(n).toLocaleString();
 }
 
 /**

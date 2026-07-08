@@ -48,6 +48,8 @@ import type { LineOverrideInput } from "../lib/api/reviews";
 import { HoursGrid } from "../components/hours/HoursGrid";
 import {
   editableKeysForComplexity,
+  fmtCost,
+  fmtHrs,
   type RowKey,
   type RowValues,
 } from "../components/hours/columns";
@@ -183,16 +185,37 @@ export function ReviewScreenPage() {
           </div>
         )}
 
-        {detail.items.map((item) => (
-          <ItemReviewCard
-            key={item.id}
-            requestId={detail.id}
-            requestTitle={detail.title}
-            item={item}
-            effectiveRate={currentRate}
-            isAdmin={isAdmin}
-          />
-        ))}
+        {/* UX-3: multi-item requests get a sticky rail so the SO sees
+            per-item progress at a glance and can jump between items. */}
+        <div
+          style={
+            detail.items.length > 1
+              ? { display: "grid", gridTemplateColumns: "240px 1fr", gap: 16, alignItems: "start" }
+              : undefined
+          }
+        >
+          {detail.items.length > 1 && <ItemRail items={detail.items} />}
+          <div className="flex flex-col" style={{ gap: 16, minWidth: 0 }}>
+            {detail.items.map((item) => {
+              const openSiblings = detail.items.filter(
+                (i) => i.id !== item.id && i.status !== "APPROVED" && i.status !== "REJECTED",
+              ).length;
+              return (
+                <div key={item.id} id={`item-card-${item.id}`} style={{ scrollMarginTop: 16 }}>
+                  <ItemReviewCard
+                    requestId={detail.id}
+                    requestTitle={detail.title}
+                    item={item}
+                    effectiveRate={currentRate}
+                    isAdmin={isAdmin}
+                    openSiblingCount={openSiblings}
+                    totalItemCount={detail.items.length}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        </div>
 
         <ActivityCard
           history={historyQuery.data ?? []}
@@ -222,12 +245,17 @@ function ItemReviewCard({
   item,
   effectiveRate,
   isAdmin,
+  openSiblingCount = 0,
+  totalItemCount = 1,
 }: {
   requestId: number;
   requestTitle: string;
   item: EstimateRequestItemDto;
   effectiveRate: { onshoreRate: string; offshoreRate: string; effectiveDate: string } | null;
   isAdmin: boolean;
+  /** Items on this request (excluding this one) not yet in a terminal state. */
+  openSiblingCount?: number;
+  totalItemCount?: number;
 }) {
   const navigate = useNavigate();
   const toast = useToast();
@@ -362,7 +390,11 @@ function ItemReviewCard({
       { requestId, itemId: item.id, body: { rejectionReason: rejectText.trim() } },
       {
         onSuccess: () => {
-          toast.success(`Rejected "${requestTitle}".`);
+          toast.success(
+            openSiblingCount > 0
+              ? `Rejected "${item.productName}" — ${openSiblingCount} of ${totalItemCount} items still open.`
+              : `Rejected "${item.productName}".`,
+          );
           setRejectOpen(false);
         },
         onError: (err) =>
@@ -530,12 +562,13 @@ function ItemReviewCard({
       {/* Reject confirmation */}
       <ConfirmModal
         open={rejectOpen}
-        title="Reject this request?"
+        title="Reject this item?"
         body={
           <div>
             <p className="text-body text-warm-gray-med m-0 mb-3">
-              Add a final note before sending back to the requester. They can
-              resubmit with adjustments.
+              Rejects <strong>{productLabel}</strong> only — other items on
+              this request are not affected. Add a final note before sending
+              it back to the requester; they can revise and resubmit.
             </p>
             <Textarea
               label="Rejection reason"
@@ -892,6 +925,13 @@ function InReviewPanel({
   );
   const approveDisabled = !isMyReview || complexity === null || justification.trim() === "";
 
+  // UX-3 progressive disclosure: after a complexity pick the grid collapses
+  // to the chosen pair; reviewers can expand for cross-complexity comparison.
+  const [showAllColumns, setShowAllColumns] = useState(false);
+  // Pre-pick, the full template hides behind a compact per-complexity
+  // preview unless explicitly expanded.
+  const [showFullTemplate, setShowFullTemplate] = useState(false);
+
   return (
     <div className="flex flex-col" style={{ gap: 16, marginTop: 8 }}>
       {item.clarificationResponse && (
@@ -935,8 +975,8 @@ function InReviewPanel({
           />
         </div>
         <p className="m-0 mt-2 text-warm-gray-med" style={{ fontSize: 12 }}>
-          The chosen column drives which hours cells are editable. You can
-          override individual cells before approving.
+          Pick the complexity that matches the answers above — the estimate
+          uses that column. You can override individual cells before approving.
         </p>
       </div>
 
@@ -951,67 +991,76 @@ function InReviewPanel({
             )}
           </SectionLabel>
         </div>
-        <HoursGrid
-          mode="reviewer"
-          phases={phases}
-          snapshot={snapshot}
-          overrides={overrides}
-          chosenComplexity={complexity}
-          onOverrideChange={onOverrideChange}
-          disabled={disabled}
-        />
-        <div className="flex items-center justify-between mt-3" style={{ gap: 16 }}>
-          <button
-            type="button"
-            onClick={onResetOverrides}
-            disabled={disabled || overrides.size === 0}
-            className="text-near-black bg-transparent border-0 cursor-pointer hover:underline disabled:opacity-40 disabled:cursor-not-allowed"
-            style={{ fontSize: 12 }}
-          >
-            Reset overrides
-          </button>
-          <div className="text-right">
-            <div
-              className="text-warm-gray-med"
-              style={{ fontSize: 11, letterSpacing: "0.04em", textTransform: "uppercase" }}
+        {complexity === null ? (
+          <>
+            <ComplexityPreviewTable
+              phases={phases}
+              snapshot={snapshot}
+              effectiveRate={effectiveRate}
+            />
+            <button
+              type="button"
+              onClick={() => setShowFullTemplate((v) => !v)}
+              className="bg-transparent border-0 p-0 cursor-pointer hover:underline mt-2"
+              style={{ fontSize: 12, color: "var(--color-accent)" }}
             >
-              Estimated total
-            </div>
-            <div
-              className="text-near-black font-semibold tabular-nums"
-              style={{ fontSize: 18, marginTop: 2 }}
-            >
-              {fmtHours(totalHrs)} hours
-              {totalCst != null && (
-                <span className="text-warm-gray-med" style={{ marginLeft: 12, fontSize: 14, fontWeight: 400 }}>
-                  ${fmtMoney(totalCst)}
-                </span>
-              )}
-            </div>
-            {effectiveRate && !disabled && (
-              <div className="text-warm-gray-med mt-1" style={{ fontSize: 11 }}>
-                Current rates: ${effectiveRate.onshoreRate} onshore · ${effectiveRate.offshoreRate} offshore.
-                Snapshotted on approval.
+              {showFullTemplate ? "Hide full template" : "Show full template"}
+            </button>
+            {showFullTemplate && (
+              <div className="mt-2">
+                <HoursGrid
+                  mode="reviewer"
+                  phases={phases}
+                  snapshot={snapshot}
+                  overrides={overrides}
+                  chosenComplexity={null}
+                  onOverrideChange={onOverrideChange}
+                  disabled={disabled}
+                />
               </div>
             )}
-          </div>
-          {clientPrice != null && (
-            <div className="text-right">
-              <div
-                className="text-warm-gray-med"
-                style={{ fontSize: 11, letterSpacing: "0.04em", textTransform: "uppercase" }}
-              >
-                Client Price · {pricingModelLabel(item.pricingModel)}
+          </>
+        ) : (
+          <>
+            <HoursGrid
+              mode="reviewer"
+              phases={phases}
+              snapshot={snapshot}
+              overrides={overrides}
+              chosenComplexity={complexity}
+              onOverrideChange={onOverrideChange}
+              disabled={disabled}
+              collapsed={!showAllColumns}
+            />
+            <div className="flex items-center justify-between mt-3" style={{ gap: 16 }}>
+              <div className="flex items-center" style={{ gap: 16 }}>
+                <button
+                  type="button"
+                  onClick={onResetOverrides}
+                  disabled={disabled || overrides.size === 0}
+                  className="text-near-black bg-transparent border-0 cursor-pointer hover:underline disabled:opacity-40 disabled:cursor-not-allowed"
+                  style={{ fontSize: 12 }}
+                >
+                  Reset overrides
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowAllColumns((v) => !v)}
+                  className="bg-transparent border-0 p-0 cursor-pointer hover:underline"
+                  style={{ fontSize: 12, color: "var(--color-accent)" }}
+                >
+                  {showAllColumns ? "Show chosen columns only" : "Show all columns"}
+                </button>
               </div>
-              <div
-                className="text-near-black font-semibold tabular-nums"
-                style={{ fontSize: 18, marginTop: 2 }}
-              >
-                ${fmtMoney(Math.ceil(clientPrice))}
-              </div>
+              {effectiveRate && !disabled && (
+                <div className="text-warm-gray-med" style={{ fontSize: 11 }}>
+                  Current rates: ${effectiveRate.onshoreRate} onshore · ${effectiveRate.offshoreRate} offshore.
+                  Snapshotted on approval.
+                </div>
+              )}
             </div>
-          )}
-        </div>
+          </>
+        )}
       </div>
 
       <div>
@@ -1026,11 +1075,62 @@ function InReviewPanel({
         </div>
       </div>
 
-      <div className="flex items-center justify-between" style={{ gap: 8 }}>
-        <SecondaryButton onClick={onClarifyClick} disabled={disabled}>
-          Request clarification
-        </SecondaryButton>
-        <div className="flex items-center" style={{ gap: 8 }}>
+      {/* UX-3 sticky decision bar: the decision and its consequences never
+          scroll away. Sticks to the viewport bottom while this item's card
+          is in view. */}
+      <div
+        role="region"
+        aria-label={`Decision for ${item.productName}`}
+        style={{
+          position: "sticky",
+          bottom: 12,
+          zIndex: 5,
+          background: "var(--color-white)",
+          border: "1px solid var(--color-border-strong)",
+          borderRadius: 10,
+          boxShadow: "0 -4px 16px rgba(39,37,31,0.08), 0 2px 8px rgba(39,37,31,0.06)",
+          padding: "10px 16px",
+        }}
+      >
+        <div className="flex items-center flex-wrap" style={{ gap: 20 }}>
+          <DecisionStat label="Complexity">
+            {complexity ? (
+              <span
+                className="inline-flex items-center font-semibold rounded-md"
+                style={{
+                  padding: "1px 10px",
+                  fontSize: 13,
+                  background: "var(--color-accent-soft)",
+                  color: "var(--color-accent)",
+                  border: "1px solid var(--color-accent-border)",
+                }}
+              >
+                {complexity === "MED" ? "Medium" : complexity === "LOW" ? "Low" : "High"}
+              </span>
+            ) : (
+              <span className="text-warm-gray-med" style={{ fontSize: 13 }}>—</span>
+            )}
+          </DecisionStat>
+          <DecisionStat label="Estimate">
+            {complexity ? `${fmtHours(totalHrs)} hrs` : "—"}
+          </DecisionStat>
+          <DecisionStat label="Internal cost">
+            {totalCst != null ? `$${fmtMoney(totalCst)}` : "—"}
+          </DecisionStat>
+          <DecisionStat label={`Client · ${pricingModelLabel(item.pricingModel)}`}>
+            {clientPrice != null ? `$${fmtMoney(clientPrice)}` : "—"}
+          </DecisionStat>
+          {clientPrice != null && totalCst != null && clientPrice > 0 && (
+            <DecisionStat label="Margin">
+              <span style={{ color: "var(--color-success)", fontWeight: 600 }}>
+                {Math.round(((clientPrice - totalCst) / clientPrice) * 100)}%
+              </span>
+            </DecisionStat>
+          )}
+          <div style={{ flex: 1 }} />
+          <SecondaryButton onClick={onClarifyClick} disabled={disabled}>
+            Request clarification
+          </SecondaryButton>
           <DestructiveButton onClick={onRejectClick} disabled={disabled}>
             Reject
           </DestructiveButton>
@@ -1038,7 +1138,117 @@ function InReviewPanel({
             Approve
           </PrimaryButton>
         </div>
+        {isMyReview && approveDisabled && (
+          <p className="m-0 text-warm-gray-med" style={{ fontSize: 12, marginTop: 6 }}>
+            {complexity === null && justification.trim() === ""
+              ? "Pick a complexity and add a justification to approve."
+              : complexity === null
+                ? "Pick a complexity to approve."
+                : "Add a justification to approve."}
+          </p>
+        )}
       </div>
+    </div>
+  );
+}
+
+/** Labelled figure inside the decision bar. */
+function DecisionStat({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <div
+        className="text-warm-gray-med uppercase"
+        style={{ fontSize: 10, letterSpacing: "0.06em", fontWeight: 600 }}
+      >
+        {label}
+      </div>
+      <div className="text-near-black font-semibold tabular-nums" style={{ fontSize: 15, marginTop: 1 }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Compact pre-complexity view of the snapshot (UX-3): one row per
+ * complexity with total hours + estimated internal cost, replacing the
+ * 6-column wall of disabled cells until the reviewer picks.
+ */
+function ComplexityPreviewTable({
+  phases,
+  snapshot,
+  effectiveRate,
+}: {
+  phases: PhaseMeta[];
+  snapshot: Map<number, RowValues>;
+  effectiveRate: { onshoreRate: string; offshoreRate: string } | null;
+}) {
+  const rows = (["LOW", "MED", "HIGH"] as const).map((cx) => {
+    let ons = 0;
+    let off = 0;
+    for (const phase of phases) {
+      const v = snapshot.get(phase.id);
+      if (!v) continue;
+      const keys = editableKeysForComplexity(cx);
+      for (const key of keys) {
+        if (key.startsWith("onshore")) ons += v[key] ?? 0;
+        else off += v[key] ?? 0;
+      }
+    }
+    const cost = effectiveRate
+      ? ons * Number(effectiveRate.onshoreRate) + off * Number(effectiveRate.offshoreRate)
+      : null;
+    return { cx, label: cx === "MED" ? "Medium" : cx === "LOW" ? "Low" : "High", ons, off, cost };
+  });
+
+  return (
+    <div
+      role="table"
+      aria-label="Template summary by complexity"
+      className="rounded-md"
+      style={{ border: "1px solid var(--color-border)", overflow: "hidden" }}
+    >
+      <div
+        role="rowheader"
+        className="grid text-warm-gray-med uppercase font-medium"
+        style={{
+          gridTemplateColumns: "1fr repeat(4, 120px)",
+          gap: 8,
+          padding: "8px 14px",
+          fontSize: 11,
+          letterSpacing: "0.06em",
+          borderBottom: "1px solid var(--color-border)",
+          background: "var(--color-surface-tertiary)",
+        }}
+      >
+        <span>Complexity</span>
+        <span style={{ textAlign: "right" }}>Onshore Hrs</span>
+        <span style={{ textAlign: "right" }}>Offshore Hrs</span>
+        <span style={{ textAlign: "right" }}>Total Hrs</span>
+        <span style={{ textAlign: "right" }}>Est. Cost</span>
+      </div>
+      {rows.map((r) => (
+        <div
+          key={r.cx}
+          role="row"
+          className="grid items-center"
+          style={{
+            gridTemplateColumns: "1fr repeat(4, 120px)",
+            gap: 8,
+            padding: "9px 14px",
+            fontSize: 13,
+            borderBottom: "1px solid var(--color-warm-gray-light)",
+          }}
+        >
+          <span className="font-semibold text-near-black">{r.label}</span>
+          <span className="tabular-nums" style={{ textAlign: "right" }}>{fmtHrs(r.ons)}</span>
+          <span className="tabular-nums" style={{ textAlign: "right" }}>{fmtHrs(r.off)}</span>
+          <span className="tabular-nums font-semibold" style={{ textAlign: "right" }}>{fmtHrs(r.ons + r.off)}</span>
+          <span className="tabular-nums" style={{ textAlign: "right" }}>
+            {r.cost != null ? fmtCost(r.cost) : "—"}
+          </span>
+        </div>
+      ))}
     </div>
   );
 }
@@ -1128,6 +1338,7 @@ function TerminalItemPanel({
             chosenComplexity={item.complexity}
             onOverrideChange={() => undefined}
             disabled
+            collapsed
           />
           <div className="flex items-center justify-end" style={{ gap: 16 }}>
             <div className="text-right">
@@ -1335,6 +1546,62 @@ function ActivityCard({
         ))}
       </Timeline>
     </Card>
+  );
+}
+
+/**
+ * Sticky per-item navigation for multi-item requests (UX-3). Mirrors the
+ * wizard's Step-2 rail: product, status, jump-to-card.
+ */
+function ItemRail({ items }: { items: EstimateRequestItemDto[] }) {
+  const doneCount = items.filter(
+    (i) => i.status === "APPROVED" || i.status === "REJECTED",
+  ).length;
+  return (
+    <aside
+      aria-label="Items on this request"
+      style={{ position: "sticky", top: 16, display: "flex", flexDirection: "column", gap: 8 }}
+    >
+      <div
+        className="flex items-center justify-between text-warm-gray-med font-medium uppercase"
+        style={{ fontSize: 11, letterSpacing: "0.06em", padding: "0 4px 2px" }}
+      >
+        <span>Items</span>
+        <span className="tabular-nums">{doneCount} / {items.length} decided</span>
+      </div>
+      {items.map((item) => {
+        const { variant, label } = estimateStatusBadge(item.status);
+        return (
+          <button
+            key={item.id}
+            type="button"
+            onClick={() =>
+              document
+                .getElementById(`item-card-${item.id}`)
+                ?.scrollIntoView({ behavior: "smooth", block: "start" })
+            }
+            className="text-left bg-white rounded-lg border cursor-pointer hover:border-accent"
+            style={{
+              padding: "10px 12px",
+              borderColor: "var(--color-border)",
+              display: "flex",
+              flexDirection: "column",
+              gap: 6,
+            }}
+          >
+            <span className="text-near-black font-semibold" style={{ fontSize: 13, lineHeight: "16px" }}>
+              {item.productName}
+            </span>
+            {item.subFeatureName && (
+              <span className="text-warm-gray-med" style={{ fontSize: 11 }}>
+                {item.subFeatureName}
+              </span>
+            )}
+            <StatusBadge variant={variant}>{label}</StatusBadge>
+          </button>
+        );
+      })}
+    </aside>
   );
 }
 

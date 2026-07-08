@@ -50,7 +50,9 @@ export function TeamWorkloadPage() {
     },
     {
       key: "totalEstimateRequests",
-      header: "Total requests",
+      // Counts estimate items (product line items), not whole requests —
+      // the UX-3 reporting rebuild aggregates per-item state.
+      header: "Total items",
       align: "right",
       width: 120,
       render: (r) => <span className="tabular-nums text-near-black">{r.totalEstimateRequests}</span>,

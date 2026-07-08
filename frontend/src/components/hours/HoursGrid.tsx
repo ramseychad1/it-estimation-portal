@@ -1,5 +1,5 @@
 import { useMemo, useRef } from "react";
-import { COLUMNS, EMPTY_ROW, editableKeysForComplexity, fmtCost, fmtHrs, GRID_COLS, GRID_COLS_NO_COST, type RowKey, type RowValues } from "./columns";
+import { COLUMNS, EMPTY_ROW, editableKeysForComplexity, fmtCost, fmtHrs, GRID_COLS, GRID_COLS_NO_COST, gridColsFor, type ColumnDef, type RowKey, type RowValues } from "./columns";
 import { HoursRow, type HoursRowHandle, type PhaseMeta } from "./HoursRow";
 
 /**
@@ -66,6 +66,14 @@ export interface ReviewerProps {
   onOverrideChange: (phaseId: number, key: RowKey, next: number | null) => void;
   /** Phase 6b doesn't use paste in reviewer mode; props omitted. */
   disabled?: boolean;
+  /**
+   * UX-3 progressive disclosure: when true and a complexity is chosen,
+   * render only the chosen ONS/OFF column pair (relabelled "Onshore
+   * Hours" / "Offshore Hours") and only that complexity's summary row.
+   * The parent offers a "Show all columns" toggle to flip this off for
+   * cross-complexity comparison. Ignored while chosenComplexity is null.
+   */
+  collapsed?: boolean;
 }
 
 /**
@@ -85,7 +93,26 @@ export function HoursGrid(props: HoursGridProps) {
   const onshoreRate = isReviewer ? undefined : (props as TemplateEditorProps).onshoreRate;
   const offshoreRate = isReviewer ? undefined : (props as TemplateEditorProps).offshoreRate;
   const showCost = onshoreRate != null && offshoreRate != null;
-  const gridCols = showCost ? GRID_COLS : GRID_COLS_NO_COST;
+
+  // UX-3: collapsed reviewer view narrows to the chosen column pair.
+  const isCollapsed =
+    isReviewer &&
+    !!(props as ReviewerProps).collapsed &&
+    (props as ReviewerProps).chosenComplexity != null;
+  const visibleColumns: ColumnDef[] = useMemo(() => {
+    if (!isCollapsed) return COLUMNS;
+    const editable = editableKeysForComplexity((props as ReviewerProps).chosenComplexity);
+    return COLUMNS.filter((c) => editable.has(c.key)).map((c) => ({
+      ...c,
+      // Complexity is shown by the selector + summary row; the pair
+      // headers read as plain hours columns (matches the approved view).
+      label: c.group === "onshore" ? "Onshore Hours" : "Offshore Hours",
+    }));
+  }, [isCollapsed, isReviewer ? (props as ReviewerProps).chosenComplexity : null]);
+
+  const gridCols = isCollapsed
+    ? gridColsFor(visibleColumns.length, showCost)
+    : showCost ? GRID_COLS : GRID_COLS_NO_COST;
 
   // In reviewer mode, derive the displayed values per phase by overlaying
   // overrides onto snapshot. Template-editor mode uses the values map
@@ -152,8 +179,8 @@ export function HoursGrid(props: HoursGridProps) {
         }}
       >
         <span>SDLC Phase</span>
-        {COLUMNS.map((col) => {
-          const highlighted = reviewerEditableKeys?.has(col.key) ?? false;
+        {visibleColumns.map((col) => {
+          const highlighted = !isCollapsed && (reviewerEditableKeys?.has(col.key) ?? false);
           return (
             <span
               key={col.key}
@@ -233,6 +260,8 @@ export function HoursGrid(props: HoursGridProps) {
               (props as TemplateEditorProps).onPaste?.({ phaseId: phase.id, colIndex }, rows)
             }
             reviewer={reviewer}
+            columns={isCollapsed ? visibleColumns : undefined}
+            gridColsOverride={isCollapsed ? gridCols : undefined}
           />
         );
       })}
@@ -242,7 +271,9 @@ export function HoursGrid(props: HoursGridProps) {
         { label: "Low",  onsKey: "onshoreLow"  as RowKey, offKey: "offshoreLow"  as RowKey },
         { label: "Med",  onsKey: "onshoreMed"  as RowKey, offKey: "offshoreMed"  as RowKey },
         { label: "High", onsKey: "onshoreHigh" as RowKey, offKey: "offshoreHigh" as RowKey },
-      ] as const).map(({ label, onsKey, offKey }, i) => {
+      ] as const)
+        .filter(({ onsKey }) => !isCollapsed || (reviewerEditableKeys?.has(onsKey) ?? false))
+        .map(({ label, onsKey, offKey }, i) => {
         const onsHrs = grandTotals[onsKey];
         const offHrs = grandTotals[offKey];
         const totalHrs = onsHrs + offHrs;
@@ -278,7 +309,7 @@ export function HoursGrid(props: HoursGridProps) {
             >
               {label}
             </span>
-            {COLUMNS.map((col) => {
+            {visibleColumns.map((col) => {
               const isActive = col.key === onsKey || col.key === offKey;
               return (
                 <span

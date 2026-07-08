@@ -258,18 +258,29 @@ describe("<ReviewScreenPage>", () => {
     const user = userEvent.setup();
     await screen.findByRole("radiogroup", { name: /Complexity/i });
 
-    // Before picking complexity: every cell should be a read-only span,
-    // not an input.
-    expect(screen.queryByRole("textbox", { name: /Discovery Onshore M/i })).not.toBeInTheDocument();
+    // Before picking complexity (UX-3): no grid inputs — a compact
+    // per-complexity preview renders instead of the disabled 6-col grid.
+    expect(screen.queryByRole("textbox", { name: /Discovery Onshore/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("table", { name: /Template summary by complexity/i })).toBeInTheDocument();
 
     // Pick MED.
     await user.click(screen.getByRole("radio", { name: /Medium/i }));
-    // Now Onshore-M and Offshore-M cells should be editable inputs.
+    // UX-3 collapsed view: only the chosen pair renders, relabelled as
+    // plain hours columns.
+    await waitFor(() => {
+      expect(screen.getByRole("textbox", { name: /Discovery Onshore Hours/i })).toBeInTheDocument();
+      expect(screen.getByRole("textbox", { name: /Discovery Offshore Hours/i })).toBeInTheDocument();
+    });
+    // The other complexity columns don't render at all while collapsed.
+    expect(screen.queryByRole("textbox", { name: /Discovery Onshore L/i })).not.toBeInTheDocument();
+
+    // "Show all columns" expands back to the 6-column comparison view,
+    // where the chosen pair keeps its complexity label and the other
+    // columns are read-only.
+    await user.click(screen.getByRole("button", { name: /Show all columns/i }));
     await waitFor(() => {
       expect(screen.getByRole("textbox", { name: /Discovery Onshore M/i })).toBeInTheDocument();
-      expect(screen.getByRole("textbox", { name: /Discovery Offshore M/i })).toBeInTheDocument();
     });
-    // Onshore-L should still NOT be editable.
     expect(screen.queryByRole("textbox", { name: /Discovery Onshore L/i })).not.toBeInTheDocument();
   });
 
@@ -378,18 +389,18 @@ describe("<ReviewScreenPage>", () => {
     await screen.findByRole("radiogroup", { name: /Complexity/i });
 
     // Snapshot for MED: Discovery onshoreMed=10 + offshoreMed=4 + Build
-    // onshoreMed=80 + offshoreMed=40 = 134 hours total.
-    expect(await screen.findByText(/134 hours/i)).toBeInTheDocument();
+    // onshoreMed=80 + offshoreMed=40 = 134 hours, shown in the decision bar.
+    expect(await screen.findByText(/134 hrs/i)).toBeInTheDocument();
 
-    // Override Discovery Onshore M from 10 → 50 (delta +40).
-    const cell = screen.getByRole("textbox", { name: /Discovery Onshore M/i });
+    // Override Discovery Onshore (collapsed label) from 10 → 50 (delta +40).
+    const cell = screen.getByRole("textbox", { name: /Discovery Onshore Hours/i });
     await user.clear(cell);
     await user.type(cell, "50");
     await user.tab(); // commit on blur
 
-    // New total = 134 - 10 + 50 = 174.
+    // New total = 134 - 10 + 50 = 174, live in the decision bar.
     await waitFor(() => {
-      expect(screen.getByText(/174 hours/i)).toBeInTheDocument();
+      expect(screen.getByText(/174 hrs/i)).toBeInTheDocument();
     });
   });
 

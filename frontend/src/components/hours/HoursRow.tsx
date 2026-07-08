@@ -1,6 +1,6 @@
 import { forwardRef, useImperativeHandle, useRef } from "react";
 import { Undo2 } from "lucide-react";
-import { COLUMNS, GRID_COLS, GRID_COLS_NO_COST, type RowKey, type RowValues } from "./columns";
+import { COLUMNS, GRID_COLS, GRID_COLS_NO_COST, type ColumnDef, type RowKey, type RowValues } from "./columns";
 import { HoursCell, type HoursCellHandle } from "./HoursCell";
 import { ReadOnlyCell } from "./ReadOnlyCell";
 
@@ -28,6 +28,13 @@ interface HoursRowProps {
   /** Controls which gridTemplateColumns is used so body rows stay aligned with the footer. */
   onshoreRate?: number;
   offshoreRate?: number;
+  /**
+   * Column subset to render (UX-3 collapsed reviewer view). Defaults to
+   * all six. Keys drive values/editability; labels drive aria-labels.
+   */
+  columns?: ColumnDef[];
+  /** gridTemplateColumns override so subset rows align with the grid header. */
+  gridColsOverride?: string;
 }
 
 export interface ReviewerCellMeta {
@@ -64,11 +71,12 @@ export interface ReviewerCellMeta {
  */
 export const HoursRow = forwardRef<HoursRowHandle, HoursRowProps>(function HoursRow(
   { phase, values, onChange, errors, onMoveVertical, onPasteAt, disabled, reviewer,
-    onshoreRate, offshoreRate },
+    onshoreRate, offshoreRate, columns, gridColsOverride },
   ref,
 ) {
+  const cols = columns ?? COLUMNS;
   const showCost = onshoreRate != null && offshoreRate != null;
-  const gridCols = showCost ? GRID_COLS : GRID_COLS_NO_COST;
+  const gridCols = gridColsOverride ?? (showCost ? GRID_COLS : GRID_COLS_NO_COST);
   const cellRefs = useRef<(HoursCellHandle | null)[]>([]);
 
   useImperativeHandle(ref, () => ({
@@ -93,9 +101,9 @@ export const HoursRow = forwardRef<HoursRowHandle, HoursRowProps>(function Hours
     // right from col 5 wraps to col 0 of next row).
     if (dir === "left") {
       if (colIndex > 0) cellRefs.current[colIndex - 1]?.focus();
-      else onMoveVertical?.("up", COLUMNS.length - 1);
+      else onMoveVertical?.("up", cols.length - 1);
     } else {
-      if (colIndex < COLUMNS.length - 1) cellRefs.current[colIndex + 1]?.focus();
+      if (colIndex < cols.length - 1) cellRefs.current[colIndex + 1]?.focus();
       else onMoveVertical?.("down", 0);
     }
   }
@@ -151,7 +159,7 @@ export const HoursRow = forwardRef<HoursRowHandle, HoursRowProps>(function Hours
         )}
       </div>
 
-      {COLUMNS.map((col, i) => {
+      {cols.map((col, i) => {
         const editable = isEditable(col.key);
         if (!editable) {
           // Reviewer-mode read-only cell: dimmed value, no input. Refs

@@ -29,6 +29,7 @@ import com.acme.estimator.rates.BlendedRate;
 import com.acme.estimator.rates.BlendedRateRepository;
 import com.acme.estimator.teams.Team;
 import com.acme.estimator.teams.TeamRepository;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
@@ -403,6 +404,66 @@ class EstimateRequestItemReviewTest {
             .findByEntityTypeAndEntityIdOrderByChangedAtDesc(EstimateRequest.ENTITY_TYPE, ctx.requestId)
             .stream().filter(r -> r.getAction() == ChangeAction.ITEM_REVIEW_TAKEN_OVER).count();
         assertThat(takeOverRows).isZero();
+    }
+
+    // ---- Team workload reporting (UX-3 rebuild) -----------------------------
+
+    @Test
+    void teamWorkload_aggregatesApprovedItems() throws Exception {
+        var ctx = seedInReviewRequest(teamA, soTeamA);
+
+        // Approve at LOW: template line is ons 5 / off 2; rate 125/45 →
+        // cost = 5*125 + 2*45 = 715.
+        mvc.perform(post(itemUrl(ctx.requestId, ctx.itemId, "approve")).with(user(soTeamA)).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(Map.of("complexity", "LOW", "justification", "ok"))))
+            .andExpect(status().isOk());
+
+        String body = mvc.perform(get("/api/reports/team-workload").with(user(admin)))
+            .andExpect(status().isOk())
+            .andReturn().getResponse().getContentAsString();
+
+        JsonNode rowA = null;
+        for (JsonNode r : json.readTree(body)) {
+            if (r.get("teamId").asLong() == teamA.getId()) rowA = r;
+        }
+        assertThat(rowA).isNotNull();
+        assertThat(rowA.get("totalEstimateRequests").asLong()).isEqualTo(1);
+        assertThat(rowA.get("approvedCount").asLong()).isEqualTo(1);
+        assertThat(rowA.get("submittedCount").asLong()).isZero();
+        assertThat(new BigDecimal(rowA.get("totalApprovedOnshoreHours").asText()))
+            .isEqualByComparingTo("5");
+        assertThat(new BigDecimal(rowA.get("totalApprovedOffshoreHours").asText()))
+            .isEqualByComparingTo("2");
+        assertThat(new BigDecimal(rowA.get("totalApprovedCost").asText()))
+            .isEqualByComparingTo("715.00");
+
+        // Detail lists the approved item with its request context.
+        mvc.perform(get("/api/reports/team-workload/" + teamA.getId()).with(user(admin)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.recentApprovedEstimates.length()").value(1))
+            .andExpect(jsonPath("$.recentApprovedEstimates[0].complexity").value("LOW"))
+            .andExpect(jsonPath("$.recentApprovedEstimates[0].productName").isNotEmpty());
+    }
+
+    @Test
+    void teamWorkload_submittedItemsCountWithoutMetrics() throws Exception {
+        var ctx = seedSubmittedRequest(teamA);
+
+        String body = mvc.perform(get("/api/reports/team-workload").with(user(admin)))
+            .andExpect(status().isOk())
+            .andReturn().getResponse().getContentAsString();
+
+        JsonNode rowA = null;
+        for (JsonNode r : json.readTree(body)) {
+            if (r.get("teamId").asLong() == teamA.getId()) rowA = r;
+        }
+        assertThat(rowA).isNotNull();
+        assertThat(rowA.get("submittedCount").asLong()).isEqualTo(1);
+        assertThat(rowA.get("approvedCount").asLong()).isZero();
+        assertThat(new BigDecimal(rowA.get("totalApprovedCost").asText())).isZero();
+        // ctx used only for seeding — reference it so the linter is happy.
+        assertThat(ctx.requestId).isNotNull();
     }
 
     private String adminItemUrl(Long requestId, Long itemId, String action) {
