@@ -114,8 +114,31 @@ export function deactivateUser(id: number): Promise<UserDetail> {
   return api(`/admin/users/${id}/deactivate`, { method: "POST" });
 }
 
-export function resetUserPassword(id: number): Promise<void> {
+/** SEC-1: returns a copy/paste reset link instead of a plaintext password. */
+export interface PasswordResetLinkResponse {
+  resetUrl: string;
+  expiresAt: string;
+}
+
+export function resetUserPassword(id: number): Promise<PasswordResetLinkResponse> {
   return api(`/admin/users/${id}/reset-password`, { method: "POST" });
+}
+
+export interface ValidateResetTokenResponse {
+  valid: boolean;
+  email?: string;
+  expiresAt?: string;
+}
+
+export function validateResetToken(token: string): Promise<ValidateResetTokenResponse> {
+  return api(`/auth/password-resets/${encodeURIComponent(token)}`);
+}
+
+export function completePasswordReset(token: string, password: string): Promise<void> {
+  return api(`/auth/password-resets/${encodeURIComponent(token)}`, {
+    method: "POST",
+    body: { password },
+  });
 }
 
 export function deleteUser(id: number, confirmationName: string): Promise<void> {

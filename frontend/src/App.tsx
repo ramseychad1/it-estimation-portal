@@ -27,6 +27,7 @@ import { CategoriesPage } from "./pages/admin/CategoriesPage";
 import { ClientsPage } from "./pages/admin/ClientsPage";
 import { ProgramsPage } from "./pages/admin/ProgramsPage";
 import { AcceptInvitePage } from "./pages/AcceptInvitePage";
+import { ResetPasswordPage } from "./pages/ResetPasswordPage";
 import { ProfilePage } from "./pages/ProfilePage";
 import { GlobalSettingsPage } from "./pages/admin/GlobalSettingsPage";
 import { PricingReviewQueuePage } from "./pages/PricingReviewQueuePage";
@@ -68,6 +69,7 @@ export default function App() {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/invite/:token" element={<AcceptInvitePage />} />
+      <Route path="/reset/:token" element={<ResetPasswordPage />} />
 
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
       <Route path="/profile" element={<ProtectedShell><ProfilePage /></ProtectedShell>} />

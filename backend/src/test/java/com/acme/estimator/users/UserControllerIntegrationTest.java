@@ -208,15 +208,93 @@ class UserControllerIntegrationTest {
     // ---- reset password -----------------------------------------------
 
     @Test
-    void resetPassword_returns204_andWritesPasswordResetRow() throws Exception {
+    void resetPassword_returnsLink_andWritesPasswordResetRow_noPlaintext() throws Exception {
         Long id = estimator.getUserId();
-        mvc.perform(asUser(post("/api/admin/users/" + id + "/reset-password"), admin))
-            .andExpect(status().isNoContent());
+        String body = mvc.perform(asUser(post("/api/admin/users/" + id + "/reset-password"), admin))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.resetUrl").value(org.hamcrest.Matchers.containsString("/reset/")))
+            .andExpect(jsonPath("$.expiresAt").exists())
+            // SEC-1: the response must NOT contain a generated plaintext password.
+            .andExpect(jsonPath("$.password").doesNotExist())
+            .andExpect(jsonPath("$.newPassword").doesNotExist())
+            .andReturn().getResponse().getContentAsString();
 
         var rows = changeLogRepository
             .findByEntityTypeAndEntityIdOrderByChangedAtDesc(UserService.ENTITY_TYPE, id);
         assertThat(rows).hasSize(1);
         assertThat(rows.get(0).getAction()).isEqualTo(ChangeAction.PASSWORD_RESET);
+
+        // The link carries a real token that the public validate endpoint accepts.
+        String token = body.substring(body.indexOf("/reset/") + "/reset/".length());
+        token = token.substring(0, token.indexOf('"'));
+        mvc.perform(get("/api/auth/password-resets/" + token))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.valid").value(true));
+    }
+
+    @Test
+    void resetPassword_thenComplete_setsNewPasswordWithoutOldPassword() throws Exception {
+        Long id = estimator.getUserId();
+        String token = mintResetToken(id);
+
+        // No current-password field is sent — the whole point of an admin reset.
+        mvc.perform(post("/api/auth/password-resets/" + token)
+                .with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"password\":\"BrandNewPass9\"}"))
+            .andExpect(status().isNoContent());
+
+        // Token is single-use: replaying it now fails.
+        mvc.perform(post("/api/auth/password-resets/" + token)
+                .with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"password\":\"AnotherPass9\"}"))
+            .andExpect(status().isBadRequest());
+
+        // And it no longer validates.
+        mvc.perform(get("/api/auth/password-resets/" + token))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.valid").value(false));
+    }
+
+    @Test
+    void completeReset_rejectsWeakPassword() throws Exception {
+        String token = mintResetToken(estimator.getUserId());
+        mvc.perform(post("/api/auth/password-resets/" + token)
+                .with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"password\":\"short\"}"))
+            .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void validateReset_unknownToken_returnsInvalidWithoutLeakingEmail() throws Exception {
+        mvc.perform(get("/api/auth/password-resets/does-not-exist"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.valid").value(false))
+            .andExpect(jsonPath("$.email").doesNotExist());
+    }
+
+    @Test
+    void mintingNewResetToken_revokesThePrevious() throws Exception {
+        Long id = estimator.getUserId();
+        String first = mintResetToken(id);
+        String second = mintResetToken(id);
+
+        // The older link is now dead; only the newest works.
+        mvc.perform(get("/api/auth/password-resets/" + first))
+            .andExpect(jsonPath("$.valid").value(false));
+        mvc.perform(get("/api/auth/password-resets/" + second))
+            .andExpect(jsonPath("$.valid").value(true));
+    }
+
+    /** Issues a reset link as admin and returns the raw token from the URL. */
+    private String mintResetToken(Long userId) throws Exception {
+        String body = mvc.perform(asUser(post("/api/admin/users/" + userId + "/reset-password"), admin))
+            .andExpect(status().isOk())
+            .andReturn().getResponse().getContentAsString();
+        String token = body.substring(body.indexOf("/reset/") + "/reset/".length());
+        return token.substring(0, token.indexOf('"'));
     }
 
     // ---- helpers -------------------------------------------------------

@@ -8,6 +8,7 @@ import com.acme.estimator.common.ApiException;
 import com.acme.estimator.common.PageResponse;
 import com.acme.estimator.users.dto.DeleteUserRequest;
 import com.acme.estimator.users.dto.ListUsersFilter;
+import com.acme.estimator.users.dto.PasswordResetLinkResponse;
 import com.acme.estimator.users.dto.UpdateUserRequest;
 import com.acme.estimator.users.dto.UserDetail;
 import com.acme.estimator.users.dto.UserHistoryItem;
@@ -96,9 +97,12 @@ public class UserController {
     }
 
     @PostMapping("/{id}/reset-password")
-    public ResponseEntity<Void> resetPassword(@PathVariable Long id, @AuthenticationPrincipal AppUserDetails principal) {
-        userService.resetPassword(id, currentUser(principal));
-        return ResponseEntity.noContent().build();
+    public PasswordResetLinkResponse resetPassword(
+        @PathVariable Long id, @AuthenticationPrincipal AppUserDetails principal
+    ) {
+        // Returns the copy/paste reset link (SEC-1) — no plaintext password
+        // is generated or logged.
+        return userService.resetPassword(id, currentUser(principal));
     }
 
     @DeleteMapping("/{id}")

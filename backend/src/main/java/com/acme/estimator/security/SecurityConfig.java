@@ -70,6 +70,9 @@ public class SecurityConfig {
                     // Invite-accept flow has to be reachable without a session — the
                     // invitee doesn't have one yet.
                     "/api/auth/invitations/**",
+                    // Password-reset completion (SEC-1) — the user resetting a
+                    // forgotten password has no session either.
+                    "/api/auth/password-resets/**",
                     // Gmail OAuth callback — Google redirects here directly (bypasses the
                     // frontend nginx proxy), so the admin's session cookie isn't present.
                     // The state parameter provides CSRF protection instead.

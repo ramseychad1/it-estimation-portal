@@ -43,6 +43,7 @@ import {
 } from "../../lib/queries/users";
 import { InviteUserModal } from "./InviteUserModal";
 import { InviteCreatedModal } from "./InviteCreatedModal";
+import { ResetLinkModal } from "./ResetLinkModal";
 import { EditUserDrawer } from "./EditUserDrawer";
 import { PendingInviteDrawer } from "./PendingInviteDrawer";
 
@@ -76,6 +77,7 @@ export function UsersPage() {
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteAdminPrefill, setInviteAdminPrefill] = useState(false);
   const [createdInvite, setCreatedInvite] = useState<{ userId: number; email: string; inviteUrl: string } | null>(null);
+  const [resetLink, setResetLink] = useState<{ email: string; resetUrl: string } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<UserDetail | null>(null);
   const [revokeTarget, setRevokeTarget] = useState<UserDetail | null>(null);
   const [hiddenCols, setHiddenCols] = useColumnsVisibility("users", USERS_REQUIRED_COLS);
@@ -159,7 +161,7 @@ export function UsersPage() {
         icon: <KeyRound className="w-3.5 h-3.5" strokeWidth={1.5} />,
         onSelect: () =>
           resetPasswordMutation.mutate(row.id, {
-            onSuccess: () => toast.success("Password reset. Check the server log for the new password."),
+            onSuccess: (res) => setResetLink({ email: row.email, resetUrl: res.resetUrl }),
             onError: () => toast.error("Could not reset that password."),
           }),
       });
@@ -483,6 +485,13 @@ export function UsersPage() {
         email={createdInvite?.email ?? ""}
         inviteUrl={createdInvite?.inviteUrl ?? ""}
         onDone={() => setCreatedInvite(null)}
+      />
+
+      <ResetLinkModal
+        open={!!resetLink}
+        email={resetLink?.email ?? ""}
+        resetUrl={resetLink?.resetUrl ?? ""}
+        onDone={() => setResetLink(null)}
       />
 
       <EditUserDrawer

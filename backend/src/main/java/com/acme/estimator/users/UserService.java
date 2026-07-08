@@ -13,15 +13,18 @@ import com.acme.estimator.common.ApiException;
 import com.acme.estimator.teams.Team;
 import com.acme.estimator.teams.TeamRepository;
 import com.acme.estimator.teams.dto.TeamRef;
+import com.acme.estimator.users.dto.CompletePasswordResetRequest;
 import com.acme.estimator.users.dto.DeleteUserRequest;
 import com.acme.estimator.users.dto.ListUsersFilter;
+import com.acme.estimator.users.dto.PasswordResetLinkResponse;
 import com.acme.estimator.users.dto.UpdateUserRequest;
 import com.acme.estimator.users.dto.UserDetail;
 import com.acme.estimator.users.dto.UserListItem;
+import com.acme.estimator.users.dto.ValidateTokenResponse;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.criteria.Join;
 import jakarta.persistence.criteria.Predicate;
-import java.security.SecureRandom;
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -33,6 +36,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -64,9 +68,15 @@ public class UserService {
     private final ChangeLogEntryRepository changeLogRepository;
     private final AuditService auditService;
     private final PasswordEncoder passwordEncoder;
+    private final PasswordResetTokenRepository resetTokenRepository;
+    private final TokenGenerator tokenGenerator;
     private final EntityManager em;
 
-    private final SecureRandom passwordRandom = new SecureRandom();
+    /** Reset links are handed over immediately, so a short TTL is fine. */
+    private static final long RESET_TTL_MINUTES = 60;
+
+    @Value("${app.base-url}")
+    private String baseUrl;
 
     // ---- reads ---------------------------------------------------------
 
@@ -276,12 +286,36 @@ public class UserService {
         auditService.recordDeleted(ENTITY_TYPE, userId, actor, null);
     }
 
+    /**
+     * Admin-initiated reset (SEC-1). Mints a single-use, time-limited token
+     * and returns a copy/paste link the admin hands to the user out-of-band
+     * (email isn't wired up). The old behaviour — generate a plaintext
+     * password and write it to the log — is gone: no password is produced
+     * here, and the raw token is never logged. Any outstanding reset token
+     * for the user is revoked so only the newest link works.
+     */
     @Transactional
-    public String resetPassword(Long id, User actor) {
+    public PasswordResetLinkResponse resetPassword(Long id, User actor) {
         User user = get(id);
-        String newPassword = generatePassword();
-        user.setPasswordHash(passwordEncoder.encode(newPassword));
-        userRepository.save(user);
+        // Pending invites still complete via the invite link; inactive users
+        // can't sign in. Only re-key an account that's actually usable.
+        if (user.getInvitationStatus() != InvitationStatus.ACTIVE) {
+            throw ApiException.badRequest(
+                "Password reset is only available for active users. "
+                + "Pending invitations are completed via the invitation link.");
+        }
+
+        OffsetDateTime now = OffsetDateTime.now();
+        for (PasswordResetToken prior
+                : resetTokenRepository.findByUserIdAndUsedAtIsNullAndRevokedAtIsNull(user.getId())) {
+            prior.setRevokedAt(now);
+        }
+
+        PasswordResetToken token = new PasswordResetToken();
+        token.setToken(tokenGenerator.generate());
+        token.setUserId(user.getId());
+        token.setExpiresAt(now.plusMinutes(RESET_TTL_MINUTES));
+        resetTokenRepository.save(token);
 
         ChangeLogEntry entry = new ChangeLogEntry();
         entry.setEntityType(ENTITY_TYPE);
@@ -291,8 +325,64 @@ public class UserService {
         entry.setSource(ChangeSource.WEB);
         changeLogRepository.save(entry);
 
-        log.warn("[DEV ONLY] Password reset for {}: {}", user.getEmail(), newPassword);
-        return newPassword;
+        // Log the ACTION, never the secret — shortPrefix is safe to correlate.
+        log.info("Password reset link issued for {} by {} (token {})",
+            user.getEmail(), actor.getEmail(), tokenGenerator.shortPrefix(token.getToken()));
+        return new PasswordResetLinkResponse(buildResetUrl(token.getToken()), token.getExpiresAt());
+    }
+
+    /**
+     * Public: is this reset token still good? Mirrors the invite-validate
+     * contract — on failure, email/expiry are omitted so we don't leak
+     * account existence.
+     */
+    @Transactional(readOnly = true)
+    public ValidateTokenResponse validateResetToken(String tokenValue) {
+        if (tokenValue == null || tokenValue.isBlank()) return ValidateTokenResponse.invalid();
+        PasswordResetToken token = resetTokenRepository.findByToken(tokenValue).orElse(null);
+        if (token == null || !token.isUsable(OffsetDateTime.now())) {
+            return ValidateTokenResponse.invalid();
+        }
+        User user = userRepository.findById(token.getUserId()).orElse(null);
+        if (user == null) return ValidateTokenResponse.invalid();
+        return ValidateTokenResponse.valid(user.getEmail(), token.getExpiresAt());
+    }
+
+    /**
+     * Public: set a new password from a reset token. No current-password
+     * check by design — the user may have forgotten it. Single-use: the
+     * token is consumed on success.
+     */
+    @Transactional
+    public void completePasswordReset(String tokenValue, CompletePasswordResetRequest req) {
+        PasswordResetToken token = resetTokenRepository.findByToken(tokenValue)
+            .orElseThrow(() -> ApiException.badRequest("This reset link is no longer valid."));
+        OffsetDateTime now = OffsetDateTime.now();
+        if (!token.isUsable(now)) {
+            throw ApiException.badRequest("This reset link is no longer valid.");
+        }
+        User user = userRepository.findById(token.getUserId())
+            .orElseThrow(() -> ApiException.badRequest("This reset link is no longer valid."));
+
+        user.setPasswordHash(passwordEncoder.encode(req.password()));
+        userRepository.save(user);
+
+        token.setUsedAt(now);
+        resetTokenRepository.save(token);
+
+        ChangeLogEntry entry = new ChangeLogEntry();
+        entry.setEntityType(ENTITY_TYPE);
+        entry.setEntityId(user.getId());
+        entry.setAction(ChangeAction.PASSWORD_RESET);
+        // Self-service completion — attribute to the user themselves.
+        entry.setChangedBy(user.getId());
+        entry.setSource(ChangeSource.WEB);
+        changeLogRepository.save(entry);
+    }
+
+    private String buildResetUrl(String token) {
+        String base = baseUrl == null ? "" : baseUrl.replaceAll("/+$", "");
+        return base + "/reset/" + token;
     }
 
     // ---- helpers -------------------------------------------------------
@@ -398,17 +488,6 @@ public class UserService {
             "LAST_ADMIN_PROTECTION",
             "This is the only active Admin. Promote another user to Admin before continuing."
         );
-    }
-
-    private String generatePassword() {
-        String alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
-        char[] out = new char[14];
-        for (int i = 0; i < out.length; i++) {
-            out[i] = alphabet.charAt(passwordRandom.nextInt(alphabet.length()));
-        }
-        out[0] = "ABCDEFGHJKLMNPQRSTUVWXYZ".charAt(passwordRandom.nextInt(24));
-        out[7] = "23456789".charAt(passwordRandom.nextInt(8));
-        return new String(out);
     }
 
 }

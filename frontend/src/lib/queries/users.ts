@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   activateUser,
   changePassword,
+  completePasswordReset,
   deactivateUser,
   deleteUser,
   getUser,
@@ -9,6 +10,7 @@ import {
   listUsers,
   resetUserPassword,
   updateUser,
+  validateResetToken,
   type ListUsersParams,
   type UpdateUserRequest,
 } from "../api/users";
@@ -93,6 +95,24 @@ export function useResetUserPasswordMutation() {
   return useMutation({
     mutationFn: (id: number) => resetUserPassword(id),
     onSuccess: () => invalidateUsers(qc),
+  });
+}
+
+// Public reset flow — mirrors the invitation-accept hooks; no cache invalidation.
+export function useValidateResetTokenQuery(token: string | null) {
+  return useQuery({
+    queryKey: ["password-reset-token", token],
+    queryFn: () => validateResetToken(token as string),
+    enabled: !!token,
+    retry: false,
+    staleTime: 0,
+  });
+}
+
+export function useCompletePasswordResetMutation() {
+  return useMutation({
+    mutationFn: ({ token, password }: { token: string; password: string }) =>
+      completePasswordReset(token, password),
   });
 }
 
