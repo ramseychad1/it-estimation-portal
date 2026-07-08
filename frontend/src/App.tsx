@@ -4,7 +4,6 @@ import { AuthGuard } from "./components/AuthGuard";
 import { RoleGuard } from "./components/RoleGuard";
 import { ROLE_ADMIN, ROLE_REQUESTER, ROLE_REVENUE_MANAGER, ROLE_SOLUTION_OWNER } from "./lib/types";
 import { LoginPage } from "./pages/LoginPage";
-import { TemplateHistoryPage } from "./pages/placeholders";
 import { ClientPricingPage } from "./pages/admin/ClientPricingPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { MyRequestsPage } from "./pages/MyRequestsPage";
@@ -95,7 +94,6 @@ export default function App() {
       <Route path="/catalog/products/:productId" element={<RoleProtectedShell requires={[ROLE_SOLUTION_OWNER, ROLE_REVENUE_MANAGER]}><ProductDetailPage /></RoleProtectedShell>} />
       <Route path="/catalog/products/:productId/sub-features/:subFeatureId" element={<RoleProtectedShell requires={[ROLE_SOLUTION_OWNER, ROLE_REVENUE_MANAGER]}><SubFeatureDetailPage /></RoleProtectedShell>} />
       <Route path="/catalog/questions" element={<RoleProtectedShell requires={[ROLE_SOLUTION_OWNER, ROLE_REVENUE_MANAGER]}><QuestionsBrowserPage /></RoleProtectedShell>} />
-      <Route path="/catalog/template-history" element={<RoleProtectedShell requires={[ROLE_SOLUTION_OWNER, ROLE_REVENUE_MANAGER]}><TemplateHistoryPage /></RoleProtectedShell>} />
 
       {/* Pricing Review surface — Revenue Manager + Admin. */}
       <Route path="/pricing-review" element={<RoleProtectedShell requires={[ROLE_REVENUE_MANAGER, ROLE_ADMIN]}><PricingReviewQueuePage /></RoleProtectedShell>} />

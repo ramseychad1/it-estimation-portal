@@ -57,6 +57,24 @@ function installRouter() {
       return Promise.resolve(jsonResponse({ cards }));
     }
 
+    if (path === "/api/dashboard/activity" && method === "GET") {
+      const mineOnly = u.searchParams.get("mineOnly") === "true";
+      const size = Number(u.searchParams.get("size") ?? 20);
+      const all = [
+        { id: 1, timestamp: "2026-07-09T10:00:00Z", actor: { id: 1, name: "Sarah Admin" },
+          description: "Sarah Admin approved an item on Estimate request 'Portal Rollout'",
+          entityType: "EstimateRequest", entityHref: "/requests/9", actionLabel: "Item approved" },
+        { id: 2, timestamp: "2026-07-09T09:00:00Z", actor: { id: 2, name: "John SO" },
+          description: "John SO started reviewing an item on Estimate request 'Portal Rollout'",
+          entityType: "EstimateRequest", entityHref: "/requests/9", actionLabel: "Item review started" },
+      ];
+      const rows = mineOnly ? all.filter((r) => r.actor.id === 1) : all;
+      return Promise.resolve(jsonResponse({
+        items: rows.slice(0, size), page: 0, size,
+        totalElements: rows.length, totalPages: 1,
+      }));
+    }
+
     return Promise.resolve(new Response(null, { status: 404 }));
   });
 }
@@ -75,6 +93,31 @@ describe("<DashboardPage>", () => {
     expect(cards[0]).toHaveTextContent("3");
     expect(cards[2]).toHaveTextContent("My drafts");
     expect(cards[2]).toHaveTextContent("4");
+  });
+
+  it("emphasizes actionable non-zero cards with the accent treatment", async () => {
+    renderWithProviders(<DashboardPage />);
+    await waitFor(() => expect(screen.getAllByTestId("stat-card").length).toBeGreaterThan(0));
+    const cards = screen.getAllByTestId("stat-card");
+    // awaitingReview count=3 -> emphasized; myDrafts is not an attention card.
+    expect(cards[0]).toHaveAttribute("data-emphasized", "true");
+    expect(cards[2]).not.toHaveAttribute("data-emphasized");
+  });
+
+  it("renders the activity feed and filters with Just mine", async () => {
+    renderWithProviders(<DashboardPage />);
+
+    // Both rows render, descriptions are humanized (no raw enums).
+    expect(await screen.findByText(/approved an item on Estimate request 'Portal Rollout'/i)).toBeInTheDocument();
+    expect(screen.getByText(/started reviewing an item/i)).toBeInTheDocument();
+    expect(screen.queryByText(/ITEM_REVIEW_STARTED/)).not.toBeInTheDocument();
+
+    // Just mine narrows to the viewer's own rows.
+    await userEvent.click(screen.getByRole("switch", { name: /Just mine/i }));
+    await waitFor(() => {
+      expect(screen.queryByText(/started reviewing an item/i)).not.toBeInTheDocument();
+    });
+    expect(screen.getByText(/approved an item on/i)).toBeInTheDocument();
   });
 
   it("Refresh button triggers refetch of summary", async () => {

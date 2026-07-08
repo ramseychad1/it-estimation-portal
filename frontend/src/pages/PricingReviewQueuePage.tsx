@@ -85,7 +85,7 @@ export function PricingReviewQueuePage() {
           <EmptyState
             icon={CircleDollarSign}
             title="No estimates pending pricing review"
-            description="Fully-approved estimates will appear here when Revenue & Pricing Review is enabled."
+            description="When every item on a request is approved, it lands here for revenue review and client pricing."
           />
         ) : (
           <>

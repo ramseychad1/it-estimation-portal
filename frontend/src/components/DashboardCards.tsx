@@ -12,19 +12,27 @@ import { Link } from "react-router-dom";
  */
 
 interface StatCardProps {
+  /** Accent treatment for actionable non-zero cards (UX-4). */
+  emphasized?: boolean;
   label: string;
   count: number;
   description?: string | null;
   href?: string;
 }
 
-export function StatCard({ label, count, description, href }: StatCardProps) {
+export function StatCard({ label, count, description, href, emphasized }: StatCardProps) {
   const inner = (
     <div
       data-testid="stat-card"
+      data-emphasized={emphasized || undefined}
       className="bg-white"
       style={{
-        border: "1px solid var(--color-warm-gray-light)",
+        // Emphasized = work waiting on the viewer (UX-4): accent border +
+        // accent count so actionable cards lead the grid visually.
+        border: emphasized
+          ? "1px solid var(--color-accent-border)"
+          : "1px solid var(--color-warm-gray-light)",
+        borderTop: emphasized ? "3px solid var(--color-accent)" : undefined,
         borderRadius: 8,
         padding: 24,
         cursor: href ? "pointer" : undefined,
@@ -32,8 +40,12 @@ export function StatCard({ label, count, description, href }: StatCardProps) {
       }}
     >
       <div
-        className="text-near-black font-semibold tabular-nums"
-        style={{ fontSize: 32, lineHeight: 1.1 }}
+        className="font-semibold tabular-nums"
+        style={{
+          fontSize: 32,
+          lineHeight: 1.1,
+          color: emphasized ? "var(--color-accent)" : "var(--color-near-black)",
+        }}
       >
         {count.toLocaleString()}
       </div>

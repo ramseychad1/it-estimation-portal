@@ -9,7 +9,6 @@ import {
   FolderKanban,
   GitBranch,
   HelpCircle,
-  History,
   Inbox,
   Layers,
   Package,
@@ -58,7 +57,6 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       { label: "Products", to: "/catalog/products", icon: Package },
       { label: "Critical questions", to: "/catalog/questions", icon: HelpCircle },
-      { label: "Template history", to: "/catalog/template-history", icon: History },
     ],
   },
   {

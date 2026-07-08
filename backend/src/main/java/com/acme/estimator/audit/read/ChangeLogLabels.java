@@ -78,7 +78,28 @@ public final class ChangeLogLabels {
         Map.entry(ChangeAction.REVIEW_RELEASED, "released"),
         Map.entry(ChangeAction.APPROVED, "approved"),
         Map.entry(ChangeAction.REJECTED, "rejected"),
-        Map.entry(ChangeAction.SENT_BACK, "sent back for re-review")
+        Map.entry(ChangeAction.SENT_BACK, "sent back for re-review"),
+        // UX-4 — per-item actions (Phase 9b) had no verbs, so change-log
+        // rows rendered as "Actor EstimateRequest 'title'" with no verb at
+        // all. The entity is always the parent request; the item context
+        // lives in the notes column.
+        Map.entry(ChangeAction.ITEM_REVIEW_STARTED, "started reviewing an item on"),
+        Map.entry(ChangeAction.ITEM_REVIEW_RELEASED, "released an item review on"),
+        Map.entry(ChangeAction.ITEM_REVIEW_TAKEN_OVER, "took over an item review on"),
+        Map.entry(ChangeAction.ITEM_APPROVED, "approved an item on"),
+        Map.entry(ChangeAction.ITEM_REJECTED, "rejected an item on"),
+        Map.entry(ChangeAction.ITEM_REVISED, "revised an item on"),
+        Map.entry(ChangeAction.ITEM_RESUBMITTED, "resubmitted an item on"),
+        Map.entry(ChangeAction.ITEM_DROPPED, "removed an item from"),
+        Map.entry(ChangeAction.ITEM_SENT_BACK, "sent an item back on"),
+        Map.entry(ChangeAction.ITEM_CLARIFICATION_REQUESTED, "requested clarification on"),
+        Map.entry(ChangeAction.ITEM_CLARIFICATION_ANSWERED, "answered a clarification on"),
+        Map.entry(ChangeAction.ITEM_RECALLED, "recalled an item on"),
+        Map.entry(ChangeAction.PRICING_REVIEW_STARTED, "started pricing review of"),
+        Map.entry(ChangeAction.PRICING_REVIEW_RELEASED, "released pricing review of"),
+        Map.entry(ChangeAction.PRICING_REVIEW_APPROVED, "approved pricing for"),
+        Map.entry(ChangeAction.PRICING_REVIEW_REQUESTED, "queued pricing review for"),
+        Map.entry(ChangeAction.SETTING_UPDATED, "updated")
     );
 
     public static String forEntityType(String entityType) {
@@ -91,5 +112,15 @@ public final class ChangeLogLabels {
 
     public static String verbFor(ChangeAction action) {
         return ACTION_VERBS.getOrDefault(action, action.name().toLowerCase());
+    }
+
+    /**
+     * Every ChangeAction must have an explicit verb — the fallback in
+     * {@link #verbFor} renders raw enum text ("item_review_started") in
+     * user-facing descriptions. Guarded by a unit test so new enum values
+     * can't ship without one.
+     */
+    static boolean hasExplicitVerb(ChangeAction action) {
+        return ACTION_VERBS.containsKey(action);
     }
 }

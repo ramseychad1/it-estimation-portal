@@ -154,7 +154,6 @@ const ROUTES = [
   "/catalog/products/1",
   "/catalog/products/1/sub-features/1",
   "/catalog/questions",
-  "/catalog/template-history",
   "/admin/teams",
   "/admin/phases",
   "/admin/rates",

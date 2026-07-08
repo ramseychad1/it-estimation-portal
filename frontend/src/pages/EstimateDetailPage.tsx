@@ -41,6 +41,7 @@ import { useAuth } from "../lib/auth";
 import { isAdmin } from "../lib/permissions";
 import { useUserDisplay } from "../lib/userDisplay";
 import { relativeTime } from "../lib/relativeTime";
+import { actionLabel } from "../lib/activityLabels";
 import type { EstimatePdfProps } from "../components/EstimatePdf";
 import {
   computeClientPrice,
@@ -2170,23 +2171,6 @@ function complexityLabel(c: "LOW" | "MED" | "HIGH"): string {
   return c === "MED" ? "Medium" : c === "LOW" ? "Low" : "High";
 }
 
-function actionLabel(action: string): string {
-  switch (action) {
-    case "CREATED":  return "Created";
-    case "UPDATED":  return "Updated";
-    case "DELETED":  return "Discarded";
-    case "SUBMITTED": return "Submitted";
-    case "REVIEW_STARTED": return "Review started";
-    case "REVIEW_RELEASED": return "Review released";
-    case "APPROVED":  return "Approved";
-    case "REJECTED":  return "Rejected";
-    case "SENT_BACK": return "Sent back for revision";
-    case "ITEM_CLARIFICATION_REQUESTED": return "Clarification requested";
-    case "ITEM_CLARIFICATION_ANSWERED":  return "Clarification answered";
-    case "ITEM_RECALLED": return "Recalled";
-    default: return action;
-  }
-}
 
 // ── Pricing re-review request modal ───────────────────────────────────────────
 

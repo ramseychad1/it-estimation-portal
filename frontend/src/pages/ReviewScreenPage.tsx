@@ -23,6 +23,7 @@ import { useAuth } from "../lib/auth";
 import { ROLE_ADMIN } from "../lib/types";
 import { ApiError } from "../lib/api";
 import { relativeTime } from "../lib/relativeTime";
+import { actionLabel } from "../lib/activityLabels";
 import { useRatesPageQuery } from "../lib/queries/rates";
 import { useMyRequestHistoryQuery } from "../lib/queries/estimates";
 import {
@@ -2160,23 +2161,6 @@ function complexityLabel(c: Complexity): string {
   return c === "MED" ? "Medium" : c === "LOW" ? "Low" : "High";
 }
 
-function actionLabel(action: string): string {
-  switch (action) {
-    case "CREATED":         return "Created";
-    case "UPDATED":         return "Updated";
-    case "SUBMITTED":       return "Submitted";
-    case "REVIEW_STARTED":  return "Review started";
-    case "REVIEW_RELEASED": return "Review released";
-    case "APPROVED":        return "Approved";
-    case "REJECTED":        return "Rejected";
-    case "SENT_BACK":       return "Sent back";
-    case "DELETED":                       return "Discarded";
-    case "ITEM_CLARIFICATION_REQUESTED":  return "Clarification requested";
-    case "ITEM_CLARIFICATION_ANSWERED":   return "Clarification answered";
-    case "ITEM_RECALLED":                 return "Item recalled";
-    default:                              return action;
-  }
-}
 
 // Silence unused-import linter for items kept for future variations.
 void TertiaryButton;

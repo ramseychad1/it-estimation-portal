@@ -171,7 +171,11 @@ export function ReviewQueuePage() {
               </span>
             )}
           </div>
-          <span className="text-warm-gray-med" style={{ fontSize: 12 }}>
+          <span
+            className="text-warm-gray-med truncate"
+            style={{ fontSize: 12, maxWidth: 420, display: "block" }}
+            title={r.productNames}
+          >
             {r.productNames}
           </span>
         </div>
@@ -230,7 +234,7 @@ export function ReviewQueuePage() {
     },
     {
       key: "questions",
-      header: "Questions",
+      header: "Questions answered",
       width: 100,
       render: (r) => {
         if (r.totalQuestionsCount === 0) {
