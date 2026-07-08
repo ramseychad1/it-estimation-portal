@@ -735,6 +735,119 @@ class EstimateRequestControllerIntegrationTest {
         return subFeatureRepository.save(s);
     }
 
+    // ---- typed answer validation (UX-2) ------------------------------------
+
+    @Test
+    void saveAnswers_yesNoQuestion_rejectsNonYesNo_withFieldError() throws Exception {
+        Product product = seedAtomicProduct("Eligibility");
+        CriticalQuestion q = seedTypedQuestion(product.getId(), "Vanity code?",
+            com.acme.estimator.catalog.questions.QuestionType.YES_NO, null, 1);
+        Long draftId = createDraftJson("R", product.getId(), null);
+
+        mvc.perform(asRequester(put("/api/estimates/my/" + draftId + "/answers"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(Map.of(
+                    "answers", List.of(Map.of("questionId", q.getId(), "answerText", "Maybe"))
+                ))))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.error").value("INVALID_ANSWER_FORMAT"))
+            .andExpect(jsonPath("$.fieldErrors[\"question:" + q.getId() + "\"]")
+                .value("Answer must be Yes or No."));
+
+        mvc.perform(asRequester(put("/api/estimates/my/" + draftId + "/answers"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(Map.of(
+                    "answers", List.of(Map.of("questionId", q.getId(), "answerText", "Yes"))
+                ))))
+            .andExpect(status().isOk());
+    }
+
+    @Test
+    void saveAnswers_singleSelect_rejectsUnknownOption() throws Exception {
+        Product product = seedAtomicProduct("Eligibility");
+        CriticalQuestion q = seedTypedQuestion(product.getId(), "Scope?",
+            com.acme.estimator.catalog.questions.QuestionType.SINGLE_SELECT,
+            "[\"Pilot\",\"Full rollout\"]", 1);
+        Long draftId = createDraftJson("R", product.getId(), null);
+
+        mvc.perform(asRequester(put("/api/estimates/my/" + draftId + "/answers"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(Map.of(
+                    "answers", List.of(Map.of("questionId", q.getId(), "answerText", "Everything"))
+                ))))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.error").value("INVALID_ANSWER_FORMAT"));
+
+        mvc.perform(asRequester(put("/api/estimates/my/" + draftId + "/answers"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(Map.of(
+                    "answers", List.of(Map.of("questionId", q.getId(), "answerText", "Pilot"))
+                ))))
+            .andExpect(status().isOk());
+    }
+
+    @Test
+    void saveAnswers_numberQuestion_rejectsNonNumeric() throws Exception {
+        Product product = seedAtomicProduct("Eligibility");
+        CriticalQuestion q = seedTypedQuestion(product.getId(), "How many products?",
+            com.acme.estimator.catalog.questions.QuestionType.NUMBER, null, 1);
+        Long draftId = createDraftJson("R", product.getId(), null);
+
+        mvc.perform(asRequester(put("/api/estimates/my/" + draftId + "/answers"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(Map.of(
+                    "answers", List.of(Map.of("questionId", q.getId(), "answerText", "a dozen"))
+                ))))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.error").value("INVALID_ANSWER_FORMAT"))
+            .andExpect(jsonPath("$.fieldErrors[\"question:" + q.getId() + "\"]")
+                .value("Answer must be a number."));
+
+        mvc.perform(asRequester(put("/api/estimates/my/" + draftId + "/answers"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(Map.of(
+                    "answers", List.of(Map.of("questionId", q.getId(), "answerText", "12.5"))
+                ))))
+            .andExpect(status().isOk());
+    }
+
+    @Test
+    void submit_answerPredatingTypeChange_isBlockedAtSubmitGate() throws Exception {
+        // Answer saved while LONG_TEXT, then an admin retypes the question to
+        // YES_NO — the stale free-text answer must be caught at submit.
+        SdlcPhase phase = seedPhase("Discovery", 1);
+        Product product = seedAtomicProduct("Eligibility");
+        CriticalQuestion q = seedQuestion(product.getId(), "Vanity code?", true, 1);
+        EstimateTemplate template = seedActiveTemplate(product.getId(), null, 1);
+        seedTemplateLine(template.getId(), phase.getId(), 1, 1, 1, 1, 1, 1);
+        Long draftId = createDraftJson("R", product.getId(), null);
+
+        mvc.perform(asRequester(put("/api/estimates/my/" + draftId + "/answers"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(Map.of(
+                    "answers", List.of(Map.of("questionId", q.getId(), "answerText", "Probably not"))
+                ))))
+            .andExpect(status().isOk());
+
+        q.setQuestionType(com.acme.estimator.catalog.questions.QuestionType.YES_NO);
+        questionRepository.save(q);
+
+        mvc.perform(asRequester(post("/api/estimates/my/" + draftId + "/submit")))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.error").value("INVALID_ANSWER_FORMAT"))
+            .andExpect(jsonPath("$.fieldErrors[\"question:" + q.getId() + "\"]").exists());
+    }
+
+    private CriticalQuestion seedTypedQuestion(
+        Long productId, String text,
+        com.acme.estimator.catalog.questions.QuestionType type, String optionsJson, int order
+    ) {
+        CriticalQuestion q = seedQuestion(productId, text, false, order);
+        q.setQuestionType(type);
+        q.setOptionsJson(optionsJson);
+        return questionRepository.save(q);
+    }
+
     private CriticalQuestion seedQuestion(Long productId, String text, boolean required, int order) {
         CriticalQuestion q = new CriticalQuestion();
         q.setProductId(productId);

@@ -28,9 +28,11 @@ interface MockDetail {
 
 interface MockState {
   detail: MockDetail | null;
+  meRoles: string[];
   itemStarts: { requestId: number; itemId: number }[];
   itemApprovals: { requestId: number; itemId: number; body: any }[];
   itemRejections: { requestId: number; itemId: number; body: any }[];
+  itemTakeOvers: { requestId: number; itemId: number }[];
 }
 let state: MockState;
 let currentSoId = 1;
@@ -103,9 +105,11 @@ function fullDetail(d: MockDetail) {
 function installRouter() {
   state = {
     detail: null,
+    meRoles: ["Solution Owner"],
     itemStarts: [],
     itemApprovals: [],
     itemRejections: [],
+    itemTakeOvers: [],
   };
   fetchMock.mockImplementation((url: string, init?: RequestInit) => {
     const u = new URL(url, "http://localhost");
@@ -115,7 +119,7 @@ function installRouter() {
     if (path === "/api/auth/me") {
       return Promise.resolve(jsonResponse({
         id: currentSoId, email: "so1@local", firstName: "SO", lastName: "One",
-        roles: ["Solution Owner"],
+        roles: state.meRoles,
       }));
     }
     if (path === "/api/health") return Promise.resolve(jsonResponse({ status: "ok" }));
@@ -145,6 +149,21 @@ function installRouter() {
       state.itemStarts.push({ requestId, itemId });
       if (state.detail) {
         state.detail.status = "IN_REVIEW";
+        state.detail.reviewerId = currentSoId;
+        state.detail.reviewerName = "SO One";
+        state.detail.reviewerStatus = "you";
+      }
+      return Promise.resolve(jsonResponse(fullDetail(state.detail!)));
+    }
+
+    // Admin take-over: POST /api/estimates/admin/{requestId}/items/{itemId}/take-over
+    const itemTakeOverMatch = path.match(/^\/api\/estimates\/admin\/(\d+)\/items\/(\d+)\/take-over$/);
+    if (itemTakeOverMatch && method === "POST") {
+      state.itemTakeOvers.push({
+        requestId: Number(itemTakeOverMatch[1]),
+        itemId: Number(itemTakeOverMatch[2]),
+      });
+      if (state.detail) {
         state.detail.reviewerId = currentSoId;
         state.detail.reviewerName = "SO One";
         state.detail.reviewerStatus = "you";
@@ -393,6 +412,31 @@ describe("<ReviewScreenPage>", () => {
     expect(medRadio).toBeDisabled();
     // Approve disabled.
     expect(screen.getByRole("button", { name: /^Approve$/ })).toBeDisabled();
+  });
+
+  it("Admin can take over another SO's claim from the claimed banner", async () => {
+    state.meRoles = ["Admin"];
+    state.detail = {
+      id: 7, title: "Other SO's Claim", status: "IN_REVIEW",
+      reviewerId: 99, reviewerName: "SO Two", reviewerStatus: "other-so",
+      complexity: "MED", justification: "Their reasoning", approvedBlendedRateId: null, reviewedAt: null,
+      isReviewable: false, rejectionReason: null, revisionCount: 0,
+      originalProductId: null, originalProductName: null,
+    };
+    renderAt("7");
+
+    // Non-admins (previous test) get no button; admins do.
+    const takeOverBtn = await screen.findByRole("button", { name: /Take over review/i });
+    await userEvent.click(takeOverBtn);
+
+    // Confirm modal explains state is preserved, then fires the POST.
+    const dialog = await screen.findByRole("alertdialog");
+    expect(within(dialog).getByText(/in-progress work/i)).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("button", { name: /Take over review/i }));
+
+    await waitFor(() => {
+      expect(state.itemTakeOvers).toEqual([{ requestId: 7, itemId: 1 }]);
+    });
   });
 
   it("complexity change is local — no PUT fired before approve", async () => {

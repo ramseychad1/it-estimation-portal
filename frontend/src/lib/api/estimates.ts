@@ -71,6 +71,10 @@ export interface EstimateRequestAnswerView {
   required: boolean;
   documentUploadEnabled: boolean;
   documentUploadRequired: boolean;
+  /** Mirrors backend QuestionType; drives which input control renders. */
+  questionType: "LONG_TEXT" | "SHORT_TEXT" | "YES_NO" | "SINGLE_SELECT" | "NUMBER";
+  /** Options for SINGLE_SELECT questions; empty otherwise. */
+  options: string[];
   answerText: string;
   attachments: AttachmentMeta[];
 }

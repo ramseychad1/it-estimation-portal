@@ -2,6 +2,8 @@ package com.acme.estimator.catalog.questions;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -49,6 +51,19 @@ public class CriticalQuestion {
 
     @Column(name = "required", nullable = false)
     private boolean required = false;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "question_type", nullable = false, length = 20)
+    private QuestionType questionType = QuestionType.LONG_TEXT;
+
+    /**
+     * JSON array of option strings; only populated when
+     * {@link #questionType} is SINGLE_SELECT, null otherwise. Parsed via
+     * {@link QuestionOptions} — kept as raw JSON here so the column stays a
+     * plain TEXT and the entity has no Jackson dependency.
+     */
+    @Column(name = "options_json")
+    private String optionsJson;
 
     @Column(name = "document_upload_enabled", nullable = false)
     private boolean documentUploadEnabled = false;

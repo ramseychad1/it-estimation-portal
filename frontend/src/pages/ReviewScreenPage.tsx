@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { ChevronRight, Download, ExternalLink, Info, MoreVertical, Plus, Search } from "lucide-react";
 import { downloadAttachment } from "../lib/api/documents";
 import { ComplexitySelector } from "../components/ComplexitySelector";
+import { AnswerValue } from "../components/AnswerValue";
 import { ConfirmModal } from "../components/ConfirmModal";
 import { EntityHeader } from "../components/EntityHeader";
 import { JustificationField } from "../components/JustificationField";
@@ -27,6 +28,7 @@ import { useMyRequestHistoryQuery } from "../lib/queries/estimates";
 import {
   useStartItemReviewMutation,
   useReleaseItemReviewMutation,
+  useTakeOverItemReviewMutation,
   useApproveItemMutation,
   useRejectItemMutation,
   useRequestClarificationMutation,
@@ -240,6 +242,7 @@ function ItemReviewCard({
   const [rejectOpen, setRejectOpen] = useState(false);
   const [rejectText, setRejectText] = useState("");
   const [sendBackOpen, setSendBackOpen] = useState(false);
+  const [takeOverOpen, setTakeOverOpen] = useState(false);
   const [sendBackReason, setSendBackReason] = useState("");
   const [clarifyOpen, setClarifyOpen] = useState(false);
   const [clarifyNote, setClarifyNote] = useState("");
@@ -254,6 +257,7 @@ function ItemReviewCard({
 
   const startMutation = useStartItemReviewMutation();
   const releaseMutation = useReleaseItemReviewMutation();
+  const takeOverMutation = useTakeOverItemReviewMutation();
   const approveMutation = useApproveItemMutation();
   const rejectMutation = useRejectItemMutation();
   const clarifyMutation = useRequestClarificationMutation();
@@ -310,6 +314,22 @@ function ItemReviewCard({
           navigate("/review");
         },
         onError: () => toast.error("Couldn't release the review."),
+      },
+    );
+  }
+
+  function performTakeOver() {
+    takeOverMutation.mutate(
+      { requestId, itemId: item.id },
+      {
+        onSuccess: () => {
+          setTakeOverOpen(false);
+          toast.success(`You are now the reviewer for "${item.productName}".`);
+        },
+        onError: (err) => {
+          setTakeOverOpen(false);
+          toast.error(err instanceof ApiError ? err.message : "Couldn't take over the review.");
+        },
       },
     );
   }
@@ -416,7 +436,10 @@ function ItemReviewCard({
         }
       >
         {claimedByOther && (
-          <ClaimedBanner reviewerName={item.reviewerName ?? "Another SO"} />
+          <ClaimedBanner
+            reviewerName={item.reviewerName ?? "Another SO"}
+            onTakeOver={isAdmin ? () => setTakeOverOpen(true) : undefined}
+          />
         )}
 
         {item.answers.length > 0 && (
@@ -466,6 +489,24 @@ function ItemReviewCard({
           <TerminalItemPanel item={item} effectiveRate={effectiveRate} />
         )}
       </Card>
+
+      {/* Admin take-over confirmation */}
+      <ConfirmModal
+        open={takeOverOpen}
+        title="Take over this review?"
+        body={
+          <p className="text-body text-warm-gray-med m-0">
+            You become the reviewer for <strong>{productLabel}</strong>.{" "}
+            {item.reviewerName ?? "The current reviewer"}'s in-progress work
+            (complexity, overrides, justification) is kept, and the change is
+            recorded in the change log.
+          </p>
+        }
+        confirmLabel="Take over review"
+        cancelLabel="Cancel"
+        onCancel={() => setTakeOverOpen(false)}
+        onConfirm={performTakeOver}
+      />
 
       {/* Approve confirmation */}
       <ConfirmModal
@@ -722,17 +763,7 @@ function QuestionsSection({ answers }: { answers: EstimateRequestAnswerView[] })
               </span>
               {a.required && <RequiredPill />}
             </div>
-            <p
-              className="m-0 mt-1"
-              style={{
-                fontSize: 14,
-                color: a.answerText ? "var(--fg-1)" : "var(--color-warm-gray-med)",
-                fontStyle: a.answerText ? undefined : "italic",
-                whiteSpace: "pre-wrap",
-              }}
-            >
-              {a.answerText || "Not answered"}
-            </p>
+            <AnswerValue questionType={a.questionType} answerText={a.answerText} />
             {a.attachments.length > 0 && (
               <div className="flex flex-col mt-1.5" style={{ gap: 4 }}>
                 {a.attachments.map((att) => (
@@ -1307,7 +1338,14 @@ function ActivityCard({
   );
 }
 
-function ClaimedBanner({ reviewerName }: { reviewerName: string }) {
+function ClaimedBanner({
+  reviewerName,
+  onTakeOver,
+}: {
+  reviewerName: string;
+  /** Admins only: shows the take-over action (UX: complete another SO's review). */
+  onTakeOver?: () => void;
+}) {
   return (
     <div
       className="rounded-md mb-4"
@@ -1322,11 +1360,17 @@ function ClaimedBanner({ reviewerName }: { reviewerName: string }) {
         gap: 8,
       }}
     >
-      <Info className="w-3.5 h-3.5" strokeWidth={1.5} />
-      <span>
+      <Info className="w-3.5 h-3.5 flex-none" strokeWidth={1.5} />
+      <span style={{ flex: 1 }}>
         <strong>{reviewerName}</strong> is reviewing this request. You can view
         the snapshot but only the reviewer can change complexity or approve.
+        {onTakeOver && " As an Admin, you can take over this review to complete it yourself."}
       </span>
+      {onTakeOver && (
+        <SecondaryButton onClick={onTakeOver} className="flex-none">
+          Take over review
+        </SecondaryButton>
+      )}
     </div>
   );
 }

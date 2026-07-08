@@ -20,6 +20,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -126,6 +127,7 @@ public class CriticalQuestionService {
         q.setRequired(req.required() != null && req.required());
         q.setDocumentUploadEnabled(req.documentUploadEnabled() != null && req.documentUploadEnabled());
         q.setDocumentUploadRequired(req.documentUploadRequired() != null && req.documentUploadRequired());
+        applyTypeAndOptions(q, req.questionType(), req.options());
         q.setActive(req.active() == null ? true : req.active());
         q.setDisplayOrder(nextOrder);
         q.setCreatedBy(actor.getId());
@@ -153,6 +155,7 @@ public class CriticalQuestionService {
         q.setRequired(req.required() != null && req.required());
         q.setDocumentUploadEnabled(req.documentUploadEnabled() != null && req.documentUploadEnabled());
         q.setDocumentUploadRequired(req.documentUploadRequired() != null && req.documentUploadRequired());
+        applyTypeAndOptions(q, req.questionType(), req.options());
         q.setActive(req.active() == null ? true : req.active());
         q.setDisplayOrder(nextOrder);
         q.setCreatedBy(actor.getId());
@@ -226,6 +229,48 @@ public class CriticalQuestionService {
             );
             q.setDocumentUploadRequired(req.documentUploadRequired());
             dirty = true;
+        }
+
+        if (req.questionType() != null) {
+            QuestionType next = parseType(req.questionType());
+            if (next != q.getQuestionType()) {
+                auditService.recordUpdated(
+                    CriticalQuestion.ENTITY_TYPE, q.getId(), "questionType",
+                    q.getQuestionType().name(), next.name(), actor
+                );
+                q.setQuestionType(next);
+                if (next != QuestionType.SINGLE_SELECT) {
+                    q.setOptionsJson(null);
+                }
+                dirty = true;
+            }
+        }
+
+        if (q.getQuestionType() == QuestionType.SINGLE_SELECT && req.options() != null) {
+            List<String> normalized;
+            try {
+                normalized = QuestionOptions.normalizeAndValidate(req.options());
+            } catch (IllegalArgumentException e) {
+                throw ApiException.badRequest(e.getMessage());
+            }
+            String nextJson = QuestionOptions.toJson(normalized);
+            if (!Objects.equals(nextJson, q.getOptionsJson())) {
+                auditService.recordUpdated(
+                    CriticalQuestion.ENTITY_TYPE, q.getId(), "options",
+                    String.join(" | ", QuestionOptions.parse(q.getOptionsJson())),
+                    String.join(" | ", normalized), actor
+                );
+                q.setOptionsJson(nextJson);
+                dirty = true;
+            }
+        }
+
+        // A select question must end the update with a usable options list —
+        // catches "switched type to SINGLE_SELECT but sent no options".
+        if (q.getQuestionType() == QuestionType.SINGLE_SELECT
+            && QuestionOptions.parse(q.getOptionsJson()).size() < 2) {
+            throw ApiException.badRequest(
+                "Single select questions need at least 2 distinct options.");
         }
 
         if (dirty) {
@@ -458,5 +503,31 @@ public class CriticalQuestionService {
         if (s == null) return null;
         String trimmed = s.trim();
         return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    /** Map the raw request string onto the enum; 400 on unknown values. */
+    private QuestionType parseType(String raw) {
+        try {
+            return QuestionType.valueOf(raw);
+        } catch (IllegalArgumentException e) {
+            throw ApiException.badRequest("Unknown question type: " + raw);
+        }
+    }
+
+    /** Create-path type/options assignment (update() diffs these itself). */
+    private void applyTypeAndOptions(CriticalQuestion q, String rawType, List<String> options) {
+        QuestionType type = (rawType == null || rawType.isBlank())
+            ? QuestionType.LONG_TEXT
+            : parseType(rawType);
+        q.setQuestionType(type);
+        if (type == QuestionType.SINGLE_SELECT) {
+            try {
+                q.setOptionsJson(QuestionOptions.toJson(QuestionOptions.normalizeAndValidate(options)));
+            } catch (IllegalArgumentException e) {
+                throw ApiException.badRequest(e.getMessage());
+            }
+        } else {
+            q.setOptionsJson(null);
+        }
     }
 }

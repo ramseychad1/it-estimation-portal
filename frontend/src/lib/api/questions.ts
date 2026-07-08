@@ -3,6 +3,22 @@ import type { PageResponse } from "./users";
 
 export type QuestionParentType = "Product" | "SubFeature";
 
+/** How the requester answers. Mirrors backend QuestionType. */
+export type QuestionType =
+  | "LONG_TEXT"
+  | "SHORT_TEXT"
+  | "YES_NO"
+  | "SINGLE_SELECT"
+  | "NUMBER";
+
+export const QUESTION_TYPE_LABELS: Record<QuestionType, string> = {
+  LONG_TEXT: "Long text",
+  SHORT_TEXT: "Short text",
+  YES_NO: "Yes / No",
+  SINGLE_SELECT: "Single select",
+  NUMBER: "Number",
+};
+
 export interface QuestionListItem {
   id: number;
   parentType: QuestionParentType;
@@ -15,6 +31,8 @@ export interface QuestionListItem {
   required: boolean;
   documentUploadEnabled: boolean;
   documentUploadRequired: boolean;
+  questionType: QuestionType;
+  options: string[];
   displayOrder: number;
   active: boolean;
   updatedAt: string | null;
@@ -31,6 +49,9 @@ export interface CreateQuestionRequest {
   required?: boolean;
   documentUploadEnabled?: boolean;
   documentUploadRequired?: boolean;
+  questionType?: QuestionType;
+  /** Required (min 2) when questionType is SINGLE_SELECT. */
+  options?: string[];
   active?: boolean;
 }
 
@@ -40,6 +61,8 @@ export interface UpdateQuestionRequest {
   required?: boolean;
   documentUploadEnabled?: boolean;
   documentUploadRequired?: boolean;
+  questionType?: QuestionType;
+  options?: string[];
 }
 
 export interface ListQuestionsParams {

@@ -6,6 +6,7 @@ import {
   listReviewQueue,
   rejectItem,
   releaseItemReview,
+  takeOverItemReview,
   requestClarification,
   sendBackItem,
   startItemReview,
@@ -75,6 +76,15 @@ export function useReleaseItemReviewMutation() {
   return useMutation({
     mutationFn: ({ requestId, itemId }: { requestId: number; itemId: number }) =>
       releaseItemReview(requestId, itemId),
+    onSuccess: (_data, { requestId }) => invalidateAfterTransition(qc, requestId),
+  });
+}
+
+export function useTakeOverItemReviewMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ requestId, itemId }: { requestId: number; itemId: number }) =>
+      takeOverItemReview(requestId, itemId),
     onSuccess: (_data, { requestId }) => invalidateAfterTransition(qc, requestId),
   });
 }

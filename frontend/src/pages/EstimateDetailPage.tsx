@@ -4,6 +4,8 @@ import { useNavigate, useParams } from "react-router-dom";
 import { AlertTriangle, CheckCircle, ChevronDown, Clock, Download, FileSpreadsheet, FileText, Info, Pencil, RotateCcw, Trash2 } from "lucide-react";
 import { downloadAttachment } from "../lib/api/documents";
 import { ConfirmModal } from "../components/ConfirmModal";
+import { AnswerValue } from "../components/AnswerValue";
+import { TypedAnswerInput } from "../components/TypedAnswerInput";
 import { EntityHeader } from "../components/EntityHeader";
 import { KebabMenu, type KebabMenuItem } from "../components/KebabMenu";
 import { PrimaryButton, SecondaryButton } from "../components/buttons";
@@ -1242,17 +1244,7 @@ function ItemAnswerList({ answers }: { answers: EstimateRequestAnswerView[] }) {
             </span>
             {a.required && <RequiredPill />}
           </div>
-          <p
-            className="m-0 mt-1"
-            style={{
-              fontSize: 13,
-              color: a.answerText ? "var(--fg-1)" : "var(--color-warm-gray-med)",
-              fontStyle: a.answerText ? undefined : "italic",
-              whiteSpace: "pre-wrap",
-            }}
-          >
-            {a.answerText || "Not answered"}
-          </p>
+          <AnswerValue questionType={a.questionType} answerText={a.answerText} fontSize={13} />
           {a.attachments.length > 0 && (
             <div className="flex flex-col mt-1.5" style={{ gap: 4 }}>
               {a.attachments.map((att) => (
@@ -2018,14 +2010,14 @@ function ItemAnswerEditor({
             {a.questionText}
             {a.required && <RequiredPill />}
           </label>
-          <textarea
-            id={`answer-${a.questionId}`}
-            value={localAnswers.get(a.questionId) ?? ""}
-            onChange={(e) => onChange(a.questionId, e.target.value)}
-            rows={3}
-            className="w-full mt-1 rounded-md text-near-black focus:outline-none focus:ring-2 focus:ring-accent resize-y"
-            style={{ fontSize: 13, padding: "8px 10px", border: "1px solid var(--color-border-strong)", lineHeight: 1.5 }}
-          />
+          <div className="mt-1">
+            <TypedAnswerInput
+              q={a}
+              inputId={`answer-${a.questionId}`}
+              value={localAnswers.get(a.questionId) ?? ""}
+              onChange={(text) => onChange(a.questionId, text)}
+            />
+          </div>
         </div>
       ))}
     </div>

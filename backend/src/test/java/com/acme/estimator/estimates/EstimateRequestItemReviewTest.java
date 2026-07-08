@@ -334,6 +334,81 @@ class EstimateRequestItemReviewTest {
             .andExpect(jsonPath("$.error").value("NOT_THE_REVIEWER"));
     }
 
+    // ---- Admin take-over (UX-3 pre-work) -----------------------------------
+
+    @Test
+    void takeOverItem_admin_reassignsReviewerAndPreservesState() throws Exception {
+        var ctx = seedInReviewRequest(teamA, soTeamA);
+
+        // soTeamA has in-flight review state that must survive the take-over.
+        EstimateRequestItem item = itemRepository.findById(ctx.itemId).orElseThrow();
+        item.setComplexity(Complexity.MED);
+        item.setJustification("Half-done review state");
+        itemRepository.save(item);
+
+        mvc.perform(post(adminItemUrl(ctx.requestId, ctx.itemId, "take-over"))
+                .with(user(admin)).with(csrf()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.items[0].status").value("IN_REVIEW"))
+            .andExpect(jsonPath("$.items[0].reviewerStatus").value("you"))
+            .andExpect(jsonPath("$.items[0].complexity").value("MED"))
+            .andExpect(jsonPath("$.items[0].justification").value("Half-done review state"));
+
+        EstimateRequestItem after = itemRepository.findById(ctx.itemId).orElseThrow();
+        assertThat(after.getReviewerId())
+            .isEqualTo(userRepository.findByEmailIgnoreCase("admin@local").orElseThrow().getId());
+
+        var takeOverRows = changeLogRepository
+            .findByEntityTypeAndEntityIdOrderByChangedAtDesc(EstimateRequest.ENTITY_TYPE, ctx.requestId)
+            .stream().filter(r -> r.getAction() == ChangeAction.ITEM_REVIEW_TAKEN_OVER).toList();
+        assertThat(takeOverRows).hasSize(1);
+        assertThat(takeOverRows.get(0).getNotes()).contains("from");
+    }
+
+    @Test
+    void takeOverItem_nonAdmin_returns403() throws Exception {
+        var ctx = seedInReviewRequest(teamA, soTeamA);
+
+        mvc.perform(post(adminItemUrl(ctx.requestId, ctx.itemId, "take-over"))
+                .with(user(soTeamB)).with(csrf()))
+            .andExpect(status().isForbidden());
+
+        // Claim unchanged
+        assertThat(itemRepository.findById(ctx.itemId).orElseThrow().getReviewerId())
+            .isEqualTo(userRepository.findByEmailIgnoreCase(soTeamA.getUsername()).orElseThrow().getId());
+    }
+
+    @Test
+    void takeOverItem_submittedItem_returns409InvalidState() throws Exception {
+        var ctx = seedSubmittedRequest(teamA);
+
+        mvc.perform(post(adminItemUrl(ctx.requestId, ctx.itemId, "take-over"))
+                .with(user(admin)).with(csrf()))
+            .andExpect(status().isConflict())
+            .andExpect(jsonPath("$.error").value("INVALID_STATE"));
+    }
+
+    @Test
+    void takeOverItem_ownClaim_isNoOp() throws Exception {
+        // Admin claims via the normal start (bypasses team check), then
+        // take-over on their own claim succeeds without a second audit row.
+        var ctx = seedInReviewRequest(teamA, admin);
+
+        mvc.perform(post(adminItemUrl(ctx.requestId, ctx.itemId, "take-over"))
+                .with(user(admin)).with(csrf()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.items[0].reviewerStatus").value("you"));
+
+        long takeOverRows = changeLogRepository
+            .findByEntityTypeAndEntityIdOrderByChangedAtDesc(EstimateRequest.ENTITY_TYPE, ctx.requestId)
+            .stream().filter(r -> r.getAction() == ChangeAction.ITEM_REVIEW_TAKEN_OVER).count();
+        assertThat(takeOverRows).isZero();
+    }
+
+    private String adminItemUrl(Long requestId, Long itemId, String action) {
+        return "/api/estimates/admin/" + requestId + "/items/" + itemId + "/" + action;
+    }
+
     // ---- M4: team-scoped review queue + isReviewable -----------------------
 
     @Test

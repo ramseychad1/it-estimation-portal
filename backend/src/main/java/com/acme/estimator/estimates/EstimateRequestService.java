@@ -20,7 +20,9 @@ import com.acme.estimator.catalog.products.ProductRepository;
 import com.acme.estimator.catalog.programtypes.ProgramType;
 import com.acme.estimator.catalog.programtypes.ProgramTypeRepository;
 import java.util.stream.Stream;
+import com.acme.estimator.catalog.questions.AnswerFormat;
 import com.acme.estimator.catalog.questions.CriticalQuestion;
+import com.acme.estimator.catalog.questions.QuestionOptions;
 import com.acme.estimator.catalog.questions.CriticalQuestionRepository;
 import com.acme.estimator.catalog.subfeatures.SubFeature;
 import com.acme.estimator.catalog.subfeatures.SubFeatureRepository;
@@ -799,6 +801,58 @@ public class EstimateRequestService {
         auditService.recordAction(
             EstimateRequest.ENTITY_TYPE, requestId, ChangeAction.ITEM_REVIEW_RELEASED, actor,
             "Released '" + productName + "' back to queue"
+        );
+        return toDetail(request, actor);
+    }
+
+    /**
+     * Admin takes over an IN_REVIEW item claimed by another reviewer,
+     * becoming the reviewer while preserving all in-flight review state
+     * (complexity, overrides, justification). Phase 7.5's carve-out lets an
+     * Admin act on someone else's claim without owning it; take-over makes
+     * the reassignment explicit so the queue, the reviewer screen, and the
+     * audit trail all show who actually owns the review from that point on.
+     */
+    @Transactional
+    public EstimateRequestDetail takeOverItemReview(Long requestId, Long itemId, User actor) {
+        EstimateRequest request = requestRepository.findById(requestId)
+            .orElseThrow(() -> ApiException.notFound("Estimate request " + requestId + " not found."));
+        EstimateRequestItem item = requireItemOnRequest(requestId, itemId);
+
+        // Defence in depth — the admin controller already gates on ROLE_ADMIN.
+        if (!actor.isAdmin()) {
+            throw new ApiException(
+                org.springframework.http.HttpStatus.FORBIDDEN,
+                "ADMIN_ONLY",
+                "Only an Admin can take over a review."
+            );
+        }
+        if (item.getStatus() != EstimateStatus.IN_REVIEW) {
+            throw new ApiException(
+                org.springframework.http.HttpStatus.CONFLICT,
+                "INVALID_STATE",
+                "Only In Review items can be taken over."
+            );
+        }
+        // Idempotent: taking over an item you already hold is a no-op.
+        if (actor.getId().equals(item.getReviewerId())) {
+            return toDetail(request, actor);
+        }
+
+        String previousName = item.getReviewerId() == null
+            ? null
+            : userRepository.findById(item.getReviewerId())
+                .map(User::fullName).orElse("another reviewer");
+
+        item.setReviewerId(actor.getId());
+        itemRepository.save(item);
+
+        Product product = productRepository.findById(item.getProductId()).orElse(null);
+        String productName = product == null ? "item" : product.getName();
+        auditService.recordAction(
+            EstimateRequest.ENTITY_TYPE, requestId, ChangeAction.ITEM_REVIEW_TAKEN_OVER, actor,
+            "Took over review of '" + productName + "' in '" + request.getTitle() + "'"
+                + (previousName != null ? " from " + previousName : "")
         );
         return toDetail(request, actor);
     }
@@ -1650,6 +1704,29 @@ public class EstimateRequestService {
             }
         }
 
+        // Per-type format validation (UX-2). Blank answers are skipped —
+        // required-vs-optional stays a submit-time rule — but a non-blank
+        // answer must match its question's type so bad data never lands in
+        // a draft that will later fail submit opaquely.
+        Map<String, String> formatErrors = new HashMap<>();
+        for (AnswerInput in : inputs) {
+            String answer = in.answerText() == null ? "" : in.answerText();
+            if (answer.isBlank()) continue;
+            CriticalQuestion q = validById.get(in.questionId());
+            String problem = AnswerFormat.validate(q, answer);
+            if (problem != null) {
+                formatErrors.put("question:" + q.getId(), problem);
+            }
+        }
+        if (!formatErrors.isEmpty()) {
+            throw new ApiException(
+                org.springframework.http.HttpStatus.BAD_REQUEST,
+                "INVALID_ANSWER_FORMAT",
+                "One or more answers don't match their question's format.",
+                formatErrors
+            );
+        }
+
         answerRepository.deleteAllByItemId(item.getId());
         answerRepository.flush();
 
@@ -1742,6 +1819,27 @@ public class EstimateRequestService {
                 "MISSING_REQUIRED_ANSWERS",
                 "Required questions are unanswered: \"" + first + "\".",
                 structured
+            );
+        }
+
+        // Format coverage: a persisted answer can predate an admin changing
+        // the question's type, so re-check at the submit gate too.
+        Map<String, String> formatErrors = new HashMap<>();
+        for (CriticalQuestion q : liveQuestions) {
+            EstimateRequestQuestionAnswer answer = persistedAnswers.get(q.getId());
+            if (answer == null || answer.getAnswerText() == null
+                || answer.getAnswerText().isBlank()) continue;
+            String problem = AnswerFormat.validate(q, answer.getAnswerText());
+            if (problem != null) {
+                formatErrors.put("question:" + q.getId(), problem);
+            }
+        }
+        if (!formatErrors.isEmpty()) {
+            throw new ApiException(
+                org.springframework.http.HttpStatus.BAD_REQUEST,
+                "INVALID_ANSWER_FORMAT",
+                "One or more answers don't match their question's format.",
+                formatErrors
             );
         }
 
@@ -2078,6 +2176,8 @@ public class EstimateRequestService {
                 q.isRequired(),
                 q.isDocumentUploadEnabled(),
                 q.isDocumentUploadRequired(),
+                q.getQuestionType().name(),
+                QuestionOptions.parse(q.getOptionsJson()),
                 row == null ? "" : row.getAnswerText(),
                 attachmentsByQuestion.getOrDefault(q.getId(), List.of())
             ));
@@ -2093,6 +2193,8 @@ public class EstimateRequestService {
                     false,
                     false,
                     false,
+                    "LONG_TEXT",
+                    List.of(),
                     row.getAnswerText(),
                     attachmentsByQuestion.getOrDefault(row.getCriticalQuestionId(), List.of())
                 ));

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   ArrowLeft,
@@ -25,6 +25,9 @@ import { ApiError } from "../lib/api";
 import { uploadAnswerDocument, deleteAnswerDocument } from "../lib/api/documents";
 import type { AttachmentMeta } from "../lib/api/estimates";
 import { useUnsavedChangesGuard } from "../lib/useUnsavedChangesGuard";
+import { useDebouncedValue } from "../lib/useDebouncedValue";
+import { TypedAnswerInput } from "../components/TypedAnswerInput";
+import { AnswerValue } from "../components/AnswerValue";
 import { useAuth } from "../lib/auth";
 import { useProductsQuery } from "../lib/queries/products";
 import { useSubFeaturesForProductQuery, useSubFeatureQuery } from "../lib/queries/subFeatures";
@@ -71,6 +74,15 @@ function clampStep(raw: string | null): Step {
   return 1;
 }
 
+type ItemCount = {
+  answered: number;
+  total: number;
+  /** Unanswered required questions / missing required files — drives the
+      "why is Continue disabled" explanation under Step 2. */
+  missingAnswers: number;
+  missingFiles: number;
+};
+
 type LocalItem = {
   productId: number;
   productName: string;
@@ -112,7 +124,7 @@ export function NewEstimateRequestPage() {
   const [savedFlash, setSavedFlash] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [itemsReady, setItemsReady] = useState<boolean[]>([]);
-  const [itemCounts, setItemCounts] = useState<Array<{ answered: number; total: number }>>([]);
+  const [itemCounts, setItemCounts] = useState<Array<ItemCount>>([]);
   const [answerFieldErrors, setAnswerFieldErrors] = useState<Record<number, Record<number, string>>>({});
 
   const [requestType, setRequestType] = useState<"CATALOG" | "INTAKE" | null>(null);
@@ -367,10 +379,10 @@ export function NewEstimateRequestPage() {
   }, []);
 
   const handleItemCountChange = useCallback(
-    (index: number, answered: number, total: number) => {
+    (index: number, answered: number, total: number, missingAnswers: number, missingFiles: number) => {
       setItemCounts((prev) => {
         const next = [...prev];
-        next[index] = { answered, total };
+        next[index] = { answered, total, missingAnswers, missingFiles };
         return next;
       });
     },
@@ -411,6 +423,31 @@ export function NewEstimateRequestPage() {
     },
     [],
   );
+
+  // ---- Step 2 autosave (UX-2). Debounce the answers snapshot and persist
+  // quietly after the requester stops typing; the ref skips the initial
+  // hydration snapshot so entering the step doesn't fire a save.
+  const answersSnapshot = useMemo(
+    () => JSON.stringify(localItems.map((it) => [it.itemId, it.answers])),
+    [localItems],
+  );
+  const debouncedAnswersSnapshot = useDebouncedValue(answersSnapshot, 1600);
+  const lastAutosavedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (step !== 2 || draftId == null) {
+      lastAutosavedRef.current = null;
+      return;
+    }
+    if (lastAutosavedRef.current === null) {
+      lastAutosavedRef.current = debouncedAnswersSnapshot;
+      return;
+    }
+    if (debouncedAnswersSnapshot === lastAutosavedRef.current) return;
+    if (saveItemAnswersMutation.isPending) return;
+    lastAutosavedRef.current = debouncedAnswersSnapshot;
+    void persistAllAnswers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedAnswersSnapshot, step, draftId]);
 
   const allItemsReady =
     itemsReady.length === localItems.length &&
@@ -1598,12 +1635,12 @@ interface Step2Props {
   savedFlash: boolean;
   saving: boolean;
   allItemsReady: boolean;
-  itemCounts: Array<{ answered: number; total: number }>;
+  itemCounts: Array<ItemCount>;
   answerFieldErrors: Record<number, Record<number, string>>;
   onItemAnswerChange: (itemIndex: number, qid: number, value: string) => void;
   onItemAttachmentChange: (itemIndex: number, qid: number, meta: AttachmentMeta | null, removeId?: number) => void;
   onItemReadyChange: (itemIndex: number, ready: boolean) => void;
-  onItemCountChange: (itemIndex: number, answered: number, total: number) => void;
+  onItemCountChange: (itemIndex: number, answered: number, total: number, missingAnswers: number, missingFiles: number) => void;
   onBack: () => void;
   onSaveDraft: () => void;
   onContinue: () => void;
@@ -1806,12 +1843,56 @@ function Step2({
                 onAnswerChange={(qid, value) => onItemAnswerChange(i, qid, value)}
                 onAttachmentChange={(qid, meta, removeId) => onItemAttachmentChange(i, qid, meta, removeId)}
                 onReadyChange={(ready) => onItemReadyChange(i, ready)}
-                onCountChange={(answered, total) => onItemCountChange(i, answered, total)}
+                onCountChange={(answered, total, missingAnswers, missingFiles) =>
+                  onItemCountChange(i, answered, total, missingAnswers, missingFiles)}
               />
             );
           })}
         </div>
       </div>
+
+      {!allItemsReady && (
+        <div
+          role="status"
+          className="rounded-lg"
+          style={{
+            border: "1px solid var(--color-warning-border)",
+            background: "var(--color-warning-soft)",
+            padding: "10px 14px",
+            marginBottom: 14,
+            fontSize: 13,
+          }}
+        >
+          <span className="font-medium text-near-black">To continue, finish the required questions:</span>
+          <ul className="m-0 p-0 list-none" style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 3 }}>
+            {localItems.map((item, i) => {
+              const c = itemCounts[i];
+              if (!c || (c.missingAnswers === 0 && c.missingFiles === 0)) return null;
+              const parts: string[] = [];
+              if (c.missingAnswers > 0) {
+                parts.push(`${c.missingAnswers} required answer${c.missingAnswers === 1 ? "" : "s"}`);
+              }
+              if (c.missingFiles > 0) {
+                parts.push(`${c.missingFiles} required file${c.missingFiles === 1 ? "" : "s"}`);
+              }
+              return (
+                <li key={`missing-${i}`}>
+                  <button
+                    type="button"
+                    onClick={() => setOpenIndex(i)}
+                    className="bg-transparent border-none p-0 cursor-pointer hover:underline text-left"
+                    style={{ fontSize: 13, color: "var(--color-accent)" }}
+                  >
+                    {item.productName}
+                    {item.subFeatureName ? ` / ${item.subFeatureName}` : ""}
+                  </button>
+                  <span className="text-warm-gray-med"> — {parts.join(", ")} missing</span>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
 
       <FooterRow
         left={
@@ -1847,7 +1928,7 @@ interface ItemSectionProps {
   onAnswerChange: (qid: number, value: string) => void;
   onAttachmentChange: (qid: number, meta: AttachmentMeta | null, removeId?: number) => void;
   onReadyChange: (ready: boolean) => void;
-  onCountChange: (answered: number, total: number) => void;
+  onCountChange: (answered: number, total: number, missingAnswers: number, missingFiles: number) => void;
 }
 
 function ItemSection({
@@ -1920,12 +2001,17 @@ function ItemSection({
 
   async function handleFileSelect(q: QuestionListItem, file: File) {
     if (!item.itemId) return;
+    const existing = item.attachments[q.id] ?? [];
+    if (existing.some((a) => a.originalFilename === file.name && a.fileSizeBytes === file.size)) {
+      toast.error(`"${file.name}" is already uploaded for this question.`);
+      return;
+    }
     setUploadingQids((prev) => new Set(prev).add(q.id));
     try {
       const meta = await uploadAnswerDocument(item.itemId, q.id, file);
       onAttachmentChange(q.id, meta);
     } catch {
-      // errors surface to the user at submit time via server validation
+      toast.error(`Could not upload "${file.name}". Check the file type and size (max 10 MB).`);
     } finally {
       setUploadingQids((prev) => { const s = new Set(prev); s.delete(q.id); return s; });
     }
@@ -1945,10 +2031,13 @@ function ItemSection({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allRequiredAnswered]);
 
+  const missingAnswers = requiredIds.length - answeredRequired;
+  const missingFiles = docRequiredIds.length - docRequiredMet;
+
   useEffect(() => {
-    onCountChange(answeredCount, questions.length);
+    onCountChange(answeredCount, questions.length, missingAnswers, missingFiles);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [answeredCount, questions.length]);
+  }, [answeredCount, questions.length, missingAnswers, missingFiles]);
 
   return (
     <div
@@ -2077,7 +2166,7 @@ function ItemSection({
                     <span className="text-near-black font-medium" style={{ fontSize: 13 }}>
                       {q.questionText}
                     </span>
-                    {q.required ? (
+                    {q.required || q.documentUploadRequired ? (
                       <RequiredPill />
                     ) : (
                       <span className="text-warm-gray-med" style={{ fontSize: 12 }}>
@@ -2090,13 +2179,11 @@ function ItemSection({
                       {q.helpText}
                     </p>
                   )}
-                  <Textarea
-                    id={`answer-${item.productId}-${item.subFeatureId ?? "null"}-${q.id}`}
+                  <TypedAnswerInput
+                    q={q}
+                    inputId={`answer-${item.productId}-${item.subFeatureId ?? "null"}-${q.id}`}
                     value={item.answers[q.id] ?? ""}
-                    onChange={(e) => onAnswerChange(q.id, e.currentTarget.value)}
-                    maxLength={8000}
-                    rows={3}
-                    aria-label={`Answer to: ${q.questionText}`}
+                    onChange={(value) => onAnswerChange(q.id, value)}
                     error={fieldErrors[q.id]}
                   />
                   {q.documentUploadEnabled && (
@@ -2464,16 +2551,11 @@ function ItemReviewCard({ item, product, isFirst }: ItemReviewCardProps) {
                 <div className="text-warm-gray-med" style={{ fontSize: 12 }}>
                   {q.questionText}
                 </div>
-                <div
-                  className={answer ? "text-near-black" : "text-warm-gray-med"}
-                  style={{
-                    fontSize: 14,
-                    marginTop: 2,
-                    fontStyle: answer ? "normal" : "italic",
-                  }}
-                >
-                  {answer || "— No answer provided —"}
-                </div>
+                <AnswerValue
+                  questionType={q.questionType}
+                  answerText={answer}
+                  emptyLabel="— No answer provided —"
+                />
                 {files.length > 0 && (
                   <div className="flex flex-col mt-1" style={{ gap: 2 }}>
                     {files.map((att) => (

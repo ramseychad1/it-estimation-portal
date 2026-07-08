@@ -34,6 +34,15 @@ public class EstimateAdminController {
     private final EstimateRequestService service;
     private final UserRepository userRepository;
 
+    @PostMapping("/{requestId}/items/{itemId}/take-over")
+    public EstimateRequestDetail takeOverItemReview(
+        @PathVariable Long requestId,
+        @PathVariable Long itemId,
+        @AuthenticationPrincipal AppUserDetails principal
+    ) {
+        return service.takeOverItemReview(requestId, itemId, currentUser(principal));
+    }
+
     @PostMapping("/{requestId}/items/{itemId}/send-back")
     public EstimateRequestDetail sendBackItem(
         @PathVariable Long requestId,

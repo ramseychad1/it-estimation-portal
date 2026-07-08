@@ -52,6 +52,12 @@ public enum ChangeAction {
     ITEM_REVIEW_STARTED,
     /** SO released a specific item back to the queue without a decision. */
     ITEM_REVIEW_RELEASED,
+    /**
+     * Admin reassigned an IN_REVIEW item claimed by another reviewer to
+     * themselves, preserving in-flight review state. Notes carry the product,
+     * request title, and previous reviewer's name.
+     */
+    ITEM_REVIEW_TAKEN_OVER,
     /** SO approved a specific item. Notes carry complexity + blended-rate snapshot. */
     ITEM_APPROVED,
     /** SO rejected a specific item. Notes carry the first ~100 chars of the reason. */

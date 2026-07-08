@@ -84,6 +84,14 @@ export function releaseItemReview(
   return api(`/estimates/review/${requestId}/items/${itemId}/release`, { method: "POST" });
 }
 
+/** Admin-only: reassign an IN_REVIEW item claimed by another reviewer to the caller. */
+export function takeOverItemReview(
+  requestId: number,
+  itemId: number,
+): Promise<EstimateRequestDetail> {
+  return api(`/estimates/admin/${requestId}/items/${itemId}/take-over`, { method: "POST" });
+}
+
 export function approveItem(
   requestId: number,
   itemId: number,

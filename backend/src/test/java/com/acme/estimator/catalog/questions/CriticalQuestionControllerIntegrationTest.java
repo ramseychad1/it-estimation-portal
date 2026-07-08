@@ -297,6 +297,100 @@ class CriticalQuestionControllerIntegrationTest {
             .stream().filter(r -> r.getAction() == ChangeAction.REORDERED).count();
     }
 
+    // ---- typed questions (UX-2) --------------------------------------------
+
+    @Test
+    void create_defaultsToLongText() throws Exception {
+        Product p = createProduct("Atomic LT", ProductMode.ATOMIC);
+
+        mvc.perform(asAdmin(post("/api/catalog/products/" + p.getId() + "/questions"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(Map.of("questionText", "Describe the ask"))))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.questionType").value("LONG_TEXT"))
+            .andExpect(jsonPath("$.options").isEmpty());
+    }
+
+    @Test
+    void createSingleSelect_withOptions_succeeds() throws Exception {
+        Product p = createProduct("Atomic SS", ProductMode.ATOMIC);
+
+        mvc.perform(asAdmin(post("/api/catalog/products/" + p.getId() + "/questions"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(Map.of(
+                    "questionText", "Rollout scope?",
+                    "questionType", "SINGLE_SELECT",
+                    "options", List.of("Pilot", " Full rollout ", "Pilot")
+                ))))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.questionType").value("SINGLE_SELECT"))
+            // trimmed + deduped, order preserved
+            .andExpect(jsonPath("$.options[0]").value("Pilot"))
+            .andExpect(jsonPath("$.options[1]").value("Full rollout"))
+            .andExpect(jsonPath("$.options.length()").value(2));
+    }
+
+    @Test
+    void createSingleSelect_withTooFewOptions_returns400() throws Exception {
+        Product p = createProduct("Atomic SS2", ProductMode.ATOMIC);
+
+        mvc.perform(asAdmin(post("/api/catalog/products/" + p.getId() + "/questions"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(Map.of(
+                    "questionText", "Rollout scope?",
+                    "questionType", "SINGLE_SELECT",
+                    "options", List.of("OnlyOne")
+                ))))
+            .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void create_withUnknownType_returns400() throws Exception {
+        Product p = createProduct("Atomic UT", ProductMode.ATOMIC);
+
+        mvc.perform(asAdmin(post("/api/catalog/products/" + p.getId() + "/questions"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(Map.of(
+                    "questionText", "Whatever",
+                    "questionType", "MULTI_SELECT"
+                ))))
+            .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void update_typeAwayFromSingleSelect_clearsOptions() throws Exception {
+        Product p = createProduct("Atomic UP", ProductMode.ATOMIC);
+        mvc.perform(asAdmin(post("/api/catalog/products/" + p.getId() + "/questions"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(Map.of(
+                    "questionText", "Rollout scope?",
+                    "questionType", "SINGLE_SELECT",
+                    "options", List.of("Pilot", "Full rollout")
+                ))))
+            .andExpect(status().isCreated());
+        Long id = questionRepository.findByProductIdOrderByDisplayOrder(p.getId()).get(0).getId();
+
+        mvc.perform(asAdmin(patch("/api/catalog/questions/" + id))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(Map.of("questionType", "YES_NO"))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.questionType").value("YES_NO"))
+            .andExpect(jsonPath("$.options").isEmpty());
+
+        assertThat(questionRepository.findById(id).orElseThrow().getOptionsJson()).isNull();
+    }
+
+    @Test
+    void update_toSingleSelectWithoutOptions_returns400() throws Exception {
+        Product p = createProduct("Atomic UP2", ProductMode.ATOMIC);
+        CriticalQuestion q = createQuestionForProduct(p.getId(), "Scope?");
+
+        mvc.perform(asAdmin(patch("/api/catalog/questions/" + q.getId()))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(Map.of("questionType", "SINGLE_SELECT"))))
+            .andExpect(status().isBadRequest());
+    }
+
     private Product createProduct(String name, ProductMode mode) {
         Product p = new Product();
         p.setName(name);

@@ -15,7 +15,11 @@ import { Textarea } from "../../../components/inputs";
 import { Toggle } from "../../../components/Toggle";
 import { FormField } from "../../../components/FormField";
 import { ConfirmModal } from "../../../components/ConfirmModal";
-import type { QuestionDetail } from "../../../lib/api/questions";
+import {
+  QUESTION_TYPE_LABELS,
+  type QuestionDetail,
+  type QuestionType,
+} from "../../../lib/api/questions";
 
 export type QuestionDrawerParent =
   | { kind: "Product"; id: number; name: string }
@@ -32,16 +36,26 @@ interface AddQuestionDrawerProps {
 interface FormValues {
   questionText: string;
   helpText: string;
+  questionType: QuestionType;
+  /** Options editor state: one option per line. */
+  optionsText: string;
   required: boolean;
   documentUploadEnabled: boolean;
   documentUploadRequired: boolean;
   active: boolean;
 }
 
+/** One option per line -> trimmed, deduped list (mirrors backend normalization). */
+function parseOptions(text: string): string[] {
+  return [...new Set(text.split("\n").map((o) => o.trim()).filter(Boolean))];
+}
+
 function valuesFor(q: QuestionDetail | null | undefined): FormValues {
   return {
     questionText: q?.questionText ?? "",
     helpText: q?.helpText ?? "",
+    questionType: q?.questionType ?? "LONG_TEXT",
+    optionsText: (q?.options ?? []).join("\n"),
     required: q?.required ?? false,
     documentUploadEnabled: q?.documentUploadEnabled ?? false,
     documentUploadRequired: q?.documentUploadRequired ?? false,
@@ -59,7 +73,7 @@ export function AddQuestionDrawer({ open, parent, question, onClose }: AddQuesti
   const isEdit = !!question;
   const initial = valuesFor(question);
   const [values, setValues] = useState<FormValues>(initial);
-  const [error, setError] = useState<{ questionText?: string; form?: string }>({});
+  const [error, setError] = useState<{ questionText?: string; options?: string; form?: string }>({});
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
 
   const createForProduct = useCreateProductQuestionMutation();
@@ -80,6 +94,8 @@ export function AddQuestionDrawer({ open, parent, question, onClose }: AddQuesti
   const isDirty =
     values.questionText !== initial.questionText ||
     values.helpText !== initial.helpText ||
+    values.questionType !== initial.questionType ||
+    values.optionsText !== initial.optionsText ||
     values.required !== initial.required ||
     values.documentUploadEnabled !== initial.documentUploadEnabled ||
     values.documentUploadRequired !== initial.documentUploadRequired ||
@@ -99,6 +115,10 @@ export function AddQuestionDrawer({ open, parent, question, onClose }: AddQuesti
       setError({ questionText: "Question text is required." });
       return;
     }
+    if (values.questionType === "SINGLE_SELECT" && parseOptions(values.optionsText).length < 2) {
+      setError({ options: "Add at least 2 options (one per line)." });
+      return;
+    }
 
     try {
       if (isEdit && question) {
@@ -111,7 +131,11 @@ export function AddQuestionDrawer({ open, parent, question, onClose }: AddQuesti
         const requiredChanged = values.required !== initial.required;
         const docEnabledChanged = values.documentUploadEnabled !== initial.documentUploadEnabled;
         const docRequiredChanged = values.documentUploadRequired !== initial.documentUploadRequired;
-        if (textChanged || helpChanged || requiredChanged || docEnabledChanged || docRequiredChanged) {
+        const typeChanged = values.questionType !== initial.questionType;
+        const optionsChanged =
+          values.questionType === "SINGLE_SELECT" && values.optionsText !== initial.optionsText;
+        if (textChanged || helpChanged || requiredChanged || docEnabledChanged
+            || docRequiredChanged || typeChanged || optionsChanged) {
           await updateMutation.mutateAsync({
             id: question.id,
             body: {
@@ -120,6 +144,12 @@ export function AddQuestionDrawer({ open, parent, question, onClose }: AddQuesti
               ...(requiredChanged ? { required: values.required } : {}),
               ...(docEnabledChanged ? { documentUploadEnabled: values.documentUploadEnabled } : {}),
               ...(docRequiredChanged ? { documentUploadRequired: values.documentUploadRequired } : {}),
+              ...(typeChanged ? { questionType: values.questionType } : {}),
+              ...(typeChanged || optionsChanged
+                ? values.questionType === "SINGLE_SELECT"
+                  ? { options: parseOptions(values.optionsText) }
+                  : {}
+                : {}),
             },
           });
         }
@@ -132,6 +162,10 @@ export function AddQuestionDrawer({ open, parent, question, onClose }: AddQuesti
           required: values.required,
           documentUploadEnabled: values.documentUploadEnabled,
           documentUploadRequired: values.documentUploadRequired,
+          questionType: values.questionType,
+          ...(values.questionType === "SINGLE_SELECT"
+            ? { options: parseOptions(values.optionsText) }
+            : {}),
           active: values.active,
         };
         if (parent.kind === "Product") {
@@ -214,6 +248,38 @@ export function AddQuestionDrawer({ open, parent, question, onClose }: AddQuesti
             onChange={(e) => setValues((v) => ({ ...v, helpText: e.target.value }))}
             disabled={busy}
           />
+
+          <FormField label="Answer type" helper="How the requester answers. Changing this on an existing question does not touch already-submitted answers.">
+            {(field) => (
+              <select
+                id={field.id}
+                value={values.questionType}
+                onChange={(e) =>
+                  setValues((v) => ({ ...v, questionType: e.target.value as QuestionType }))
+                }
+                disabled={busy}
+                className="h-8 px-2 rounded-md border border-border bg-white text-body focus:outline-none focus:border-warm-gray-med focus:ring-2 focus:ring-accent"
+                style={{ maxWidth: 240 }}
+              >
+                {Object.entries(QUESTION_TYPE_LABELS).map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
+              </select>
+            )}
+          </FormField>
+
+          {values.questionType === "SINGLE_SELECT" && (
+            <Textarea
+              label="Options"
+              helper="One option per line. Requesters pick exactly one."
+              rows={4}
+              value={values.optionsText}
+              onChange={(e) => setValues((v) => ({ ...v, optionsText: e.target.value }))}
+              error={error.options}
+              placeholder={"Pilot\nFull rollout"}
+              disabled={busy}
+            />
+          )}
 
           <FormField label="Required">
             {(field) => (
