@@ -97,18 +97,20 @@ export function SortableQuestionRow({
 }
 
 export function RequiredPill({ required }: { required: boolean }) {
+  // UX-1: requiredness is metadata, not a warning — Cardinal Red made every
+  // catalog row shout. Required now reads as ink-on-grey; Optional recedes
+  // further via muted text below.
   if (required) {
     return (
       <span
-        className="inline-flex items-center"
+        className="inline-flex items-center text-near-black"
         style={{
           padding: "2px 8px",
           borderRadius: 4,
           fontSize: 11,
           fontWeight: 500,
-          background: "var(--color-white)",
-          color: "var(--color-cardinal-red)",
-          border: "1px solid var(--color-cardinal-red)",
+          background: "var(--color-warm-gray-light)",
+          border: "1px solid var(--color-border-strong)",
         }}
       >
         Required

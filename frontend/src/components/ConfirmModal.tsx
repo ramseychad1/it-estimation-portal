@@ -169,7 +169,7 @@ export function ConfirmModal({
                   onChange={(e) => setTypedValue(e.target.value)}
                   placeholder={requireTypedConfirmation.value}
                   autoFocus
-                  className="w-full h-9 px-3 rounded-md text-body text-near-black focus:outline-none focus:ring-2 focus:ring-light-blue"
+                  className="w-full h-9 px-3 rounded-md text-body text-near-black focus:outline-none focus:ring-2 focus:ring-accent"
                   style={{
                     border: `1px solid ${typedMatches && typedValue.length > 0 ? "var(--color-success)" : "var(--color-border-strong)"}`,
                   }}

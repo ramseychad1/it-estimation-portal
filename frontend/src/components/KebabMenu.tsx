@@ -120,7 +120,7 @@ export function KebabMenu({ items, ariaLabel = "Row actions" }: KebabMenuProps) 
           e.stopPropagation();
           setOpen((o) => !o);
         }}
-        className="inline-flex items-center justify-center bg-transparent border-0 cursor-pointer text-warm-gray-med hover:text-near-black hover:bg-warm-gray-light rounded focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-light-blue"
+        className="inline-flex items-center justify-center bg-transparent border-0 cursor-pointer text-warm-gray-med hover:text-near-black hover:bg-warm-gray-light rounded focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
         style={{ width: 28, height: 28 }}
       >
         <MoreVertical className="w-4 h-4" strokeWidth={1.5} />

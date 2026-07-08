@@ -1,6 +1,7 @@
 /* =========================================================================
    IT Estimation Portal — Design Tokens
-   Ported verbatim from the Claude Design handoff (colors_and_type.css).
+   Ported from the Claude Design handoff (colors_and_type.css), extended in
+   UX-1 (July 2026) with a workhorse accent family + semantic soft tints.
    Single source of truth for color, type, spacing, radius, shadow.
    Never hard-code hex values in components — use these vars.
    ========================================================================= */
@@ -19,13 +20,32 @@
   --color-warm-gray-med: #948A85;
   --color-warm-gray-light: #EFEFEF;
 
-  /* ---- Color: accent --------------------------------------------------- */
+  /* ---- Color: accent (workhorse — UX-1) --------------------------------
+     The deep end of the existing light-blue family. Carries primary actions,
+     links, selected states, focus rings, progress. Swap the hue here and in
+     tailwind.config.js to rebrand the whole app. Cardinal Red stays reserved
+     for brand/destructive/error per docs/COLOR_USAGE.md. */
+  --color-accent: #1F6787;
+  --color-accent-hover: #17536D;
+  --color-accent-soft: #E9F1F5;
+  --color-accent-border: #A8C8D6;
+
+  /* Pale end of the accent family (pre-UX-1 "accent"). Still used for soft
+     info tints, ::selection, and the system badge. */
   --color-light-blue: #BBDDE6;
   --color-light-blue-soft: rgba(187, 221, 230, 0.35);
 
   /* ---- Color: semantic ------------------------------------------------- */
   --color-success: #2F6B4A;
-  --color-warning: #B8860B;
+  --color-success-soft: #E9F2ED;
+  --color-success-border: #BFDACB;
+  /* Darkened from #B8860B in UX-1 so amber text passes contrast on its
+     soft fill (badges now carry tinted backgrounds, not grey). */
+  --color-warning: #9A6C08;
+  --color-warning-soft: #F7F0DC;
+  --color-warning-border: #E2D1A4;
+  --color-danger-soft: #FCEDEE;
+  --color-danger-border: #F2C0C6;
   --color-error: var(--color-cardinal-red);
   --color-info: var(--color-light-blue);
 
@@ -34,6 +54,8 @@
   --color-border-strong: #D8D6D2;
   --color-surface: var(--color-white);
   --color-surface-muted: var(--color-warm-gray-light);
+  --color-surface-tertiary: #FBFBFA;
+  --color-state-disabled: #C9C7C2;
   --color-scrim: rgba(39, 37, 31, 0.40);
 
   /* ---- Foreground roles ----------------------------------------------- */
@@ -50,12 +72,14 @@
                monospace;
 
   /* ---- Type: scale ---------------------------------------------------- */
-  --fs-page-title: 24px;
+  /* Page title bumped 24 -> 28 in UX-1 for one more step of hierarchy
+     contrast between page titles, section titles, and body. */
+  --fs-page-title: 28px;
   --fs-section-title: 18px;
   --fs-body: 14px;
   --fs-small: 12px;
 
-  --lh-page-title: 32px;
+  --lh-page-title: 36px;
   --lh-section-title: 26px;
   --lh-body: 20px;
   --lh-small: 16px;

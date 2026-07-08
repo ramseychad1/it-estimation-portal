@@ -81,13 +81,13 @@ describe("<AppShell>", () => {
     expect(screen.getByTestId("section-Workspace")).toBeInTheDocument();
   });
 
-  it("marks the active nav item with the Cardinal Red left bar", async () => {
+  it("marks the active nav item with the accent left bar", async () => {
     fetchMock.mockResolvedValue(meAs(["Admin"]));
     renderShellAt("/admin/teams", "Teams heading");
 
     const teamsLink = await waitFor(() => screen.getByTestId("nav-Teams"));
     expect(teamsLink.className).toMatch(/is-active/);
-    expect((teamsLink as HTMLElement).style.borderLeft).toContain("var(--color-cardinal-red)");
+    expect((teamsLink as HTMLElement).style.borderLeft).toContain("var(--color-accent)");
 
     const dashboardLink = screen.getByTestId("nav-Dashboard");
     expect(dashboardLink.className).not.toMatch(/is-active/);

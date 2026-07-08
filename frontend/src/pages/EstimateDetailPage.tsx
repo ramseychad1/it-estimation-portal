@@ -692,7 +692,7 @@ function RequestSummaryCard({ detail }: { detail: EstimateRequestDetail }) {
                         className="flex items-center gap-1.5 hover:underline"
                         style={{
                           fontSize: 13,
-                          color: "var(--color-cardinal-red)",
+                          color: "var(--color-accent)",
                           background: "none",
                           border: "none",
                           padding: 0,
@@ -2023,7 +2023,7 @@ function ItemAnswerEditor({
             value={localAnswers.get(a.questionId) ?? ""}
             onChange={(e) => onChange(a.questionId, e.target.value)}
             rows={3}
-            className="w-full mt-1 rounded-md text-near-black focus:outline-none focus:ring-2 focus:ring-light-blue resize-y"
+            className="w-full mt-1 rounded-md text-near-black focus:outline-none focus:ring-2 focus:ring-accent resize-y"
             style={{ fontSize: 13, padding: "8px 10px", border: "1px solid var(--color-border-strong)", lineHeight: 1.5 }}
           />
         </div>
@@ -2076,7 +2076,7 @@ function ProductPickerModal({
             <label className="flex flex-col" style={{ gap: 6 }}>
               <span className="text-warm-gray-med uppercase font-medium" style={{ fontSize: 11, letterSpacing: "0.04em" }}>Product</span>
               <div className="relative">
-                <select value={pickedProductId} onChange={(e) => setPickedProductId(Number(e.target.value))} className="w-full h-9 rounded-md text-near-black appearance-none focus:outline-none focus:ring-2 focus:ring-light-blue" style={{ fontSize: 13, padding: "0 32px 0 10px", border: "1px solid var(--color-border-strong)", background: "white" }}>
+                <select value={pickedProductId} onChange={(e) => setPickedProductId(Number(e.target.value))} className="w-full h-9 rounded-md text-near-black appearance-none focus:outline-none focus:ring-2 focus:ring-accent" style={{ fontSize: 13, padding: "0 32px 0 10px", border: "1px solid var(--color-border-strong)", background: "white" }}>
                   {products.map((p) => <option key={p.id} value={p.id}>{p.name}{p.mode === "CONTAINER" ? " (container)" : ""}</option>)}
                 </select>
                 <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 text-warm-gray-med pointer-events-none" style={{ width: 14, height: 14 }} strokeWidth={1.5} />
@@ -2086,7 +2086,7 @@ function ProductPickerModal({
               <label className="flex flex-col mt-4" style={{ gap: 6 }}>
                 <span className="text-warm-gray-med uppercase font-medium" style={{ fontSize: 11, letterSpacing: "0.04em" }}>Sub-feature</span>
                 <div className="relative">
-                  <select value={pickedSubFeatureId ?? ""} onChange={(e) => setPickedSubFeatureId(e.target.value ? Number(e.target.value) : null)} className="w-full h-9 rounded-md text-near-black appearance-none focus:outline-none focus:ring-2 focus:ring-light-blue" style={{ fontSize: 13, padding: "0 32px 0 10px", border: "1px solid var(--color-border-strong)", background: "white" }}>
+                  <select value={pickedSubFeatureId ?? ""} onChange={(e) => setPickedSubFeatureId(e.target.value ? Number(e.target.value) : null)} className="w-full h-9 rounded-md text-near-black appearance-none focus:outline-none focus:ring-2 focus:ring-accent" style={{ fontSize: 13, padding: "0 32px 0 10px", border: "1px solid var(--color-border-strong)", background: "white" }}>
                     <option value="">Select a sub-feature…</option>
                     {subFeatures.map((sf) => <option key={sf.id} value={sf.id}>{sf.name}</option>)}
                   </select>

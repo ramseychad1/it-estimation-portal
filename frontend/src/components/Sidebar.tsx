@@ -121,18 +121,26 @@ function NavItem({ to, label, Icon, collapsed }: NavItemProps) {
         gap: 12,
         height: 36,
         padding: collapsed ? 0 : "0 12px",
-        borderLeft: `3px solid ${isActive ? "var(--color-cardinal-red)" : "transparent"}`,
+        borderLeft: `3px solid ${isActive ? "var(--color-accent)" : "transparent"}`,
         fontSize: 14,
-        background: isActive ? "var(--color-warm-gray-light)" : "transparent",
-        color: "var(--color-near-black)",
+        background: isActive ? "var(--color-accent-soft)" : "transparent",
+        color: isActive ? "var(--color-accent)" : "var(--color-near-black)",
       })}
     >
-      <Icon
-        className="flex-none"
-        style={{ width: 16, height: 16, color: "var(--fg-2)" }}
-        strokeWidth={1.5}
-      />
-      {!collapsed && <span>{label}</span>}
+      {({ isActive }) => (
+        <>
+          <Icon
+            className="flex-none"
+            style={{
+              width: 16,
+              height: 16,
+              color: isActive ? "var(--color-accent)" : "var(--fg-2)",
+            }}
+            strokeWidth={1.5}
+          />
+          {!collapsed && <span>{label}</span>}
+        </>
+      )}
     </NavLink>
   );
 }

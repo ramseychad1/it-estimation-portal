@@ -20,9 +20,9 @@ const STYLES: Record<Role, CSSProperties> = {
     border: "1px solid var(--color-cardinal-red)",
   },
   "Solution Owner": {
-    background: "var(--color-light-blue-soft)",
-    color: "var(--fg-1)",
-    border: "1px solid rgba(187,221,230,0.7)",
+    background: "var(--color-accent-soft)",
+    color: "var(--color-accent)",
+    border: "1px solid var(--color-accent-border)",
   },
   Estimator: {
     background: "var(--color-warm-gray-light)",

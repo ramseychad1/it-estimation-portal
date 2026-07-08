@@ -907,7 +907,7 @@ function Step1({
               value={goLiveDate}
               disabled={goLiveDateUnknown}
               onChange={(e) => onGoLiveDateChange(e.currentTarget.value)}
-              className="w-full rounded-md border border-border bg-white text-body text-near-black h-8 px-3 disabled:bg-warm-gray-light disabled:text-warm-gray-med focus:outline-none focus:border-warm-gray-med focus:ring-2 focus:ring-light-blue"
+              className="w-full rounded-md border border-border bg-white text-body text-near-black h-8 px-3 disabled:bg-warm-gray-light disabled:text-warm-gray-med focus:outline-none focus:border-warm-gray-med focus:ring-2 focus:ring-accent"
             />
             <label
               className="inline-flex items-center cursor-pointer"
@@ -952,7 +952,7 @@ function Step1({
               id="request-category"
               value={categoryId ?? ""}
               onChange={(e) => onCategoryChange(e.currentTarget.value ? Number(e.currentTarget.value) : null)}
-              className="w-full rounded-md border border-border bg-white text-body text-near-black h-8 px-3 focus:outline-none focus:border-warm-gray-med focus:ring-2 focus:ring-light-blue"
+              className="w-full rounded-md border border-border bg-white text-body text-near-black h-8 px-3 focus:outline-none focus:border-warm-gray-med focus:ring-2 focus:ring-accent"
               style={{ fontSize: 13 }}
               required
             >
@@ -2161,7 +2161,7 @@ function ItemSection({
                         </label>
                         <span style={{ color: "var(--fg-3)", fontSize: 12 }}>
                           {q.documentUploadRequired
-                            ? <span style={{ color: "var(--color-cardinal-red)", fontWeight: 500 }}>Required</span>
+                            ? <span style={{ color: "var(--fg-1)", fontWeight: 500 }}>Required</span>
                             : <span>Optional</span>
                           }
                           {" · "}PDF, Word, or Excel · max 10 MB

@@ -52,7 +52,7 @@ export function CopyToClipboardButton({
       type="button"
       onClick={handleCopy}
       aria-label={ariaLabel}
-      className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md text-body font-medium text-near-black bg-white hover:bg-warm-gray-light focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-light-blue"
+      className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md text-body font-medium text-near-black bg-white hover:bg-warm-gray-light focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
       style={{ border: "1px solid var(--color-border-strong)" }}
     >
       {copied ? (

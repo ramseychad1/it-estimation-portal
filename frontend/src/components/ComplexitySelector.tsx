@@ -35,7 +35,7 @@ const OPTIONS: ComplexityOption[] = [
 
 /**
  * Three large clickable cards for the reviewer's complexity pick. The
- * selected card highlights with a Light Blue tint border + soft tint
+ * selected card highlights with an accent border + soft accent tint
  * background; clicking the selected card again deselects (returns null).
  *
  * Phase 6b uses this on the review screen between the questions section
@@ -72,10 +72,10 @@ export function ComplexitySelector({
               padding: "14px 16px",
               borderRadius: 6,
               border: selected
-                ? "1px solid var(--color-light-blue)"
+                ? "1px solid var(--color-accent)"
                 : "1px solid var(--color-border-strong)",
-              background: selected ? "var(--color-light-blue-soft)" : "var(--color-white)",
-              boxShadow: selected ? "0 0 0 1px var(--color-light-blue)" : undefined,
+              background: selected ? "var(--color-accent-soft)" : "var(--color-white)",
+              boxShadow: selected ? "0 0 0 1px var(--color-accent)" : undefined,
               opacity: disabled ? 0.6 : 1,
             }}
           >

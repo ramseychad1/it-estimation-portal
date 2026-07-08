@@ -249,7 +249,7 @@ export function InviteUserModal({ open, onClose, onCreated, prefillAdmin = false
                         max={90}
                         value={values.expiresInDays}
                         onChange={(e) => setValues((v) => ({ ...v, expiresInDays: Number(e.target.value) || 14 }))}
-                        className="w-24 h-8 px-3 rounded-md border border-border-strong text-body text-near-black tabular focus:outline-none focus:ring-2 focus:ring-light-blue"
+                        className="w-24 h-8 px-3 rounded-md border border-border-strong text-body text-near-black tabular focus:outline-none focus:ring-2 focus:ring-accent"
                         disabled={busy}
                       />
                     )}

@@ -264,7 +264,7 @@ function ModeRadioCard({
       aria-checked={checked}
       onClick={onSelect}
       disabled={disabled}
-      className="text-left bg-white rounded-md cursor-pointer focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-light-blue disabled:opacity-60 disabled:cursor-default"
+      className="text-left bg-white rounded-md cursor-pointer focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-60 disabled:cursor-default"
       style={{
         padding: "12px 14px",
         border: checked

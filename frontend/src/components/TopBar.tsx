@@ -77,7 +77,7 @@ export function TopBar() {
       <button
         type="button"
         aria-label="Notifications"
-        className="relative inline-flex items-center justify-center bg-transparent border-0 rounded-md cursor-pointer text-near-black hover:bg-warm-gray-light focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-light-blue"
+        className="relative inline-flex items-center justify-center bg-transparent border-0 rounded-md cursor-pointer text-near-black hover:bg-warm-gray-light focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
         style={{ width: 32, height: 32 }}
         // Visual-only in Phase 1
       >

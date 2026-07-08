@@ -12,14 +12,26 @@ export default {
         "near-black-hover": "#3A372E",
         "warm-gray-med": "#948A85",
         "warm-gray-light": "#EFEFEF",
-        // Accent
+        // Accent (workhorse — UX-1). Keep in sync with tokens.css.
+        accent: "#1F6787",
+        "accent-hover": "#17536D",
+        "accent-soft": "#E9F1F5",
+        "accent-border": "#A8C8D6",
+        // Pale end of the accent family
         "light-blue": "#BBDDE6",
         // Semantic
         success: "#2F6B4A",
-        warning: "#B8860B",
+        "success-soft": "#E9F2ED",
+        "success-border": "#BFDACB",
+        warning: "#9A6C08",
+        "warning-soft": "#F7F0DC",
+        "warning-border": "#E2D1A4",
+        "danger-soft": "#FCEDEE",
+        "danger-border": "#F2C0C6",
         // Structure
         border: "#E5E5E2",
         "border-strong": "#D8D6D2",
+        "surface-tertiary": "#FBFBFA",
       },
       fontFamily: {
         sans: [
@@ -42,7 +54,7 @@ export default {
       },
       fontSize: {
         // Pairs with line-height
-        "page-title": ["24px", { lineHeight: "32px", letterSpacing: "-0.01em" }],
+        "page-title": ["28px", { lineHeight: "36px", letterSpacing: "-0.01em" }],
         "section-title": ["18px", { lineHeight: "26px", letterSpacing: "-0.005em" }],
         body: ["14px", { lineHeight: "20px" }],
         small: ["12px", { lineHeight: "16px" }],

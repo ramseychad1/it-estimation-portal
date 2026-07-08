@@ -156,7 +156,7 @@ export function Drawer({
             type="button"
             aria-label="Close"
             onClick={requestClose}
-            className="bg-transparent border-0 cursor-pointer text-warm-gray-med hover:text-near-black hover:bg-warm-gray-light rounded focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-light-blue"
+            className="bg-transparent border-0 cursor-pointer text-warm-gray-med hover:text-near-black hover:bg-warm-gray-light rounded focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
             style={{ width: 28, height: 28, fontSize: 18, lineHeight: "20px" }}
           >
             ×

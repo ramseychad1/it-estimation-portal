@@ -10,7 +10,7 @@ const controlClasses =
   "w-full rounded-md border border-border bg-white text-body text-near-black " +
   "placeholder:text-warm-gray-med " +
   "transition-colors duration-hover ease-out-soft " +
-  "focus:outline-none focus:border-warm-gray-med focus:ring-2 focus:ring-light-blue " +
+  "focus:outline-none focus:border-warm-gray-med focus:ring-2 focus:ring-accent " +
   "disabled:bg-warm-gray-light disabled:text-warm-gray-med";
 
 export interface TextInputProps extends InputHTMLAttributes<HTMLInputElement> {

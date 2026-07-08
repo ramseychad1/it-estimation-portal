@@ -288,7 +288,7 @@ function RateInput({
             onChange={(e) => onChange(e.target.value)}
             disabled={disabled}
             placeholder="0.00"
-            className={`w-full h-9 px-3 rounded-md border text-body text-near-black tabular focus:outline-none focus:ring-2 focus:ring-light-blue ${
+            className={`w-full h-9 px-3 rounded-md border text-body text-near-black tabular focus:outline-none focus:ring-2 focus:ring-accent ${
               error ? "border-cardinal-red" : "border-border-strong focus:border-warm-gray-med"
             }`}
             style={{ paddingLeft: 26, fontWeight: 500 }}

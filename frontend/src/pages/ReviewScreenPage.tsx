@@ -741,7 +741,7 @@ function QuestionsSection({ answers }: { answers: EstimateRequestAnswerView[] })
                     type="button"
                     onClick={() => void downloadAttachment(att.id, att.originalFilename)}
                     className="flex items-center gap-1.5 hover:underline"
-                    style={{ fontSize: 12, color: "var(--fg-2)", background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "left" }}
+                    style={{ fontSize: 12, color: "var(--color-accent)", background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "left" }}
                   >
                     <Download className="w-3 h-3 shrink-0" strokeWidth={2} />
                     {att.originalFilename}

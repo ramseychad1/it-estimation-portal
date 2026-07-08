@@ -32,7 +32,7 @@ export const UserAvatar = forwardRef<HTMLButtonElement, UserAvatarProps>(
         <button
           ref={ref}
           type="button"
-          className={`inline-flex items-center justify-center border-0 cursor-pointer focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-light-blue ${className}`}
+          className={`inline-flex items-center justify-center border-0 cursor-pointer focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${className}`}
           style={style}
           {...rest}
         >

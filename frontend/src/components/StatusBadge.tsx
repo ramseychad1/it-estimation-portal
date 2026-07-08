@@ -4,13 +4,16 @@ import type { ReactNode } from "react";
  * Variant-driven status pill so we don't end up with a different badge
  * component per surface. Add new variants here, not by cloning the component.
  *
- * Color discipline rules (per docs/COLOR_USAGE.md):
- *   - Cardinal Red is reserved for `danger` (Failed / Inactive Admin / etc.).
- *     It is never used for `info` or `active` states.
- *   - Light Blue (with a soft background) carries info / active / system.
- *   - Warm-gray-light + warm-gray-med carries inactive / archived / muted.
- *   - Success and warning use the muted forest / amber as text/icon color
- *     only — the fill stays warm-gray-light so they don't shout.
+ * Color discipline rules (per docs/COLOR_USAGE.md, revised in UX-1):
+ *   - Cardinal Red is reserved for `danger` / `rejected` / `needs-revision`
+ *     (terminal or error signals). Never for info or active states.
+ *   - The accent family (accent-soft fill + accent text) carries
+ *     in-flight states: active / submitted / in-review.
+ *   - Success and warning states carry their own soft tinted fills
+ *     (success-soft / warning-soft) so status reads at a glance —
+ *     the pre-UX-1 grey-fill treatment made every state look alike.
+ *   - Warm-gray-light + warm-gray-med still carries inactive / archived /
+ *     muted (states that should recede).
  */
 export type StatusBadgeVariant =
   | "active"
@@ -45,9 +48,9 @@ interface StatusBadgeProps {
 
 const VARIANT_STYLES: Record<StatusBadgeVariant, React.CSSProperties> = {
   active: {
-    background: "var(--color-light-blue-soft)",
-    color: "var(--fg-1)",
-    borderColor: "rgba(187,221,230,0.7)",
+    background: "var(--color-accent-soft)",
+    color: "var(--color-accent)",
+    borderColor: "var(--color-accent-border)",
   },
   inactive: {
     background: "var(--color-warm-gray-light)",
@@ -55,9 +58,9 @@ const VARIANT_STYLES: Record<StatusBadgeVariant, React.CSSProperties> = {
     borderColor: "var(--color-border-strong)",
   },
   system: {
-    background: "rgba(187, 221, 230, 0.45)",
+    background: "var(--color-light-blue-soft)",
     color: "var(--fg-1)",
-    borderColor: "rgba(187,221,230,0.9)",
+    borderColor: "var(--color-light-blue)",
   },
   neutral: {
     background: "var(--color-warm-gray-light)",
@@ -65,34 +68,34 @@ const VARIANT_STYLES: Record<StatusBadgeVariant, React.CSSProperties> = {
     borderColor: "var(--color-border)",
   },
   success: {
-    background: "var(--color-warm-gray-light)",
+    background: "var(--color-success-soft)",
     color: "var(--color-success)",
-    borderColor: "var(--color-border-strong)",
+    borderColor: "var(--color-success-border)",
   },
   warning: {
-    background: "var(--color-warm-gray-light)",
+    background: "var(--color-warning-soft)",
     color: "var(--color-warning)",
-    borderColor: "var(--color-border-strong)",
+    borderColor: "var(--color-warning-border)",
   },
   danger: {
-    background: "var(--color-warm-gray-light)",
+    background: "var(--color-danger-soft)",
     color: "var(--color-cardinal-red)",
-    borderColor: "rgba(228, 31, 53, 0.35)",
+    borderColor: "var(--color-danger-border)",
   },
-  // Italic to distinguish from Draft/Submitted at a glance — the SO is
-  // working on it but no terminal action has happened yet.
+  // Accent family, same as active/submitted — the color says "in flight";
+  // the label carries the distinction. (Pre-UX-1 this was grey italic,
+  // which read as muted rather than in-progress.)
   "in-review": {
-    background: "var(--color-warm-gray-light)",
-    color: "var(--fg-2)",
-    borderColor: "var(--color-border-strong)",
-    fontStyle: "italic",
+    background: "var(--color-accent-soft)",
+    color: "var(--color-accent)",
+    borderColor: "var(--color-accent-border)",
   },
-  // Forest-green text on Light Blue tint — matches the "approved" reading
-  // in /docs/COLOR_USAGE.md (success colour as text only, never as fill).
+  // Green soft fill — the semantic layer added in UX-1 allows tinted
+  // fills for terminal-positive states.
   approved: {
-    background: "var(--color-light-blue-soft)",
+    background: "var(--color-success-soft)",
     color: "var(--color-success)",
-    borderColor: "rgba(187,221,230,0.7)",
+    borderColor: "var(--color-success-border)",
   },
   // Outlined (white fill, red border + text). Same shape as the Admin role
   // badge — Cardinal Red is the only acceptable use here per the brand
@@ -104,20 +107,20 @@ const VARIANT_STYLES: Record<StatusBadgeVariant, React.CSSProperties> = {
     borderColor: "var(--color-cardinal-red)",
   },
   "partially-approved": {
-    background: "var(--color-warm-gray-light)",
+    background: "var(--color-warning-soft)",
     color: "var(--color-warning)",
-    borderColor: "var(--color-border-strong)",
+    borderColor: "var(--color-warning-border)",
   },
   "needs-revision": {
-    background: "rgba(228, 31, 53, 0.05)",
+    background: "var(--color-danger-soft)",
     color: "var(--color-cardinal-red)",
-    borderColor: "rgba(228, 31, 53, 0.3)",
+    borderColor: "var(--color-danger-border)",
   },
   // Amber tone: action required but the SO is waiting, not rejecting.
   "needs-clarification": {
-    background: "rgba(184, 134, 11, 0.07)",
+    background: "var(--color-warning-soft)",
     color: "var(--color-warning)",
-    borderColor: "rgba(184, 134, 11, 0.35)",
+    borderColor: "var(--color-warning-border)",
   },
   // Neutral muted: requestor voluntarily pulled back, no urgency signal.
   recalled: {
@@ -127,9 +130,9 @@ const VARIANT_STYLES: Record<StatusBadgeVariant, React.CSSProperties> = {
   },
   // Amber-tinted: awaiting Revenue Manager action, similar weight to needs-clarification.
   "pricing-review": {
-    background: "rgba(184, 134, 11, 0.07)",
+    background: "var(--color-warning-soft)",
     color: "var(--color-warning)",
-    borderColor: "rgba(184, 134, 11, 0.35)",
+    borderColor: "var(--color-warning-border)",
   },
 };
 

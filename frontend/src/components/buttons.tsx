@@ -14,11 +14,11 @@ const baseClasses =
   "inline-flex items-center justify-center gap-2 h-8 px-3 rounded-md text-body font-medium " +
   "border transition-colors duration-hover ease-out-soft " +
   "disabled:opacity-50 disabled:cursor-not-allowed " +
-  "focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-light-blue";
+  "focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 
 const variantClasses: Record<Variant, string> = {
   primary:
-    "bg-near-black text-white border-near-black hover:bg-near-black-hover hover:border-near-black-hover",
+    "bg-accent text-white border-accent hover:bg-accent-hover hover:border-accent-hover",
   secondary:
     "bg-white text-near-black border-border hover:bg-warm-gray-light",
   tertiary:
