@@ -26,7 +26,8 @@ public class AppSettingController {
 
     @GetMapping
     public ResponseEntity<Map<String, String>> getAll() {
-        return ResponseEntity.ok(service.getAll());
+        // SEC-2: secret values are masked — never echo credentials to the client.
+        return ResponseEntity.ok(service.getAllForDisplay());
     }
 
     @PutMapping

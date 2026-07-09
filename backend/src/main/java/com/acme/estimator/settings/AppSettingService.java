@@ -2,7 +2,9 @@ package com.acme.estimator.settings;
 
 import com.acme.estimator.auth.AppUserDetails;
 import java.time.OffsetDateTime;
+import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -30,12 +32,48 @@ public class AppSettingService {
     public static final String KEY_EMAIL_GMAIL_REFRESH_TOKEN  = "email_gmail_refresh_token";
     public static final String KEY_EMAIL_GMAIL_CONNECTED_EMAIL = "email_gmail_connected_email";
 
+    /**
+     * Credential-equivalent keys (SEC-2). Their values are never returned to
+     * the client — {@link #getAllForDisplay()} replaces a stored secret with
+     * {@link #REDACTED} so cleartext credentials don't land in response
+     * bodies, the browser network log, or the React Query cache.
+     */
+    static final Set<String> SECRET_KEYS = Set.of(
+        KEY_EMAIL_SMTP_PASSWORD,
+        KEY_EMAIL_RESEND_API_KEY,
+        KEY_EMAIL_GMAIL_CLIENT_SECRET,
+        KEY_EMAIL_GMAIL_REFRESH_TOKEN
+    );
+
+    /** Sentinel returned in place of a configured secret. Also means "keep existing" on write. */
+    static final String REDACTED = "********";
+
     private final AppSettingRepository repo;
 
+    /** RAW values — internal callers only (never exposed over the API). */
     @Transactional(readOnly = true)
     public Map<String, String> getAll() {
         return repo.findAll().stream()
             .collect(Collectors.toMap(AppSetting::getKey, AppSetting::getValue));
+    }
+
+    /**
+     * API-facing view: every setting, but secret values masked. A configured
+     * secret shows {@link #REDACTED}; an unset/blank one shows "". The client
+     * only needs to know a secret <em>is</em> set, never what it is.
+     */
+    @Transactional(readOnly = true)
+    public Map<String, String> getAllForDisplay() {
+        Map<String, String> out = new LinkedHashMap<>();
+        for (AppSetting s : repo.findAll()) {
+            if (SECRET_KEYS.contains(s.getKey())) {
+                boolean set = s.getValue() != null && !s.getValue().isBlank();
+                out.put(s.getKey(), set ? REDACTED : "");
+            } else {
+                out.put(s.getKey(), s.getValue());
+            }
+        }
+        return out;
     }
 
     @Transactional(readOnly = true)
@@ -74,6 +112,13 @@ public class AppSettingService {
     public Map<String, String> setAll(Map<String, String> updates) {
         Long actorId = currentUserId();
         for (Map.Entry<String, String> entry : updates.entrySet()) {
+            // Defence in depth (SEC-2): a client echoing back the REDACTED
+            // sentinel for a secret means "leave it unchanged" — never
+            // overwrite a real secret with the mask. (The UI already omits
+            // untouched secrets; this guards any other caller.)
+            if (SECRET_KEYS.contains(entry.getKey()) && REDACTED.equals(entry.getValue())) {
+                continue;
+            }
             AppSetting setting = repo.findById(entry.getKey())
                 .orElseGet(() -> {
                     AppSetting s = new AppSetting();
@@ -85,7 +130,7 @@ public class AppSettingService {
             setting.setUpdatedBy(actorId);
             repo.save(setting);
         }
-        return getAll();
+        return getAllForDisplay();
     }
 
     private Long currentUserId() {
