@@ -46,6 +46,9 @@ public class DocumentService {
             throw ApiException.badRequest("Could not read uploaded file.");
         }
 
+        // SEC-3: verify the actual bytes, not just the client-declared type.
+        FileContentTypeValidator.assertAllowedContent(bytes);
+
         AnswerAttachment attachment = new AnswerAttachment();
         attachment.setItemId(itemId);
         attachment.setQuestionId(questionId);

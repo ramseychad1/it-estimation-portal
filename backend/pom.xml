@@ -44,6 +44,16 @@
             <artifactId>spring-boot-starter-mail</artifactId>
         </dependency>
 
+        <!-- SEC-3: magic-byte content detection for uploaded files. tika-core
+             is standalone (no parser modules) — enough to sniff PDF / ZIP
+             (OOXML) / OLE2 (legacy Office) and reject active content like
+             HTML/SVG masquerading as a document. -->
+        <dependency>
+            <groupId>org.apache.tika</groupId>
+            <artifactId>tika-core</artifactId>
+            <version>2.9.2</version>
+        </dependency>
+
         <dependency>
             <groupId>org.postgresql</groupId>
             <artifactId>postgresql</artifactId>
