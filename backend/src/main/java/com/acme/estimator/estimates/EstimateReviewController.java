@@ -35,8 +35,10 @@ import org.springframework.web.bind.annotation.RestController;
  * an SO whose team owns the item's product. The queue and detail reads
  * remain request-level; actions are scoped to a specific item.
  *
- * <p>Role gate: Admin or Solution Owner. Runtime checks in the service
- * enforce team-scoping and reviewer-ownership.
+ * <p>Role gate: reads are open to Admin / Solution Owner / Revenue
+ * Manager; the mutating review actions are Admin / Solution Owner only
+ * (RM is pricing-only). Runtime checks in the service enforce
+ * team-scoping and reviewer-ownership.
  */
 @RestController
 @RequestMapping("/api/estimates/review")
@@ -77,8 +79,14 @@ public class EstimateReviewController {
     }
 
     // ---- per-item review actions -----------------------------------------
+    // SEC-5: Revenue Manager is a pricing role, not a catalog reviewer. It
+    // keeps read access (queue + detail above) but is excluded from every
+    // mutating review action via the method-level gates below — the
+    // service-layer team check is permissive for team-unassigned products,
+    // so the role gate is what actually keeps RM out here.
 
     @PostMapping("/{requestId}/items/{itemId}/start")
+    @PreAuthorize("hasAnyRole('ADMIN','SOLUTION_OWNER')")
     public EstimateRequestDetail start(
         @PathVariable Long requestId,
         @PathVariable Long itemId,
@@ -88,6 +96,7 @@ public class EstimateReviewController {
     }
 
     @PostMapping("/{requestId}/items/{itemId}/release")
+    @PreAuthorize("hasAnyRole('ADMIN','SOLUTION_OWNER')")
     public EstimateRequestDetail release(
         @PathVariable Long requestId,
         @PathVariable Long itemId,
@@ -97,6 +106,7 @@ public class EstimateReviewController {
     }
 
     @PostMapping("/{requestId}/items/{itemId}/approve")
+    @PreAuthorize("hasAnyRole('ADMIN','SOLUTION_OWNER')")
     public EstimateRequestDetail approve(
         @PathVariable Long requestId,
         @PathVariable Long itemId,
@@ -107,6 +117,7 @@ public class EstimateReviewController {
     }
 
     @PostMapping("/{requestId}/items/{itemId}/reject")
+    @PreAuthorize("hasAnyRole('ADMIN','SOLUTION_OWNER')")
     public EstimateRequestDetail reject(
         @PathVariable Long requestId,
         @PathVariable Long itemId,
@@ -117,6 +128,7 @@ public class EstimateReviewController {
     }
 
     @PostMapping("/{requestId}/items/{itemId}/request-clarification")
+    @PreAuthorize("hasAnyRole('ADMIN','SOLUTION_OWNER')")
     public EstimateRequestDetail requestClarification(
         @PathVariable Long requestId,
         @PathVariable Long itemId,

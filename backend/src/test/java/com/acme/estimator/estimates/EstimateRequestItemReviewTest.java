@@ -90,6 +90,7 @@ class EstimateRequestItemReviewTest {
     private AppUserDetails soNoTeam; // SO with no team membership
     private AppUserDetails requester;
     private AppUserDetails admin;
+    private AppUserDetails revenueManager;
 
     private Team teamA;
     private Team teamB;
@@ -114,6 +115,7 @@ class EstimateRequestItemReviewTest {
         soTeamB = new AppUserDetails(soBUser);
         soNoTeam = new AppUserDetails(soNoneUser);
         requester = new AppUserDetails(ensureUserWithRole("req-team-test@local", "Req", "User", (short) 4));
+        revenueManager = new AppUserDetails(ensureUserWithRole("rm-review-test@local", "Rev", "Mgr", (short) 5));
         admin = new AppUserDetails(userRepository.findByEmailIgnoreCase("admin@local").orElseThrow());
 
         BlendedRate rate = new BlendedRate();
@@ -128,7 +130,7 @@ class EstimateRequestItemReviewTest {
     void tearDown() {
         cleanAll();
         for (String email : List.of(
-            "so-team-a@local", "so-team-b@local", "so-no-team@local", "req-team-test@local"
+            "so-team-a@local", "so-team-b@local", "so-no-team@local", "req-team-test@local", "rm-review-test@local"
         )) {
             userRepository.findByEmailIgnoreCase(email).ifPresent(userRepository::delete);
         }
@@ -464,6 +466,38 @@ class EstimateRequestItemReviewTest {
         assertThat(new BigDecimal(rowA.get("totalApprovedCost").asText())).isZero();
         // ctx used only for seeding — reference it so the linter is happy.
         assertThat(ctx.requestId).isNotNull();
+    }
+
+    // ---- Revenue Manager review-action gate (SEC-5) ------------------------
+
+    @Test
+    void revenueManager_canReadQueue_butCannotActOnItems() throws Exception {
+        var ctx = seedSubmittedRequest(teamA);
+
+        // Reads stay open — RM needs review visibility for pricing.
+        mvc.perform(get("/api/estimates/review").with(user(revenueManager)))
+            .andExpect(status().isOk());
+
+        // …but every mutating review action is 403 for RM (method-level gate),
+        // even on a team-unassigned-style path the service check would wave through.
+        mvc.perform(post(itemUrl(ctx.requestId, ctx.itemId, "start"))
+                .with(user(revenueManager)).with(csrf()))
+            .andExpect(status().isForbidden());
+        mvc.perform(post(itemUrl(ctx.requestId, ctx.itemId, "approve"))
+                .with(user(revenueManager)).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(Map.of("complexity", "LOW", "justification", "x"))))
+            .andExpect(status().isForbidden());
+        mvc.perform(post(itemUrl(ctx.requestId, ctx.itemId, "reject"))
+                .with(user(revenueManager)).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(Map.of("rejectionReason", "x"))))
+            .andExpect(status().isForbidden());
+        mvc.perform(post(itemUrl(ctx.requestId, ctx.itemId, "request-clarification"))
+                .with(user(revenueManager)).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(Map.of("clarificationNote", "x"))))
+            .andExpect(status().isForbidden());
     }
 
     private String adminItemUrl(Long requestId, Long itemId, String action) {
