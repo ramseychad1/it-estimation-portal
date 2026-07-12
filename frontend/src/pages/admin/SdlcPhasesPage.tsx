@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   CheckCircle2,
   History,
+  Info,
   Pencil,
   Plus,
   Trash2,
@@ -319,7 +320,17 @@ export function SdlcPhasesPage() {
               <Th width={32} />
               <Th width={56} center noSort>Order</Th>
               <Th>Name</Th>
-              {!hiddenCols.has("mid") && <Th width={72} center>Mid %</Th>}
+              {!hiddenCols.has("mid") && (
+                <Th width={88} center>
+                  <span
+                    title="Each phase's share of the total project. The estimator sizes the whole project from the dev-anchor phase, then distributes hours across phases by Mid %."
+                    style={{ display: "inline-flex", alignItems: "center", gap: 4, justifyContent: "center", cursor: "help" }}
+                  >
+                    Mid %
+                    <Info className="w-3 h-3" strokeWidth={1.5} aria-hidden="true" style={{ color: "var(--fg-2)" }} />
+                  </span>
+                </Th>
+              )}
               {!hiddenCols.has("description") && <Th>Description</Th>}
               {!hiddenCols.has("source") && <Th width={100}>Source</Th>}
               {!hiddenCols.has("status") && <Th width={110}>Status</Th>}
