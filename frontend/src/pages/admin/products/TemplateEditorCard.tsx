@@ -13,8 +13,9 @@ import {
 } from "../../../components/hours/columns";
 import type { PhaseMeta } from "../../../components/hours/HoursRow";
 import { EmptyState } from "../../../components/EmptyState";
-import { PrimaryButton, TertiaryButton } from "../../../components/buttons";
+import { PrimaryButton, SecondaryButton, TertiaryButton } from "../../../components/buttons";
 import { TextInput } from "../../../components/inputs";
+import { BuildFromDevHoursDrawer } from "./BuildFromDevHoursDrawer";
 import { UserCell } from "../../../components/UserCell";
 import { useToast } from "../../../components/Toast";
 import { useUnsavedChangesGuard } from "../../../lib/useUnsavedChangesGuard";
@@ -81,6 +82,7 @@ export function TemplateEditorCard({
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [buildOpen, setBuildOpen] = useState(false);
 
   // Reset local state whenever the server pushes a new template (Day 1
   // create, save success, refetch).
@@ -104,6 +106,17 @@ export function TemplateEditorCard({
   }, [values, original, template]);
 
   useUnsavedChangesGuard(isDirty);
+
+  // Whether the grid holds any non-zero hours — drives the estimator's
+  // overwrite confirm.
+  const gridHasValues = useMemo(() => {
+    for (const [, row] of values) {
+      for (const col of COLUMNS) {
+        if ((row[col.key] ?? 0) > 0) return true;
+      }
+    }
+    return false;
+  }, [values]);
 
   // ---- empty state (Day 1) ---------------------------------------------
 
@@ -201,6 +214,9 @@ export function TemplateEditorCard({
         </div>
         {canManage && (
           <div className="flex items-center gap-2">
+            <SecondaryButton onClick={() => setBuildOpen(true)} disabled={saving}>
+              Build from dev hours
+            </SecondaryButton>
             {isDirty && (
               <TertiaryButton
                 onClick={discardChanges}
@@ -348,6 +364,20 @@ export function TemplateEditorCard({
           </div>
         )}
       </div>
+
+      <BuildFromDevHoursDrawer
+        open={buildOpen}
+        onClose={() => setBuildOpen(false)}
+        templatePhases={phases}
+        gridHasValues={gridHasValues}
+        onApply={(generated) => {
+          setValues((prev) => {
+            const out = new Map(prev);
+            for (const [phaseId, row] of generated) out.set(phaseId, row);
+            return out;
+          });
+        }}
+      />
     </div>
   );
 }
