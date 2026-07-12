@@ -13,9 +13,9 @@ import java.time.ZoneOffset;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
-import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -52,18 +52,31 @@ public class AuthController {
             HttpServletRequest request,
             HttpServletResponse response
     ) {
-        // SEC-4: reject before authenticating if this account is locked out.
-        loginThrottle.assertNotLocked(body.email());
+        // SEC-4 / WEB-09: reject before authenticating if the account or the
+        // client IP is locked out.
+        String clientIp = clientIp(request);
+        loginThrottle.assertNotLocked(body.email(), clientIp);
 
         Authentication unauth = UsernamePasswordAuthenticationToken.unauthenticated(body.email(), body.password());
         Authentication authed;
         try {
             authed = authenticationManager.authenticate(unauth);
-        } catch (BadCredentialsException ex) {
-            loginThrottle.recordFailure(body.email());
+        } catch (AuthenticationException ex) {
+            // WEB-05: collapse every auth failure — bad credentials, disabled/
+            // pending account, locked — into one generic response and count it
+            // toward the throttle, so the response can't enumerate account state.
+            loginThrottle.recordFailure(body.email(), clientIp);
             throw new ResponseStatusException(UNAUTHORIZED, "Invalid email or password");
         }
         loginThrottle.recordSuccess(body.email());
+
+        // WEB-06: rotate the session id on authentication to defeat session
+        // fixation. Login is performed manually (no formLogin), so Spring's
+        // SessionAuthenticationStrategy never runs — do it explicitly. Only a
+        // pre-existing session can be fixated; a fresh one gets a new id anyway.
+        if (request.getSession(false) != null) {
+            request.changeSessionId();
+        }
 
         SecurityContext context = contextHolder.createEmptyContext();
         context.setAuthentication(authed);
@@ -112,5 +125,20 @@ public class AuthController {
         }
         var teamIds = userRepository.findTeamIdsByUserId(details.getUserId());
         return ResponseEntity.ok(CurrentUserResponse.from(details, teamIds));
+    }
+
+    /**
+     * Best-effort client IP for per-IP throttling (WEB-09). Behind Railway the
+     * real client IP is the leftmost {@code X-Forwarded-For} entry; falls back
+     * to the direct peer for local/direct requests. Spoofable — see
+     * {@link LoginThrottleService} for the trust caveat.
+     */
+    private static String clientIp(HttpServletRequest request) {
+        String xff = request.getHeader("X-Forwarded-For");
+        if (xff != null && !xff.isBlank()) {
+            int comma = xff.indexOf(',');
+            return (comma > 0 ? xff.substring(0, comma) : xff).trim();
+        }
+        return request.getRemoteAddr();
     }
 }

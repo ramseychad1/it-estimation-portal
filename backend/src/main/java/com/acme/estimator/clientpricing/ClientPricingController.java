@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
+import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -52,7 +53,7 @@ public class ClientPricingController {
     @PutMapping("/api/admin/client-pricing/defaults")
     @PreAuthorize("hasAnyRole('ADMIN','REVENUE_MANAGER')")
     public ClientPricingDefaultsDto updateDefaults(
-        @RequestBody UpdateDefaultsRequest body,
+        @Valid @RequestBody UpdateDefaultsRequest body,
         @AuthenticationPrincipal AppUserDetails principal
     ) {
         return service.updateDefaults(body, principal.getUserId());
@@ -62,7 +63,7 @@ public class ClientPricingController {
     @PreAuthorize("hasAnyRole('ADMIN','REVENUE_MANAGER')")
     public CategoryPricingConfigDto updateCategoryPricing(
         @PathVariable Long categoryId,
-        @RequestBody UpdateCategoryPricingRequest body,
+        @Valid @RequestBody UpdateCategoryPricingRequest body,
         @AuthenticationPrincipal AppUserDetails principal
     ) {
         return service.updateCategoryPricing(categoryId, body, principal.getUserId());

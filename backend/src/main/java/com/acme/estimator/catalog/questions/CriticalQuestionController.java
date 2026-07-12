@@ -46,7 +46,9 @@ import org.springframework.web.bind.annotation.RestController;
  * </ul>
  */
 @RestController
-@PreAuthorize("hasAnyRole('ADMIN','SOLUTION_OWNER','REVENUE_MANAGER')")
+// WEB-07: Revenue Manager has no catalog role — Admin + Solution Owner only;
+// read endpoints re-open to REQUESTER individually where needed.
+@PreAuthorize("hasAnyRole('ADMIN','SOLUTION_OWNER')")
 @RequiredArgsConstructor
 public class CriticalQuestionController {
 
@@ -154,6 +156,7 @@ public class CriticalQuestionController {
     }
 
     @PostMapping("/api/catalog/questions/{id}/activate")
+    @PreAuthorize("hasAnyRole('ADMIN','SOLUTION_OWNER')")
     public QuestionDetail activate(
         @PathVariable Long id, @AuthenticationPrincipal AppUserDetails principal
     ) {
@@ -161,6 +164,7 @@ public class CriticalQuestionController {
     }
 
     @PostMapping("/api/catalog/questions/{id}/deactivate")
+    @PreAuthorize("hasAnyRole('ADMIN','SOLUTION_OWNER')")
     public QuestionDetail deactivate(
         @PathVariable Long id, @AuthenticationPrincipal AppUserDetails principal
     ) {

@@ -47,7 +47,9 @@ import org.springframework.web.multipart.MultipartFile;
  * files for no real benefit.
  */
 @RestController
-@PreAuthorize("hasAnyRole('ADMIN','SOLUTION_OWNER','REVENUE_MANAGER')")
+// WEB-07: Revenue Manager has no catalog role — Admin + Solution Owner only;
+// read endpoints re-open to REQUESTER individually where needed.
+@PreAuthorize("hasAnyRole('ADMIN','SOLUTION_OWNER')")
 @RequiredArgsConstructor
 public class SubFeatureController {
 
@@ -121,6 +123,7 @@ public class SubFeatureController {
     // ---- template file ----------------------------------------------------
 
     @PostMapping("/api/catalog/sub-features/{id}/template-file")
+    @PreAuthorize("hasAnyRole('ADMIN','SOLUTION_OWNER')")
     public TemplateFileMeta uploadTemplateFile(
         @PathVariable Long id,
         @RequestParam("file") MultipartFile file,
@@ -130,6 +133,7 @@ public class SubFeatureController {
     }
 
     @DeleteMapping("/api/catalog/sub-features/{id}/template-file")
+    @PreAuthorize("hasAnyRole('ADMIN','SOLUTION_OWNER')")
     public ResponseEntity<Void> deleteTemplateFile(
         @PathVariable Long id,
         @AuthenticationPrincipal AppUserDetails principal

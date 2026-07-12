@@ -5,6 +5,7 @@ import { EntityHeader } from "../components/EntityHeader";
 import { PrimaryButton, SecondaryButton, TertiaryButton } from "../components/buttons";
 import { StatusBadge, estimateStatusBadge } from "../components/StatusBadge";
 import { UserCell } from "../components/UserCell";
+import { PricingBasisBadge } from "../components/PricingBasisBadge";
 import { useToast } from "../components/Toast";
 import { useAuth } from "../lib/auth";
 import { ApiError } from "../lib/api";
@@ -22,6 +23,8 @@ import type { EstimateRequestItemDto } from "../lib/api/estimates";
 import type { RmItemOverrideInput } from "../lib/api/pricingReview";
 import {
   computeClientPrice,
+  marginPctFromMultiplier,
+  multiplierFromMarginPct,
   onshoreHoursForLines,
   offshoreHoursForLines,
   pricingModelLabel,
@@ -460,6 +463,11 @@ function PricingItemCard({
           {clientPrice != null && (
             <Stat label="Client Price" value={`$${Math.ceil(clientPrice).toLocaleString()}`} emphasis />
           )}
+          {clientPrice != null && currentRate && (
+            <div className="flex items-center">
+              <PricingBasisBadge model={effectiveModel} internalCost={cost} clientPrice={clientPrice} />
+            </div>
+          )}
         </div>
 
         {/* Pricing model override */}
@@ -504,13 +512,23 @@ function PricingItemCard({
                   label="Multiplier"
                   value={effectiveTmMultiplier}
                   disabled={!canEdit}
-                  onChange={(v) => onOverrideChange({ tmMultiplier: v })}
+                  onChange={(v) =>
+                    onOverrideChange({
+                      tmMultiplier: v,
+                      tmTargetMarginPct: v == null ? null : marginPctFromMultiplier(v),
+                    })
+                  }
                 />
                 <NumericField
                   label="Target Margin %"
                   value={effectiveTmTargetMarginPct}
                   disabled={!canEdit}
-                  onChange={(v) => onOverrideChange({ tmTargetMarginPct: v })}
+                  onChange={(v) =>
+                    onOverrideChange({
+                      tmTargetMarginPct: v,
+                      tmMultiplier: v == null ? null : multiplierFromMarginPct(v),
+                    })
+                  }
                 />
               </>
             )}
@@ -585,6 +603,19 @@ function NumericField({
   onChange: (v: number | null) => void;
 }) {
   const [raw, setRaw] = useState(value != null ? String(value) : "");
+
+  // Sync the raw text when `value` changes from OUTSIDE this field — e.g. the
+  // linked Multiplier/Margin partner recomputed it. Guarded so it never
+  // overwrites what the user is actively typing here (when this field drove the
+  // change, the incoming value already equals the parsed raw).
+  useEffect(() => {
+    const parsed = parseFloat(raw);
+    const current = isNaN(parsed) ? null : parsed;
+    if (current !== (value ?? null)) {
+      setRaw(value != null ? String(value) : "");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
 
   return (
     <div>

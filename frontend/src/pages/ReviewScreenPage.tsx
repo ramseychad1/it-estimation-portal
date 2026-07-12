@@ -55,7 +55,13 @@ import {
   type RowValues,
 } from "../components/hours/columns";
 import type { PhaseMeta } from "../components/hours/HoursRow";
-import { computeClientPrice, pricingModelLabel } from "../lib/estimateMath";
+import {
+  computeClientPrice,
+  effectiveMarginPct,
+  formatMarginPct,
+  pricingModelLabel,
+} from "../lib/estimateMath";
+import { PricingBasisBadge } from "../components/PricingBasisBadge";
 
 export function ReviewScreenPage() {
   const { id } = useParams<{ id: string }>();
@@ -1121,13 +1127,22 @@ function InReviewPanel({
           <DecisionStat label={`Client · ${pricingModelLabel(item.pricingModel)}`}>
             {clientPrice != null ? `$${fmtMoney(clientPrice)}` : "—"}
           </DecisionStat>
-          {clientPrice != null && totalCst != null && clientPrice > 0 && (
-            <DecisionStat label="Margin">
-              <span style={{ color: "var(--color-success)", fontWeight: 600 }}>
-                {Math.round(((clientPrice - totalCst) / clientPrice) * 100)}%
-              </span>
-            </DecisionStat>
-          )}
+          {clientPrice != null && totalCst != null && clientPrice > 0 && (() => {
+            const margin = effectiveMarginPct(totalCst, clientPrice);
+            const negative = margin != null && margin < 0;
+            return (
+              <DecisionStat label="Margin">
+                <span
+                  style={{
+                    color: negative ? "var(--color-warning)" : "var(--color-success)",
+                    fontWeight: 600,
+                  }}
+                >
+                  {formatMarginPct(margin) ?? "—"}
+                </span>
+              </DecisionStat>
+            );
+          })()}
           <div style={{ flex: 1 }} />
           <SecondaryButton onClick={onClarifyClick} disabled={disabled}>
             Request clarification
@@ -1373,13 +1388,20 @@ function TerminalItemPanel({
                   className="text-warm-gray-med"
                   style={{ fontSize: 11, letterSpacing: "0.04em", textTransform: "uppercase" }}
                 >
-                  Client Price · {pricingModelLabel(item.pricingModel)}
+                  Client Price
                 </div>
                 <div
                   className="text-near-black font-semibold tabular-nums"
                   style={{ fontSize: 18, marginTop: 2 }}
                 >
                   ${fmtMoney(Math.ceil(clientPrice))}
+                </div>
+                <div style={{ marginTop: 4, display: "flex", justifyContent: "flex-end" }}>
+                  <PricingBasisBadge
+                    model={item.pricingModel}
+                    internalCost={totalCst}
+                    clientPrice={clientPrice}
+                  />
                 </div>
               </div>
             )}

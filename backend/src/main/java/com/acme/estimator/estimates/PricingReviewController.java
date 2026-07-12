@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
+import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -58,7 +59,7 @@ public class PricingReviewController {
     @PutMapping("/{id}/save")
     public ResponseEntity<EstimateRequestDetail> save(
         @PathVariable Long id,
-        @RequestBody SavePricingReviewRequest dto
+        @Valid @RequestBody SavePricingReviewRequest dto
     ) {
         return ResponseEntity.ok(pricingReviewService.save(id, dto));
     }
@@ -66,7 +67,7 @@ public class PricingReviewController {
     @PostMapping("/{id}/approve")
     public ResponseEntity<EstimateRequestDetail> approve(
         @PathVariable Long id,
-        @RequestBody SavePricingReviewRequest dto
+        @Valid @RequestBody SavePricingReviewRequest dto
     ) {
         return ResponseEntity.ok(pricingReviewService.approve(id, dto));
     }

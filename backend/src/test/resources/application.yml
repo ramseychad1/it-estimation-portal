@@ -24,3 +24,7 @@ logging:
 
 app:
   base-url: http://test.local
+  security:
+    # Never fail-fast on the seed-password override in tests (WEB-01) —
+    # tests run with the V2/V5 seed defaults and no override env vars.
+    require-seed-password-override: false

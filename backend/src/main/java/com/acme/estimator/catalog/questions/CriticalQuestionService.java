@@ -283,6 +283,7 @@ public class CriticalQuestionService {
     @Transactional
     public QuestionDetail activate(Long id, User actor) {
         CriticalQuestion q = findOrThrow(id);
+        assertTeamAccessForQuestion(actor, q);
         if (q.isActive()) return toDetail(q);
         q.setActive(true);
         q.setUpdatedBy(actor.getId());
@@ -294,6 +295,7 @@ public class CriticalQuestionService {
     @Transactional
     public QuestionDetail deactivate(Long id, User actor) {
         CriticalQuestion q = findOrThrow(id);
+        assertTeamAccessForQuestion(actor, q);
         if (!q.isActive()) return toDetail(q);
         q.setActive(false);
         q.setUpdatedBy(actor.getId());

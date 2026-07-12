@@ -5,6 +5,8 @@ import {
   onshoreHoursForLines,
   offshoreHoursForLines,
   computeClientPrice,
+  effectiveMarginPct,
+  formatMarginPct,
   pricingModelLabel,
   rmAdjustmentLabel,
 } from "../lib/estimateMath";
@@ -93,6 +95,8 @@ export async function buildEstimateExcel(
   const hasRate = rate != null;
   const hasClientPrice = approvedItems.some((it) => it.pricingModel != null);
   const hasRmAdjustment = approvedItems.some((it) => rmAdjustmentLabel(it) != null);
+  // Margin needs both an internal cost (rate) and a client price to be meaningful.
+  const hasMargin = hasRate && hasClientPrice;
 
   // Pre-compute where the "Item Total" row sits on each item sheet (1-indexed).
   // Item layout: row 1=title, row 2=meta, row 3=blank, row 4=section header,
@@ -146,6 +150,7 @@ export async function buildEstimateExcel(
   if (hasRate) summaryHeaders.push("Internal Cost");
   if (hasClientPrice) summaryHeaders.push("Client Price");
   if (hasRmAdjustment) summaryHeaders.push("RM Adjustment");
+  if (hasMargin) summaryHeaders.push("Margin %");
   sumRows.push(summaryHeaders);
 
   // Data rows start at row 14 (1-indexed).
@@ -183,6 +188,9 @@ export async function buildEstimateExcel(
     if (hasRate) row.push(fmla(`'${sheetName}'!E${totalRow}`, cost));
     if (hasClientPrice) row.push(clientPrice != null ? Math.ceil(clientPrice) : "");
     if (hasRmAdjustment) row.push(rmAdjustmentLabel(item) ?? "—");
+    if (hasMargin) {
+      row.push(formatMarginPct(clientPrice != null ? effectiveMarginPct(cost, clientPrice) : null) ?? "");
+    }
     sumRows.push(row);
   }
 
@@ -196,6 +204,22 @@ export async function buildEstimateExcel(
   );
   const grandCost = Math.ceil(grandOns * onsRate + grandOff * offsRate);
 
+  // Gross client price across all items — used by the Grand Total cell, the
+  // grand margin cell, and the discount rows below.
+  const grossClientPrice = approvedItems.reduce((s, it) => {
+    const ons = onshoreHoursForLines(it.phaseLines, it.complexity);
+    const off = offshoreHoursForLines(it.phaseLines, it.complexity);
+    const cost = Math.ceil(ons * onsRate + off * offsRate);
+    const cp = computeClientPrice(
+      it.rmPricingModel ?? it.pricingModel, hasRate ? cost : null, Math.ceil(ons + off),
+      it.rmTmMultiplier ?? it.tmMultiplier,
+      it.rmTmTargetMarginPct ?? it.tmTargetMarginPct,
+      it.rmMatBillableRate ?? it.matBillableRate,
+      it.rmMatDiscountPct ?? it.matDiscountPct,
+    );
+    return s + (cp ?? 0);
+  }, 0);
+
   const grandRow: unknown[] = [
     "Grand Total", "",
     fmla(`SUM(C${sumDataStart}:C${sumDataEnd})`, Math.ceil(grandOns)),
@@ -206,47 +230,24 @@ export async function buildEstimateExcel(
     grandRow.push(fmla(`SUM(F${sumDataStart}:F${sumDataEnd})`, grandCost));
   }
   if (hasClientPrice) {
-    const grossClientPrice = approvedItems.reduce((s, it) => {
-      const ons = onshoreHoursForLines(it.phaseLines, it.complexity);
-      const off = offshoreHoursForLines(it.phaseLines, it.complexity);
-      const cost = Math.ceil(ons * onsRate + off * offsRate);
-      const cp = computeClientPrice(
-        it.rmPricingModel ?? it.pricingModel, hasRate ? cost : null, Math.ceil(ons + off),
-        it.rmTmMultiplier ?? it.tmMultiplier,
-        it.rmTmTargetMarginPct ?? it.tmTargetMarginPct,
-        it.rmMatBillableRate ?? it.matBillableRate,
-        it.rmMatDiscountPct ?? it.matDiscountPct,
-      );
-      return s + (cp ?? 0);
-    }, 0);
     grandRow.push(fmla(`SUM(G${sumDataStart}:G${sumDataEnd})`, Math.ceil(grossClientPrice)));
   }
   if (hasRmAdjustment) grandRow.push("");
+  if (hasMargin) {
+    grandRow.push(formatMarginPct(effectiveMarginPct(grandCost, grossClientPrice)) ?? "");
+  }
   sumRows.push(grandRow);
 
   // RM discount rows — append after Grand Total when a discount was applied
   const rmDiscountPct = detail.rmDiscountPct;
   if (hasClientPrice && rmDiscountPct) {
-    const grossClientPrice = approvedItems.reduce((s, it) => {
-      const ons = onshoreHoursForLines(it.phaseLines, it.complexity);
-      const off = offshoreHoursForLines(it.phaseLines, it.complexity);
-      const cost = Math.ceil(ons * onsRate + off * offsRate);
-      const cp = computeClientPrice(
-        it.rmPricingModel ?? it.pricingModel, hasRate ? cost : null, Math.ceil(ons + off),
-        it.rmTmMultiplier ?? it.tmMultiplier,
-        it.rmTmTargetMarginPct ?? it.tmTargetMarginPct,
-        it.rmMatBillableRate ?? it.matBillableRate,
-        it.rmMatDiscountPct ?? it.matDiscountPct,
-      );
-      return s + (cp ?? 0);
-    }, 0);
     const grandTotalRow = sumDataStart + approvedItems.length;
     const discountAmt = Math.ceil((grossClientPrice * rmDiscountPct) / 100);
     const netPrice = Math.ceil(grossClientPrice) - discountAmt;
     const clientCol = hasRate ? "G" : "F";
-    sumRows.push([`Pricing Discount (${rmDiscountPct}%)`, "", "", "", "", ...(hasRate ? [""] : []), -discountAmt, ...(hasRmAdjustment ? [""] : [])]);
+    sumRows.push([`Pricing Discount (${rmDiscountPct}%)`, "", "", "", "", ...(hasRate ? [""] : []), -discountAmt, ...(hasRmAdjustment ? [""] : []), ...(hasMargin ? [""] : [])]);
     sumRows.push(["Net Client Price", "", "", "", "", ...(hasRate ? [""] : []),
-      fmla(`${clientCol}${grandTotalRow}-${discountAmt}`, netPrice), ...(hasRmAdjustment ? [""] : [])]);
+      fmla(`${clientCol}${grandTotalRow}-${discountAmt}`, netPrice), ...(hasRmAdjustment ? [""] : []), ...(hasMargin ? [""] : [])]);
   }
 
   const summaryWs = XLSX.utils.aoa_to_sheet(sumRows);
@@ -258,7 +259,8 @@ export async function buildEstimateExcel(
     { wch: 12 }, // E: Total Hrs
     { wch: 16 }, // F: Internal Cost
     { wch: 16 }, // G: Client Price
-    ...(hasRmAdjustment ? [{ wch: 22 }] : []), // H: RM Adjustment
+    ...(hasRmAdjustment ? [{ wch: 22 }] : []), // RM Adjustment
+    ...(hasMargin ? [{ wch: 12 }] : []), // Margin %
   ];
   XLSX.utils.book_append_sheet(wb, summaryWs, "Summary");
 
@@ -363,6 +365,8 @@ export async function buildEstimateExcel(
     );
     if (clientPrice != null) {
       itemRows.push([`Client Price (${pricingModelLabel(effModel)})`, Math.ceil(clientPrice)]);
+      const marginText = hasRate ? formatMarginPct(effectiveMarginPct(totalCost, clientPrice)) : null;
+      if (marginText) itemRows.push(["Margin", marginText]);
     }
 
     // Reviewer justification

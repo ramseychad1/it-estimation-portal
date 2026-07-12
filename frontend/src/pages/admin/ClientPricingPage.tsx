@@ -12,6 +12,7 @@ import {
   useUpdateClientPricingDefaultsMutation,
 } from "../../lib/queries/clientPricing";
 import type { CategoryPricingConfigDto } from "../../lib/api/clientPricing";
+import { formatMarginPct, linkedTmField, marginPctFromMultiplier } from "../../lib/estimateMath";
 import { CategoryPricingOverrideDrawer } from "./CategoryPricingOverrideDrawer";
 
 interface DefaultsFormValues {
@@ -76,6 +77,18 @@ export function ClientPricingPage() {
   }, [defaultsQuery.data, formDirty]);
 
   function handleFieldChange(field: keyof DefaultsFormValues, value: string) {
+    // Multiplier and Target margin % are one value expressed two ways — editing
+    // either derives the other so they can never silently disagree.
+    if (field === "tmMultiplier" || field === "tmTargetMarginPct") {
+      const linked = linkedTmField(field === "tmMultiplier" ? "multiplier" : "margin", value);
+      setForm((prev) => ({
+        ...prev,
+        tmMultiplier: linked.multiplier,
+        tmTargetMarginPct: linked.targetMarginPct,
+      }));
+      setFormDirty(true);
+      return;
+    }
     setForm((prev) => ({ ...prev, [field]: value }));
     setFormDirty(true);
   }
@@ -263,7 +276,19 @@ export function ClientPricingPage() {
                     </td>
                     <td style={cellStyle({ width: 200 })}>
                       {cat.pricingModel ? (
-                        <ModelBadge model={cat.pricingModel} />
+                        <div className="flex items-center gap-2">
+                          <ModelBadge model={cat.pricingModel} />
+                          {(() => {
+                            const m = formatMarginPct(
+                              configuredMarginPct(cat, defaultsQuery.data),
+                            );
+                            return m ? (
+                              <span className="text-warm-gray-med tabular-nums" style={{ fontSize: 12 }}>
+                                {m} margin
+                              </span>
+                            ) : null;
+                          })()}
+                        </div>
                       ) : (
                         <span className="text-warm-gray-med" style={{ fontSize: 13 }}>
                           — Unassigned —
@@ -314,6 +339,29 @@ function SectionHeader({
         {children}
       </h2>
     </div>
+  );
+}
+
+/**
+ * Effective configured Target-Margin % for a category row: the category's own
+ * override (its margin, or derived from its multiplier) if set, else the global
+ * default (its margin, or derived from its multiplier). Null for T&M / unset —
+ * those have no fixed margin. Mirrors the resolution order in
+ * ClientPricingService.getEffectivePricingForCategory.
+ */
+function configuredMarginPct(
+  cat: CategoryPricingConfigDto,
+  defaults: { tmMultiplier: number | null; tmTargetMarginPct: number | null } | null | undefined,
+): number | null {
+  if (cat.pricingModel !== "TARGET_MARGIN") return null;
+  const overridePct =
+    cat.overrideTmTargetMarginPct ??
+    (cat.overrideTmMultiplier != null ? marginPctFromMultiplier(cat.overrideTmMultiplier) : null);
+  if (overridePct != null) return overridePct;
+  if (!defaults) return null;
+  return (
+    defaults.tmTargetMarginPct ??
+    (defaults.tmMultiplier != null ? marginPctFromMultiplier(defaults.tmMultiplier) : null)
   );
 }
 

@@ -144,6 +144,90 @@ export function computeClientPrice(
   return null;
 }
 
+/**
+ * Target-Margin multiplier and Target Margin % are two ways of writing the
+ * SAME markup — `multiplier = 1 / (1 − margin%/100)`. The pricing UIs bind the
+ * two inputs so editing one derives the other; these helpers are the single
+ * source of truth for that conversion (and the badge's margin display).
+ */
+
+/**
+ * Margin % → equivalent multiplier, rounded to 4dp (the `tm_multiplier` column
+ * precision). Returns null for input outside `[0, 100)` — a margin of 100 would
+ * divide by zero and a negative margin isn't a markup — so a linked field can
+ * simply blank its mirror instead of showing a nonsense value.
+ */
+export function multiplierFromMarginPct(marginPct: number): number | null {
+  if (!Number.isFinite(marginPct) || marginPct < 0 || marginPct >= 100) return null;
+  return Math.round((1 / (1 - marginPct / 100)) * 10000) / 10000;
+}
+
+/**
+ * Multiplier → equivalent margin %, rounded to 2dp (the `tm_target_margin_pct`
+ * column precision). Returns null for a multiplier below 1 (that implies a zero
+ * or negative margin, i.e. no markup) or non-finite input.
+ */
+export function marginPctFromMultiplier(multiplier: number): number | null {
+  if (!Number.isFinite(multiplier) || multiplier < 1) return null;
+  return Math.round((1 - 1 / multiplier) * 100 * 100) / 100;
+}
+
+/**
+ * Effective gross margin % implied by an internal cost and the resulting client
+ * price — `(1 − cost/price) × 100`, rounded to 2dp — regardless of which pricing
+ * model produced the price. This is what lets one badge show a real margin for
+ * Time & Materials as well as Target Margin. Returns null when an input is
+ * missing/non-finite or the price is ≤ 0 (no meaningful margin).
+ */
+export function effectiveMarginPct(
+  internalCost: number | null | undefined,
+  clientPrice: number | null | undefined,
+): number | null {
+  if (internalCost == null || clientPrice == null) return null;
+  if (!Number.isFinite(internalCost) || !Number.isFinite(clientPrice)) return null;
+  if (clientPrice <= 0) return null;
+  return Math.round((1 - internalCost / clientPrice) * 100 * 100) / 100;
+}
+
+/**
+ * Formats a margin % for compact display (badges, stats, exports): at most one
+ * decimal, trailing ".0" trimmed, with a trailing "%". Returns null for
+ * missing/non-finite input so callers can omit the margin entirely. A negative
+ * margin (price below cost) formats with a leading "-".
+ */
+export function formatMarginPct(marginPct: number | null | undefined): string | null {
+  if (marginPct == null || !Number.isFinite(marginPct)) return null;
+  const rounded = Math.round(marginPct * 10) / 10;
+  const body = Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+  return `${body}%`;
+}
+
+/**
+ * Given a raw string typed into ONE of the linked Target-Margin inputs, returns
+ * the string values for BOTH fields. The edited field keeps the user's raw text
+ * verbatim (so in-progress typing like "1." isn't reformatted); the mirror is
+ * derived, or blank when the value is empty, non-numeric, or out of range.
+ * Clearing either field clears both — they represent a single value.
+ */
+export function linkedTmField(
+  edited: "multiplier" | "margin",
+  rawValue: string,
+): { multiplier: string; targetMarginPct: string } {
+  if (rawValue.trim() === "") return { multiplier: "", targetMarginPct: "" };
+  const n = parseFloat(rawValue);
+  if (isNaN(n)) {
+    return edited === "multiplier"
+      ? { multiplier: rawValue, targetMarginPct: "" }
+      : { multiplier: "", targetMarginPct: rawValue };
+  }
+  if (edited === "multiplier") {
+    const m = marginPctFromMultiplier(n);
+    return { multiplier: rawValue, targetMarginPct: m != null ? String(m) : "" };
+  }
+  const mult = multiplierFromMarginPct(n);
+  return { multiplier: mult != null ? String(mult) : "", targetMarginPct: rawValue };
+}
+
 /** Human-readable label for a pricing model code. */
 export function pricingModelLabel(model: string | null | undefined): string {
   if (model === "TARGET_MARGIN") return "Target Margin";

@@ -11,6 +11,7 @@ import type {
   ClientPricingDefaultsDto,
   PricingModel,
 } from "../../lib/api/clientPricing";
+import { linkedTmField } from "../../lib/estimateMath";
 
 interface Props {
   open: boolean;
@@ -139,7 +140,7 @@ export function CategoryPricingOverrideDrawer({ open, category, defaults, onClos
           )}
         </FormField>
 
-        {(model === "TARGET_MARGIN" || model === "") && model === "TARGET_MARGIN" && (
+        {model === "TARGET_MARGIN" && (
           <div>
             <p
               className="font-semibold text-near-black m-0 mb-3"
@@ -155,9 +156,14 @@ export function CategoryPricingOverrideDrawer({ open, category, defaults, onClos
                 min="0"
                 placeholder="Use default"
                 value={values.overrideTmMultiplier}
-                onChange={(e) =>
-                  setValues((v) => ({ ...v, overrideTmMultiplier: e.target.value }))
-                }
+                onChange={(e) => {
+                  const linked = linkedTmField("multiplier", e.target.value);
+                  setValues((v) => ({
+                    ...v,
+                    overrideTmMultiplier: linked.multiplier,
+                    overrideTmTargetMarginPct: linked.targetMarginPct,
+                  }));
+                }}
                 disabled={busy}
               />
               <TextInput
@@ -168,9 +174,14 @@ export function CategoryPricingOverrideDrawer({ open, category, defaults, onClos
                 max="100"
                 placeholder="Use default"
                 value={values.overrideTmTargetMarginPct}
-                onChange={(e) =>
-                  setValues((v) => ({ ...v, overrideTmTargetMarginPct: e.target.value }))
-                }
+                onChange={(e) => {
+                  const linked = linkedTmField("margin", e.target.value);
+                  setValues((v) => ({
+                    ...v,
+                    overrideTmMultiplier: linked.multiplier,
+                    overrideTmTargetMarginPct: linked.targetMarginPct,
+                  }));
+                }}
                 disabled={busy}
               />
             </div>

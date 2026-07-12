@@ -15,6 +15,10 @@ const C = {
   borderStr: "#D8D6D2",
   lightBlue: "#BBDDE6",
   navy:      "#1C2B4A",
+  // Amber warning family — used only for the internal "do not send" banner.
+  amberSoft:   "#FBE9A8",
+  amberStrong: "#C8860D",
+  amberText:   "#7A4F00",
 };
 
 // ── Styles ────────────────────────────────────────────────────────────────────
@@ -466,6 +470,24 @@ const s = StyleSheet.create({
     fontSize: 7,
     color: C.grayMed,
   },
+
+  // ── Internal-only warning banner ──
+  internalBanner: {
+    backgroundColor: C.amberSoft,
+    borderBottomWidth: 2,
+    borderBottomColor: C.amberStrong,
+    borderBottomStyle: "solid",
+    paddingHorizontal: 40,
+    paddingVertical: 5,
+  },
+  internalBannerText: {
+    fontSize: 7.5,
+    fontFamily: "Helvetica-Bold",
+    color: C.amberText,
+    letterSpacing: 1,
+    textAlign: "center",
+    textTransform: "uppercase",
+  },
 });
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -508,12 +530,17 @@ function ItemSection({
   item,
   index,
   rate,
+  showInternal,
 }: {
   item: EstimateRequestItemDto;
   index: number;
   rate: RateShape;
+  /** When false (client audience), hide cost, rates, method, and reviewer notes. */
+  showInternal: boolean;
 }) {
   const complexity = item.complexity!;
+  // Cost column is internal-only: it exposes margin when set beside client price.
+  const showCost = !!rate && showInternal;
   const title = item.subFeatureName
     ? `${item.productName}  ›  ${item.subFeatureName}`
     : item.productName;
@@ -552,7 +579,7 @@ function ItemSection({
           <Text style={s.thNum}>Onshore Hrs</Text>
           <Text style={s.thNum}>Offshore Hrs</Text>
           <Text style={s.thNum}>Total Hrs</Text>
-          {rate && <Text style={s.thNum}>Phase Cost</Text>}
+          {showCost && <Text style={s.thNum}>Phase Cost</Text>}
         </View>
 
         {rows.map(({ line, d, hrs, cost }, i) => (
@@ -570,7 +597,7 @@ function ItemSection({
               {d.offshoreOverridden ? <Text style={s.overrideStar}> *</Text> : ""}
             </Text>
             <Text style={s.tdNum}>{fmtNum(hrs)}</Text>
-            {rate && <Text style={s.tdNum}>{fmtMoney(cost)}</Text>}
+            {showCost && <Text style={s.tdNum}>{fmtMoney(cost)}</Text>}
           </View>
         ))}
 
@@ -580,7 +607,7 @@ function ItemSection({
           <Text style={s.tdNumBold}>{fmtNum(totalOns)}</Text>
           <Text style={s.tdNumBold}>{fmtNum(totalOff)}</Text>
           <Text style={s.tdNumBold}>{fmtNum(totalHrs)}</Text>
-          {rate && <Text style={s.tdNumBold}>{fmtMoney(totalCost)}</Text>}
+          {showCost && <Text style={s.tdNumBold}>{fmtMoney(totalCost)}</Text>}
         </View>
       </View>
 
@@ -591,8 +618,8 @@ function ItemSection({
         </Text>
       )}
 
-      {/* Rates */}
-      {rate && (
+      {/* Rates — internal only (the blended rates are confidential). */}
+      {rate && showInternal && (
         <Text style={s.ratesLine}>
           Rates applied: Onshore ${rate.onshoreRate}/hr · Offshore ${rate.offshoreRate}/hr (effective {rate.effectiveDate})
         </Text>
@@ -614,7 +641,7 @@ function ItemSection({
         return (
           <View style={{ flexDirection: "row", alignItems: "baseline", marginTop: 6, gap: 6 }}>
             <Text style={[s.ratesLine, { margin: 0 }]}>
-              Client Price ({pricingModelLabel(effModel)}):
+              {showInternal ? `Client Price (${pricingModelLabel(effModel)}):` : "Client Price:"}
             </Text>
             <Text style={[s.ratesLine, { margin: 0, fontFamily: "Helvetica-Bold", color: C.navy }]}>
               ${fmtMoney(Math.ceil(clientPrice))}
@@ -623,8 +650,8 @@ function ItemSection({
         );
       })()}
 
-      {/* Reviewer & justification */}
-      {hasReviewerInfo && (
+      {/* Reviewer & justification — internal only (staff identity + internal notes). */}
+      {showInternal && hasReviewerInfo && (
         <View style={s.reviewerBlock}>
           {item.reviewerName && (
             <View style={s.reviewerRow}>
@@ -666,8 +693,8 @@ function ItemSection({
         </View>
       )}
 
-      {/* Clarification exchange */}
-      {item.clarificationNote && (
+      {/* Clarification exchange — internal review back-and-forth, internal only. */}
+      {showInternal && item.clarificationNote && (
         <View style={s.qaBlock}>
           <Text style={s.qaSectionLabel}>Clarification Exchange</Text>
           <View style={s.qaItem}>
@@ -690,13 +717,18 @@ function ProjectSummary({
   items,
   rate,
   rmDiscountPct,
+  showInternal,
 }: {
   items: EstimateRequestItemDto[];
   rate: RateShape;
   rmDiscountPct?: number | null;
+  /** When false (client audience), hide the internal-cost column. */
+  showInternal: boolean;
 }) {
   const onsRate = rate ? Number(rate.onshoreRate) : 0;
   const offsRate = rate ? Number(rate.offshoreRate) : 0;
+  // Internal cost column is confidential — it reveals margin next to the price.
+  const showCost = !!rate && showInternal;
 
   const rows = items.map((it) => {
     const ons = onshoreHoursForLines(it.phaseLines, it.complexity);
@@ -743,7 +775,7 @@ function ProjectSummary({
           <Text style={s.thSumNum}>Onshore Hrs</Text>
           <Text style={s.thSumNum}>Offshore Hrs</Text>
           <Text style={s.thSumNum}>Total Hrs</Text>
-          {rate && <Text style={s.thSumNum}>Int. Cost</Text>}
+          {showCost && <Text style={s.thSumNum}>Int. Cost</Text>}
           {hasClientPrice && <Text style={s.thSumNum}>Client Price</Text>}
         </View>
 
@@ -758,7 +790,7 @@ function ProjectSummary({
               <Text style={s.tdSumNum}>{fmtNum(ons)}</Text>
               <Text style={s.tdSumNum}>{fmtNum(off)}</Text>
               <Text style={s.tdSumNum}>{fmtNum(total)}</Text>
-              {rate && <Text style={s.tdSumNum}>{fmtMoney(cost)}</Text>}
+              {showCost && <Text style={s.tdSumNum}>{fmtMoney(cost)}</Text>}
               {hasClientPrice && (
                 <Text style={s.tdSumNum}>
                   {clientPrice != null ? fmtMoney(Math.ceil(clientPrice)) : "—"}
@@ -774,7 +806,7 @@ function ProjectSummary({
           <Text style={s.tdSumNumBold}>{fmtNum(grandOns)}</Text>
           <Text style={s.tdSumNumBold}>{fmtNum(grandOff)}</Text>
           <Text style={s.tdSumNumBold}>{fmtNum(grandTotal)}</Text>
-          {rate && (
+          {showCost && (
             <Text style={[s.tdSumNumBold, { color: C.navy }]}>{fmtMoney(grandCost)}</Text>
           )}
           {hasClientPrice && (
@@ -796,7 +828,7 @@ function ProjectSummary({
             <Text style={s.tdSumNum} />
             <Text style={s.tdSumNum} />
             <Text style={s.tdSumNum} />
-            {rate && <Text style={s.tdSumNum} />}
+            {showCost && <Text style={s.tdSumNum} />}
             <Text style={[s.tdSumNum, { color: C.grayMed }]}>
               -{fmtMoney(discountAmount)}
             </Text>
@@ -807,7 +839,7 @@ function ProjectSummary({
             <Text style={s.tdSumNum} />
             <Text style={s.tdSumNum} />
             <Text style={s.tdSumNum} />
-            {rate && <Text style={s.tdSumNum} />}
+            {showCost && <Text style={s.tdSumNum} />}
             <Text style={[s.tdSumNumBold, { color: C.navy }]}>
               {netClientPrice != null ? fmtMoney(netClientPrice) : "—"}
             </Text>
@@ -820,22 +852,35 @@ function ProjectSummary({
 
 // ── Shared page chrome ────────────────────────────────────────────────────────
 
-function PageHeader({ requestId }: { requestId: number }) {
+function PageHeader({ requestId, internal }: { requestId: number; internal: boolean }) {
   return (
-    <View style={s.headerBand}>
-      <Text style={s.headerWordmark}>IT Estimation Portal</Text>
-      <View style={s.headerRight}>
-        <Text style={s.headerTitle}>ESTIMATE REPORT</Text>
-        <Text style={s.headerSubtitle}>EST-{requestId}</Text>
+    <>
+      <View style={s.headerBand}>
+        <Text style={s.headerWordmark}>IT Estimation Portal</Text>
+        <View style={s.headerRight}>
+          <Text style={s.headerTitle}>ESTIMATE REPORT</Text>
+          <Text style={s.headerSubtitle}>EST-{requestId}</Text>
+        </View>
       </View>
-    </View>
+      {internal && (
+        <View style={s.internalBanner}>
+          <Text style={s.internalBannerText}>
+            Internal Use Only — Do Not Send to Client
+          </Text>
+        </View>
+      )}
+    </>
   );
 }
 
-function PageFooter({ generatedAt }: { generatedAt: string }) {
+function PageFooter({ generatedAt, internal }: { generatedAt: string; internal: boolean }) {
   return (
     <View style={s.footer} fixed>
-      <Text style={s.footerText}>IT Estimation Portal  ·  Confidential  ·  Internal Use Only</Text>
+      <Text style={s.footerText}>
+        {internal
+          ? "IT Estimation Portal  ·  Confidential  ·  Internal Use Only"
+          : "IT Estimation Portal  ·  Confidential"}
+      </Text>
       <Text
         style={s.footerText}
         render={({ pageNumber, totalPages }) =>
@@ -854,6 +899,12 @@ export interface EstimatePdfProps {
   /** ISO timestamp used in the footer */
   generatedAt: string;
   requesterName?: string;
+  /**
+   * "internal" (default) shows the full detail — internal cost, blended rates,
+   * pricing method, reviewer notes — plus a "do not send to client" banner.
+   * "client" strips all of that, leaving a client-safe document.
+   */
+  audience?: "internal" | "client";
 }
 
 export function EstimatePdfDocument({
@@ -861,7 +912,9 @@ export function EstimatePdfDocument({
   currentRate,
   generatedAt,
   requesterName,
+  audience = "internal",
 }: EstimatePdfProps) {
+  const internal = audience === "internal";
   const approvedItems = detail.items.filter(
     (it) => it.status === "APPROVED" && it.complexity != null,
   );
@@ -886,7 +939,7 @@ export function EstimatePdfDocument({
     >
       {/* ── Page 1: Cover / Project Summary ── */}
       <Page size="LETTER" style={s.page}>
-        <PageHeader requestId={detail.id} />
+        <PageHeader requestId={detail.id} internal={internal} />
 
         <View style={s.body}>
           {/* Metadata */}
@@ -948,26 +1001,32 @@ export function EstimatePdfDocument({
           </View>
 
           {/* Project Summary always on page 1 */}
-          <ProjectSummary items={approvedItems} rate={currentRate} rmDiscountPct={detail.rmDiscountPct} />
+          <ProjectSummary
+            items={approvedItems}
+            rate={currentRate}
+            rmDiscountPct={detail.rmDiscountPct}
+            showInternal={internal}
+          />
         </View>
 
-        <PageFooter generatedAt={generatedAt} />
+        <PageFooter generatedAt={generatedAt} internal={internal} />
       </Page>
 
       {/* ── One page per approved item ── */}
       {approvedItems.map((item, idx) => (
         <Page key={item.id} size="LETTER" style={s.page}>
-          <PageHeader requestId={detail.id} />
+          <PageHeader requestId={detail.id} internal={internal} />
 
           <View style={s.body}>
             <ItemSection
               item={item}
               index={idx + 1}
               rate={currentRate}
+              showInternal={internal}
             />
           </View>
 
-          <PageFooter generatedAt={generatedAt} />
+          <PageFooter generatedAt={generatedAt} internal={internal} />
         </Page>
       ))}
     </Document>

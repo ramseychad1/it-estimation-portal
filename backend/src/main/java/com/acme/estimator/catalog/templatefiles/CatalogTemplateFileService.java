@@ -1,7 +1,10 @@
 package com.acme.estimator.catalog.templatefiles;
 
 import com.acme.estimator.auth.User;
+import com.acme.estimator.auth.UserRepository;
+import com.acme.estimator.catalog.products.Product;
 import com.acme.estimator.catalog.products.ProductRepository;
+import com.acme.estimator.catalog.subfeatures.SubFeature;
 import com.acme.estimator.catalog.subfeatures.SubFeatureRepository;
 import com.acme.estimator.common.ApiException;
 import java.io.IOException;
@@ -30,13 +33,14 @@ public class CatalogTemplateFileService {
     private final SubFeatureTemplateFileRepository subFeatureFileRepo;
     private final ProductRepository productRepository;
     private final SubFeatureRepository subFeatureRepository;
+    private final UserRepository userRepository;
 
     // ---- product --------------------------------------------------------
 
     /** Upload (or replace) the template file for a product. */
     @Transactional
     public TemplateFileMeta uploadForProduct(Long productId, MultipartFile file, User actor) {
-        requireProduct(productId);
+        assertProductAccess(productId, actor);
         validateFile(file);
         byte[] bytes = readBytes(file);
 
@@ -57,7 +61,7 @@ public class CatalogTemplateFileService {
     /** Delete the template file for a product. No-ops if no file exists. */
     @Transactional
     public void deleteForProduct(Long productId, User actor) {
-        requireProduct(productId);
+        assertProductAccess(productId, actor);
         productFileRepo.deleteByProductId(productId);
     }
 
@@ -79,7 +83,7 @@ public class CatalogTemplateFileService {
     /** Upload (or replace) the template file for a sub-feature. */
     @Transactional
     public TemplateFileMeta uploadForSubFeature(Long subFeatureId, MultipartFile file, User actor) {
-        requireSubFeature(subFeatureId);
+        assertSubFeatureAccess(subFeatureId, actor);
         validateFile(file);
         byte[] bytes = readBytes(file);
 
@@ -99,7 +103,7 @@ public class CatalogTemplateFileService {
     /** Delete the template file for a sub-feature. No-ops if no file exists. */
     @Transactional
     public void deleteForSubFeature(Long subFeatureId, User actor) {
-        requireSubFeature(subFeatureId);
+        assertSubFeatureAccess(subFeatureId, actor);
         subFeatureFileRepo.deleteBySubFeatureId(subFeatureId);
     }
 
@@ -118,15 +122,31 @@ public class CatalogTemplateFileService {
 
     // ---- helpers --------------------------------------------------------
 
-    private void requireProduct(Long productId) {
-        if (!productRepository.existsById(productId)) {
-            throw ApiException.notFound("Product " + productId + " not found.");
-        }
+    /**
+     * WEB-02: template-file mutations must be team-scoped like every other
+     * catalog mutation. Loads the product, verifies existence, and enforces
+     * team access (Admin bypasses).
+     */
+    private void assertProductAccess(Long productId, User actor) {
+        Product product = productRepository.findById(productId)
+            .orElseThrow(() -> ApiException.notFound("Product " + productId + " not found."));
+        assertTeamAccess(actor, product.getTeam() != null ? product.getTeam().getId() : null);
     }
 
-    private void requireSubFeature(Long subFeatureId) {
-        if (!subFeatureRepository.existsById(subFeatureId)) {
-            throw ApiException.notFound("Sub-feature " + subFeatureId + " not found.");
+    private void assertSubFeatureAccess(Long subFeatureId, User actor) {
+        SubFeature sub = subFeatureRepository.findById(subFeatureId)
+            .orElseThrow(() -> ApiException.notFound("Sub-feature " + subFeatureId + " not found."));
+        Product product = productRepository.findById(sub.getProductId())
+            .orElseThrow(() -> ApiException.notFound(
+                "Product for sub-feature " + subFeatureId + " not found."));
+        assertTeamAccess(actor, product.getTeam() != null ? product.getTeam().getId() : null);
+    }
+
+    private void assertTeamAccess(User actor, Long teamId) {
+        if (actor.isAdmin()) return;
+        if (teamId == null || !userRepository.findTeamIdsByUserId(actor.getId()).contains(teamId)) {
+            throw ApiException.forbidden(
+                "You can only manage template files for teams you are assigned to.");
         }
     }
 

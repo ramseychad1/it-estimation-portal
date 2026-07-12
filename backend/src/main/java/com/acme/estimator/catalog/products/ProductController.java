@@ -45,7 +45,10 @@ import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBo
 
 @RestController
 @RequestMapping("/api/catalog/products")
-@PreAuthorize("hasAnyRole('ADMIN','SOLUTION_OWNER','REVENUE_MANAGER')")
+// WEB-07: Revenue Manager has no catalog role (the list endpoints already
+// exclude it); reads/writes here are Admin + Solution Owner. Read endpoints
+// re-open to REQUESTER individually where the requester wizard needs them.
+@PreAuthorize("hasAnyRole('ADMIN','SOLUTION_OWNER')")
 @RequiredArgsConstructor
 public class ProductController {
 
@@ -162,6 +165,7 @@ public class ProductController {
     // ---- template file --------------------------------------------------
 
     @PostMapping("/{id}/template-file")
+    @PreAuthorize("hasAnyRole('ADMIN','SOLUTION_OWNER')")
     public TemplateFileMeta uploadTemplateFile(
         @PathVariable Long id,
         @RequestParam("file") MultipartFile file,
@@ -171,6 +175,7 @@ public class ProductController {
     }
 
     @DeleteMapping("/{id}/template-file")
+    @PreAuthorize("hasAnyRole('ADMIN','SOLUTION_OWNER')")
     public ResponseEntity<Void> deleteTemplateFile(
         @PathVariable Long id,
         @AuthenticationPrincipal AppUserDetails principal

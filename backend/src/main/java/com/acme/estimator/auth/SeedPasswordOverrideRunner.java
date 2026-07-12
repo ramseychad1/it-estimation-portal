@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.core.env.Environment;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -35,10 +36,14 @@ import org.springframework.transaction.annotation.Transactional;
  * stay seeded by V2 / V5 (so the {@code id=1} / {@code id=2} pinned
  * ids that audit rows reference don't shift).
  *
- * <p>Why not require the env var to be set in non-dev? Spring profiles
- * could enforce that, but the failure mode is "app crashes on startup
- * with credentials missing" — annoying for local docker runs. A loud
- * WARN is the pragmatic middle ground.
+ * <p><b>Production enforcement (WEB-01):</b> a blank override no longer just
+ * warns in a deployed environment — it fails startup. "Production" is detected
+ * automatically (an active {@code prod}/{@code production} profile, or Railway's
+ * injected {@code RAILWAY_ENVIRONMENT_NAME}); local dev and tests keep the loud
+ * WARN so the seed default stays usable there. Override the auto-detection
+ * explicitly with {@code app.security.require-seed-password-override=true|false}.
+ * This guarantees a deploy that forgets the env var can never silently run with
+ * the published {@code ChangeMe123!} default.
  */
 @Component
 @RequiredArgsConstructor
@@ -47,12 +52,17 @@ public class SeedPasswordOverrideRunner implements CommandLineRunner {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final Environment environment;
 
     @Value("${ADMIN_INITIAL_PASSWORD:}")
     private String adminInitialPassword;
 
     @Value("${ESTIMATOR_INITIAL_PASSWORD:}")
     private String estimatorInitialPassword;
+
+    /** Explicit toggle: true/false forces enforcement; unset ({@code null}) = auto-detect. */
+    @Value("${app.security.require-seed-password-override:#{null}}")
+    private Boolean requireSeedPasswordOverride;
 
     @Override
     @Transactional
@@ -63,9 +73,17 @@ public class SeedPasswordOverrideRunner implements CommandLineRunner {
 
     private void applyIfSet(String email, String plaintext, String envVarName) {
         if (plaintext == null || plaintext.isBlank()) {
+            if (enforcementRequired()) {
+                // Fail fast: refuse to boot a production environment with the
+                // published dev-default password still active.
+                throw new IllegalStateException(
+                    envVarName + " is not set. Refusing to start a production environment with the "
+                        + "published dev-default password for " + email + ". Set " + envVarName
+                        + ", or set app.security.require-seed-password-override=false to opt out.");
+            }
             log.warn(
                 "{} not set — {} keeps the dev-default password from the V2/V5 seed. "
-                    + "DO NOT deploy to a non-local environment without setting this env var.",
+                    + "Fine for local dev; a deployed environment MUST set this env var.",
                 envVarName, email
             );
             return;
@@ -78,5 +96,25 @@ public class SeedPasswordOverrideRunner implements CommandLineRunner {
             },
             () -> log.info("{} not present — skipping {} override.", email, envVarName)
         );
+    }
+
+    /**
+     * Whether a blank override must fail startup. The explicit property wins;
+     * otherwise auto-detect a production environment — an active {@code prod}/
+     * {@code production} Spring profile, or Railway's injected
+     * {@code RAILWAY_ENVIRONMENT_NAME}. Local dev and the test suite match none
+     * of these, so they keep the WARN-and-continue behavior.
+     */
+    private boolean enforcementRequired() {
+        if (requireSeedPasswordOverride != null) {
+            return requireSeedPasswordOverride;
+        }
+        for (String profile : environment.getActiveProfiles()) {
+            if (profile.equalsIgnoreCase("prod") || profile.equalsIgnoreCase("production")) {
+                return true;
+            }
+        }
+        String railwayEnv = environment.getProperty("RAILWAY_ENVIRONMENT_NAME");
+        return railwayEnv != null && !railwayEnv.isBlank();
     }
 }

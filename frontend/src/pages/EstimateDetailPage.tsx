@@ -43,12 +43,12 @@ import { useUserDisplay } from "../lib/userDisplay";
 import { relativeTime } from "../lib/relativeTime";
 import { actionLabel } from "../lib/activityLabels";
 import type { EstimatePdfProps } from "../components/EstimatePdf";
+import { PricingBasisBadge } from "../components/PricingBasisBadge";
 import {
   computeClientPrice,
   displayedRow,
   offshoreHoursForLines,
   onshoreHoursForLines,
-  pricingModelLabel,
   rmAdjustmentLabel,
   totalCostForLines,
   totalHoursForLines,
@@ -133,7 +133,7 @@ export function EstimateDetailPage() {
 
   const currentRate = ratesQuery.data?.current ?? null;
 
-  async function handleExportPdf() {
+  async function handleExportPdf(audience: "internal" | "client" = "internal") {
     setIsExporting(true);
     try {
       const [{ pdf }, { EstimatePdfDocument }] = await Promise.all([
@@ -146,13 +146,15 @@ export function EstimateDetailPage() {
         currentRate,
         generatedAt: new Date().toISOString(),
         requesterName: requesterDisplay.data?.name,
+        audience,
       });
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const blob = await (pdf as (e: unknown) => { toBlob: () => Promise<Blob> })(el).toBlob();
       const url = URL.createObjectURL(blob);
+      const baseName = buildExportFilename(detail, "pdf");
       const a = document.createElement("a");
       a.href = url;
-      a.download = buildExportFilename(detail, "pdf");
+      a.download = audience === "client" ? baseName.replace(/\.pdf$/, "-client.pdf") : baseName;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -285,9 +287,13 @@ export function EstimateDetailPage() {
               <FileSpreadsheet className="w-3.5 h-3.5" strokeWidth={1.5} />
               {isExportingExcel ? "Generating…" : "Export Excel"}
             </SecondaryButton>
-            <SecondaryButton onClick={() => void handleExportPdf()} disabled={isExporting}>
+            <SecondaryButton onClick={() => void handleExportPdf("internal")} disabled={isExporting}>
               <FileText className="w-3.5 h-3.5" strokeWidth={1.5} />
-              {isExporting ? "Generating…" : "Export PDF"}
+              {isExporting ? "Generating…" : "Export PDF (Internal)"}
+            </SecondaryButton>
+            <SecondaryButton onClick={() => void handleExportPdf("client")} disabled={isExporting}>
+              <FileText className="w-3.5 h-3.5" strokeWidth={1.5} />
+              {isExporting ? "Generating…" : "Export PDF (Client)"}
             </SecondaryButton>
           </>
         ) : buildKebab().length > 0 ? (
@@ -1429,11 +1435,14 @@ function CostSummary({
         </div>
         {clientPrice != null && (
           <div className="flex items-baseline justify-between" style={{ borderTop: "1px solid var(--color-warm-gray-light)", paddingTop: 6, marginTop: 2 }}>
-            <span className="text-near-black font-semibold">
+            <span className="text-near-black font-semibold inline-flex items-center">
               Client Price
-              <span className="text-warm-gray-med font-normal" style={{ marginLeft: 6, fontSize: 12 }}>
-                {pricingModelLabel(pricingModel)}
-              </span>
+              <PricingBasisBadge
+                model={pricingModel}
+                internalCost={totalCst}
+                clientPrice={clientPrice}
+                className="ml-2"
+              />
             </span>
             <span className="text-near-black font-semibold tabular-nums" style={{ fontSize: 16 }}>
               ${fmtMoney(Math.ceil(clientPrice))}
