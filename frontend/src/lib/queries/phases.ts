@@ -4,10 +4,13 @@ import {
   createPhase,
   deactivatePhase,
   deletePhase,
+  getPhaseBenchmarks,
   listPhaseHistory,
   listPhases,
   reorderPhases,
+  savePhaseBenchmarks,
   updatePhase,
+  type PhaseBenchmarksUpdate,
   type PhaseStatusFilter,
   type SdlcPhaseCreateRequest,
   type SdlcPhaseListItem,
@@ -41,6 +44,24 @@ export function usePhaseHistoryQuery(id: number | null) {
 
 function invalidatePhases(qc: ReturnType<typeof useQueryClient>) {
   qc.invalidateQueries({ queryKey: PHASES_KEY });
+}
+
+const BENCHMARKS_KEY = [...PHASES_KEY, "benchmarks"] as const;
+
+export function usePhaseBenchmarksQuery() {
+  return useQuery({
+    queryKey: BENCHMARKS_KEY,
+    queryFn: getPhaseBenchmarks,
+  });
+}
+
+export function useSavePhaseBenchmarksMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: PhaseBenchmarksUpdate) => savePhaseBenchmarks(body),
+    // Benchmark edits change phase rows too — invalidate the whole phases tree.
+    onSuccess: () => invalidatePhases(qc),
+  });
 }
 
 export function useCreatePhaseMutation() {

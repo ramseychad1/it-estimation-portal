@@ -48,6 +48,46 @@ export interface SdlcPhaseHistoryItem {
   notes: string | null;
 }
 
+// ── Phase benchmarks (dev-hours estimator config) ────────────────────────────
+// Percentages are fractions (0.35 = 35%).
+
+export interface PhaseBenchmarkRow {
+  id: number;
+  name: string;
+  displayOrder: number;
+  active: boolean;
+  benchmarkLowPct: number | null;
+  benchmarkTargetPct: number | null;
+  benchmarkHighPct: number | null;
+  defaultOffshorePct: number;
+  devAnchor: boolean;
+}
+
+export interface PhaseBenchmarks {
+  defaultContingencyPct: number;
+  phases: PhaseBenchmarkRow[];
+}
+
+export interface PhaseBenchmarksUpdate {
+  defaultContingencyPct: number;
+  phases: Array<{
+    id: number;
+    benchmarkLowPct: number | null;
+    benchmarkTargetPct: number | null;
+    benchmarkHighPct: number | null;
+    defaultOffshorePct: number;
+    devAnchor: boolean;
+  }>;
+}
+
+export function getPhaseBenchmarks(): Promise<PhaseBenchmarks> {
+  return api(`/admin/phases/benchmarks`);
+}
+
+export function savePhaseBenchmarks(body: PhaseBenchmarksUpdate): Promise<PhaseBenchmarks> {
+  return api(`/admin/phases/benchmarks`, { method: "PUT", body });
+}
+
 function toQuery(params: Record<string, unknown>): string {
   const usp = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) {

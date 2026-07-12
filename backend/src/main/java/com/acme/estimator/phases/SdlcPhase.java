@@ -6,6 +6,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -38,6 +39,25 @@ public class SdlcPhase {
 
     @Column(name = "is_system", nullable = false, updatable = false)
     private boolean system = false;
+
+    // ---- Benchmark distribution (V38) --------------------------------------
+    // Fractions (0.35 = 35%). low/target/high are nullable — a phase can exist
+    // without a benchmark. Exactly one phase carries devAnchor = true; its
+    // target % divides development hours to back-solve total project hours.
+    @Column(name = "benchmark_low_pct")
+    private BigDecimal benchmarkLowPct;
+
+    @Column(name = "benchmark_target_pct")
+    private BigDecimal benchmarkTargetPct;
+
+    @Column(name = "benchmark_high_pct")
+    private BigDecimal benchmarkHighPct;
+
+    @Column(name = "default_offshore_pct", nullable = false)
+    private BigDecimal defaultOffshorePct = BigDecimal.ZERO;
+
+    @Column(name = "is_dev_anchor", nullable = false)
+    private boolean devAnchor = false;
 
     @Column(name = "created_at", nullable = false, updatable = false, insertable = false)
     private OffsetDateTime createdAt;

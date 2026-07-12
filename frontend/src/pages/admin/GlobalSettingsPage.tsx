@@ -10,6 +10,7 @@ import {
 import { getGmailAuthorizeUrl, disconnectGmail } from "../../lib/api/pricingReview";
 import { useToast } from "../../components/Toast";
 import { ApiError } from "../../lib/api";
+import { PhaseBenchmarksSection } from "./PhaseBenchmarksSection";
 
 export function GlobalSettingsPage() {
   useEffect(() => {
@@ -520,6 +521,9 @@ export function GlobalSettingsPage() {
             </div>
           </div>
         </section>
+
+        {/* ── SDLC Phase Benchmarks (dev-hours estimator config) ── */}
+        <PhaseBenchmarksSection />
       </div>
     </div>
   );

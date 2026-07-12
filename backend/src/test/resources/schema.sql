@@ -100,6 +100,12 @@ CREATE TABLE sdlc_phases (
     display_order INTEGER      NOT NULL,
     active        BOOLEAN      NOT NULL DEFAULT TRUE,
     is_system     BOOLEAN      NOT NULL DEFAULT FALSE,
+    -- V38: benchmark distribution (fractions, e.g. 0.35 = 35%)
+    benchmark_low_pct    NUMERIC(6,4),
+    benchmark_target_pct NUMERIC(6,4),
+    benchmark_high_pct   NUMERIC(6,4),
+    default_offshore_pct NUMERIC(6,4) NOT NULL DEFAULT 0,
+    is_dev_anchor        BOOLEAN      NOT NULL DEFAULT FALSE,
     created_at    TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
     created_by    BIGINT       NOT NULL,
     updated_at    TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,

@@ -27,6 +27,9 @@ public class AppSettingService {
     public static final String KEY_EMAIL_FROM_ADDRESS   = "email_from_address";
     public static final String KEY_EMAIL_RESEND_API_KEY = "email_resend_api_key";
 
+    /** Global default contingency % (fraction, e.g. "0.10") used by the estimator. */
+    public static final String KEY_DEFAULT_CONTINGENCY_PCT = "default_contingency_pct";
+
     public static final String KEY_EMAIL_GMAIL_CLIENT_ID      = "email_gmail_client_id";
     public static final String KEY_EMAIL_GMAIL_CLIENT_SECRET  = "email_gmail_client_secret";
     public static final String KEY_EMAIL_GMAIL_REFRESH_TOKEN  = "email_gmail_refresh_token";
@@ -95,6 +98,18 @@ public class AppSettingService {
         return repo.findById(key)
             .map(AppSetting::getValue)
             .filter(v -> v != null && !v.isBlank())
+            .orElse(defaultValue);
+    }
+
+    @Transactional(readOnly = true)
+    public java.math.BigDecimal getBigDecimal(String key, java.math.BigDecimal defaultValue) {
+        return repo.findById(key)
+            .map(AppSetting::getValue)
+            .filter(v -> v != null && !v.isBlank())
+            .map(v -> {
+                try { return new java.math.BigDecimal(v.trim()); }
+                catch (NumberFormatException e) { return defaultValue; }
+            })
             .orElse(defaultValue);
     }
 

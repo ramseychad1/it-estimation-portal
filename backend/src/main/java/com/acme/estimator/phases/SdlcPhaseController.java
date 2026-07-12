@@ -4,6 +4,8 @@ import com.acme.estimator.auth.AppUserDetails;
 import com.acme.estimator.auth.User;
 import com.acme.estimator.auth.UserRepository;
 import com.acme.estimator.common.ApiException;
+import com.acme.estimator.phases.dto.PhaseBenchmarksResponse;
+import com.acme.estimator.phases.dto.PhaseBenchmarksUpdateRequest;
 import com.acme.estimator.phases.dto.SdlcPhaseCreateRequest;
 import com.acme.estimator.phases.dto.SdlcPhaseDto;
 import com.acme.estimator.phases.dto.SdlcPhaseHistoryItem;
@@ -22,6 +24,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -34,7 +37,23 @@ import org.springframework.web.bind.annotation.RestController;
 public class SdlcPhaseController {
 
     private final SdlcPhaseService phaseService;
+    private final PhaseBenchmarkService benchmarkService;
     private final UserRepository userRepository;
+
+    // ---- Benchmark editor (declared before /{id} so the literal path wins) ----
+
+    @GetMapping("/benchmarks")
+    public PhaseBenchmarksResponse getBenchmarks() {
+        return benchmarkService.get();
+    }
+
+    @PutMapping("/benchmarks")
+    public PhaseBenchmarksResponse saveBenchmarks(
+        @Valid @RequestBody PhaseBenchmarksUpdateRequest body,
+        @AuthenticationPrincipal AppUserDetails principal
+    ) {
+        return benchmarkService.save(body, currentUser(principal));
+    }
 
     @GetMapping
     public List<SdlcPhaseListItem> list(
