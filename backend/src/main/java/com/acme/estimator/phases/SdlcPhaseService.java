@@ -7,6 +7,7 @@ import com.acme.estimator.auth.User;
 import com.acme.estimator.common.ApiException;
 import com.acme.estimator.phases.dto.SdlcPhaseCreateRequest;
 import com.acme.estimator.phases.dto.SdlcPhaseUpdateRequest;
+import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -129,11 +130,72 @@ public class SdlcPhaseService {
             }
         }
 
+        // ---- Benchmark fields (fractions; null = leave unchanged) -----------
+        BigDecimal effLow = req.benchmarkLowPct() != null ? req.benchmarkLowPct() : phase.getBenchmarkLowPct();
+        BigDecimal effHigh = req.benchmarkHighPct() != null ? req.benchmarkHighPct() : phase.getBenchmarkHighPct();
+        if (effLow != null && effHigh != null && effLow.compareTo(effHigh) > 0) {
+            throw ApiException.badRequest("Benchmark low % cannot exceed high %.");
+        }
+
+        dirty |= applyDecimal("benchmarkLowPct", phase.getBenchmarkLowPct(), req.benchmarkLowPct(),
+            phase.getId(), phase::setBenchmarkLowPct, actor);
+        dirty |= applyDecimal("benchmarkMidPct", phase.getBenchmarkMidPct(), req.benchmarkMidPct(),
+            phase.getId(), phase::setBenchmarkMidPct, actor);
+        dirty |= applyDecimal("benchmarkHighPct", phase.getBenchmarkHighPct(), req.benchmarkHighPct(),
+            phase.getId(), phase::setBenchmarkHighPct, actor);
+        dirty |= applyDecimal("defaultOffshorePct", phase.getDefaultOffshorePct(), req.defaultOffshorePct(),
+            phase.getId(), phase::setDefaultOffshorePct, actor);
+
+        if (req.devAnchor() != null && req.devAnchor() != phase.isDevAnchor()) {
+            if (!req.devAnchor()) {
+                throw ApiException.badRequest(
+                    "Set another phase as the dev-hours anchor to move it — exactly one is required.");
+            }
+            // Moving the anchor here: clear it wherever it currently sits.
+            for (SdlcPhase other : phaseRepository.findAllByOrderByDisplayOrderAsc()) {
+                if (!other.getId().equals(phase.getId()) && other.isDevAnchor()) {
+                    auditService.recordUpdated(SdlcPhase.ENTITY_TYPE, other.getId(),
+                        "devAnchor", "true", "false", actor);
+                    other.setDevAnchor(false);
+                    other.setUpdatedBy(actor.getId());
+                    phaseRepository.save(other);
+                }
+            }
+            auditService.recordUpdated(SdlcPhase.ENTITY_TYPE, phase.getId(),
+                "devAnchor", "false", "true", actor);
+            phase.setDevAnchor(true);
+            dirty = true;
+        }
+
         if (dirty) {
             phase.setUpdatedBy(actor.getId());
             phaseRepository.save(phase);
         }
         return phase;
+    }
+
+    /**
+     * Audits and applies a nullable benchmark BigDecimal. {@code null} means
+     * "leave unchanged" (patch semantics). Comparison is numeric so a stored
+     * "0.1500" and an incoming "0.15" aren't a spurious change.
+     */
+    private boolean applyDecimal(String field, BigDecimal oldVal, BigDecimal newVal, Long id,
+                                 java.util.function.Consumer<BigDecimal> setter, User actor) {
+        if (newVal == null || numEquals(oldVal, newVal)) {
+            return false;
+        }
+        auditService.recordUpdated(SdlcPhase.ENTITY_TYPE, id, field, toStr(oldVal), toStr(newVal), actor);
+        setter.accept(newVal);
+        return true;
+    }
+
+    private static boolean numEquals(BigDecimal a, BigDecimal b) {
+        if (a == null || b == null) return a == b;
+        return a.compareTo(b) == 0;
+    }
+
+    private static String toStr(BigDecimal v) {
+        return v == null ? null : v.toPlainString();
     }
 
     @Transactional

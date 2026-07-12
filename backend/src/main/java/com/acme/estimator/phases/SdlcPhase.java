@@ -41,14 +41,14 @@ public class SdlcPhase {
     private boolean system = false;
 
     // ---- Benchmark distribution (V38) --------------------------------------
-    // Fractions (0.35 = 35%). low/target/high are nullable — a phase can exist
+    // Fractions (0.35 = 35%). low/mid/high are nullable — a phase can exist
     // without a benchmark. Exactly one phase carries devAnchor = true; its
-    // target % divides development hours to back-solve total project hours.
+    // mid % divides development hours to back-solve total project hours.
     @Column(name = "benchmark_low_pct")
     private BigDecimal benchmarkLowPct;
 
-    @Column(name = "benchmark_target_pct")
-    private BigDecimal benchmarkTargetPct;
+    @Column(name = "benchmark_mid_pct")
+    private BigDecimal benchmarkMidPct;
 
     @Column(name = "benchmark_high_pct")
     private BigDecimal benchmarkHighPct;

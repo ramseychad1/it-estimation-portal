@@ -2,7 +2,16 @@ import { api } from "../api";
 
 export type PhaseStatusFilter = "ALL" | "ACTIVE" | "INACTIVE";
 
-export interface SdlcPhaseListItem {
+/** Benchmark distribution fields shared by list + detail (fractions, 0.35 = 35%). */
+export interface PhaseBenchmarkFields {
+  benchmarkLowPct: number | null;
+  benchmarkMidPct: number | null;
+  benchmarkHighPct: number | null;
+  defaultOffshorePct: number;
+  devAnchor: boolean;
+}
+
+export interface SdlcPhaseListItem extends PhaseBenchmarkFields {
   id: number;
   name: string;
   description: string | null;
@@ -13,7 +22,7 @@ export interface SdlcPhaseListItem {
   updatedBy: number | null;
 }
 
-export interface SdlcPhaseDto {
+export interface SdlcPhaseDto extends PhaseBenchmarkFields {
   id: number;
   name: string;
   description: string | null;
@@ -35,6 +44,11 @@ export interface SdlcPhaseCreateRequest {
 export interface SdlcPhaseUpdateRequest {
   name?: string;
   description?: string | null;
+  benchmarkLowPct?: number | null;
+  benchmarkMidPct?: number | null;
+  benchmarkHighPct?: number | null;
+  defaultOffshorePct?: number;
+  devAnchor?: boolean;
 }
 
 export interface SdlcPhaseHistoryItem {
@@ -46,46 +60,6 @@ export interface SdlcPhaseHistoryItem {
   changedBy: number | null;
   changedAt: string;
   notes: string | null;
-}
-
-// ── Phase benchmarks (dev-hours estimator config) ────────────────────────────
-// Percentages are fractions (0.35 = 35%).
-
-export interface PhaseBenchmarkRow {
-  id: number;
-  name: string;
-  displayOrder: number;
-  active: boolean;
-  benchmarkLowPct: number | null;
-  benchmarkTargetPct: number | null;
-  benchmarkHighPct: number | null;
-  defaultOffshorePct: number;
-  devAnchor: boolean;
-}
-
-export interface PhaseBenchmarks {
-  defaultContingencyPct: number;
-  phases: PhaseBenchmarkRow[];
-}
-
-export interface PhaseBenchmarksUpdate {
-  defaultContingencyPct: number;
-  phases: Array<{
-    id: number;
-    benchmarkLowPct: number | null;
-    benchmarkTargetPct: number | null;
-    benchmarkHighPct: number | null;
-    defaultOffshorePct: number;
-    devAnchor: boolean;
-  }>;
-}
-
-export function getPhaseBenchmarks(): Promise<PhaseBenchmarks> {
-  return api(`/admin/phases/benchmarks`);
-}
-
-export function savePhaseBenchmarks(body: PhaseBenchmarksUpdate): Promise<PhaseBenchmarks> {
-  return api(`/admin/phases/benchmarks`, { method: "PUT", body });
 }
 
 function toQuery(params: Record<string, unknown>): string {

@@ -26,10 +26,17 @@ function wrapper(client: QueryClient) {
   };
 }
 
+const BENCH = {
+  benchmarkLowPct: null,
+  benchmarkMidPct: null,
+  benchmarkHighPct: null,
+  defaultOffshorePct: 0,
+  devAnchor: false,
+};
 const SEED: SdlcPhaseListItem[] = [
-  { id: 1, name: "Analysis", description: null, displayOrder: 1, active: true, system: true, updatedAt: null, updatedBy: 1 },
-  { id: 2, name: "Design", description: null, displayOrder: 2, active: true, system: true, updatedAt: null, updatedBy: 1 },
-  { id: 3, name: "Development", description: null, displayOrder: 3, active: true, system: true, updatedAt: null, updatedBy: 1 },
+  { id: 1, name: "Analysis", description: null, displayOrder: 1, active: true, system: true, updatedAt: null, updatedBy: 1, ...BENCH },
+  { id: 2, name: "Design", description: null, displayOrder: 2, active: true, system: true, updatedAt: null, updatedBy: 1, ...BENCH },
+  { id: 3, name: "Development", description: null, displayOrder: 3, active: true, system: true, updatedAt: null, updatedBy: 1, ...BENCH },
 ];
 
 describe("useReorderPhasesMutation", () => {

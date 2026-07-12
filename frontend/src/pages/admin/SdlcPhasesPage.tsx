@@ -65,6 +65,7 @@ type DrawerState =
 const PHASES_COLUMN_DEFS = [
   { key: "order", label: "Order" },
   { key: "name", label: "Name" },
+  { key: "mid", label: "Mid %" },
   { key: "description", label: "Description" },
   { key: "source", label: "Source" },
   { key: "status", label: "Status" },
@@ -106,6 +107,14 @@ export function SdlcPhasesPage() {
         (p.description ?? "").toLowerCase().includes(q),
     );
   }, [phasesQuery.data, search]);
+
+  // Live Mid-% total across active phases — the estimator distribution should sum to 100%.
+  const midTotalPct = useMemo(() => {
+    const active = (phasesQuery.data ?? []).filter((p) => p.active);
+    const sum = active.reduce((acc, p) => acc + (p.benchmarkMidPct ?? 0), 0);
+    return round(sum * 100, 1);
+  }, [phasesQuery.data]);
+  const midOk = Math.abs(midTotalPct - 100) < 0.1;
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
@@ -278,6 +287,12 @@ export function SdlcPhasesPage() {
           onChange={(next) => setStatus(next)}
         />
         <ListToolbar.Spacer />
+        <span
+          title="Sum of Mid % across active phases — the estimator distribution should total 100%."
+          style={{ fontSize: 12, color: midOk ? "var(--color-success-text, #166534)" : "var(--color-danger, #b91c1c)" }}
+        >
+          Mid total: {midTotalPct}%
+        </span>
         <span className="text-warm-gray-med" style={{ fontSize: 12 }}>
           {filteredItems.length === 1 ? "1 phase" : `${filteredItems.length} phases`}
         </span>
@@ -304,6 +319,7 @@ export function SdlcPhasesPage() {
               <Th width={32} />
               <Th width={56} center noSort>Order</Th>
               <Th>Name</Th>
+              {!hiddenCols.has("mid") && <Th width={72} center>Mid %</Th>}
               {!hiddenCols.has("description") && <Th>Description</Th>}
               {!hiddenCols.has("source") && <Th width={100}>Source</Th>}
               {!hiddenCols.has("status") && <Th width={110}>Status</Th>}
@@ -315,14 +331,14 @@ export function SdlcPhasesPage() {
           <tbody>
             {phasesQuery.isLoading && (
               <tr>
-                <td colSpan={9 - hiddenCols.size} style={{ padding: 32, textAlign: "center", color: "var(--fg-2)" }}>
+                <td colSpan={10 - hiddenCols.size} style={{ padding: 32, textAlign: "center", color: "var(--fg-2)" }}>
                   Loading…
                 </td>
               </tr>
             )}
             {!phasesQuery.isLoading && filteredItems.length === 0 && (
               <tr>
-                <td colSpan={9 - hiddenCols.size} style={{ padding: 0 }}>
+                <td colSpan={10 - hiddenCols.size} style={{ padding: 0 }}>
                   <EmptyState
                     variant="inline"
                     title="No phases match your filters"
@@ -385,6 +401,11 @@ export function SdlcPhasesPage() {
             displayOrder: p.displayOrder,
             active: p.active,
             system: p.system,
+            benchmarkLowPct: p.benchmarkLowPct,
+            benchmarkMidPct: p.benchmarkMidPct,
+            benchmarkHighPct: p.benchmarkHighPct,
+            defaultOffshorePct: p.defaultOffshorePct,
+            devAnchor: p.devAnchor,
             updatedAt: p.updatedAt,
             updatedBy: p.updatedBy,
           })
@@ -582,7 +603,33 @@ function SortableRow({
       </td>
       <td style={cellStyle({})}>
         <span className="font-semibold text-near-black">{phase.name}</span>
+        {phase.devAnchor && (
+          <span
+            title="Dev-hours anchor"
+            style={{
+              marginLeft: 8,
+              fontSize: 10,
+              fontWeight: 600,
+              textTransform: "uppercase",
+              letterSpacing: "0.04em",
+              padding: "1px 6px",
+              borderRadius: 4,
+              background: "var(--color-light-blue)",
+              color: "var(--fg-1)",
+              verticalAlign: "middle",
+            }}
+          >
+            Anchor
+          </span>
+        )}
       </td>
+      {!hidden.has("mid") && (
+        <td style={cellStyle({ width: 72, textAlign: "center" })}>
+          <span className="tabular text-near-black" style={{ fontSize: 13 }}>
+            {pctLabel(phase.benchmarkMidPct)}
+          </span>
+        </td>
+      )}
       {!hidden.has("description") && (
         <td style={cellStyle({})}>
           <span
@@ -631,6 +678,16 @@ function SortableRow({
       </td>
     </tr>
   );
+}
+
+function round(n: number, dp: number): number {
+  const f = 10 ** dp;
+  return Math.round(n * f) / f;
+}
+
+/** fraction (0.35) → "35%"; null → "—". */
+function pctLabel(frac: number | null): string {
+  return frac === null || frac === undefined ? "—" : `${round(frac * 100, 1)}%`;
 }
 
 function cellStyle(extra: React.CSSProperties): React.CSSProperties {

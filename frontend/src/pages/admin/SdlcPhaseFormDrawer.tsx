@@ -34,6 +34,29 @@ interface FormValues {
   name: string;
   description: string;
   active: boolean;
+  // Benchmark %s held as display strings ("35" = 35%); "" = unset.
+  low: string;
+  mid: string;
+  high: string;
+  offshore: string;
+  devAnchor: boolean;
+}
+
+const round = (n: number, dp: number) => {
+  const f = 10 ** dp;
+  return Math.round(n * f) / f;
+};
+/** fraction (0.35) → percent string ("35"); null → "". */
+function fracToPct(f: number | null | undefined): string {
+  if (f === null || f === undefined) return "";
+  return String(round(f * 100, 2));
+}
+/** percent string ("35") → fraction (0.35); blank → null. */
+function pctToFrac(s: string): number | null {
+  const t = s.trim();
+  if (t === "") return null;
+  const n = Number(t);
+  return Number.isFinite(n) ? round(n / 100, 4) : null;
 }
 
 function valuesFor(phase: SdlcPhaseDto | null): FormValues {
@@ -41,6 +64,11 @@ function valuesFor(phase: SdlcPhaseDto | null): FormValues {
     name: phase?.name ?? "",
     description: phase?.description ?? "",
     active: phase?.active ?? true,
+    low: fracToPct(phase?.benchmarkLowPct),
+    mid: fracToPct(phase?.benchmarkMidPct),
+    high: fracToPct(phase?.benchmarkHighPct),
+    offshore: fracToPct(phase?.defaultOffshorePct ?? 0),
+    devAnchor: phase?.devAnchor ?? false,
   };
 }
 
@@ -73,7 +101,12 @@ export function SdlcPhaseFormDrawer({
   const isDirty =
     values.name !== initial.name ||
     values.description !== initial.description ||
-    values.active !== initial.active;
+    values.active !== initial.active ||
+    values.low !== initial.low ||
+    values.mid !== initial.mid ||
+    values.high !== initial.high ||
+    values.offshore !== initial.offshore ||
+    values.devAnchor !== initial.devAnchor;
 
   const busy =
     createMutation.isPending ||
@@ -81,7 +114,14 @@ export function SdlcPhaseFormDrawer({
     activateMutation.isPending ||
     deactivateMutation.isPending;
 
-  const canSave = !busy && values.name.trim().length > 0 && (!isEdit || isDirty);
+  const lowGtHigh = (() => {
+    const lo = pctToFrac(values.low);
+    const hi = pctToFrac(values.high);
+    return lo !== null && hi !== null && lo > hi;
+  })();
+
+  const canSave =
+    !busy && values.name.trim().length > 0 && !lowGtHigh && (!isEdit || isDirty);
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -101,14 +141,20 @@ export function SdlcPhaseFormDrawer({
         }
         const nameChanged = values.name.trim() !== initial.name;
         const descChanged = (values.description || "").trim() !== (initial.description || "");
-        if (nameChanged || descChanged) {
-          await updateMutation.mutateAsync({
-            id: phase!.id,
-            body: {
-              ...(nameChanged ? { name: values.name.trim() } : {}),
-              ...(descChanged ? { description: values.description.trim() || null } : {}),
-            },
-          });
+        const body = {
+          ...(nameChanged ? { name: values.name.trim() } : {}),
+          ...(descChanged ? { description: values.description.trim() || null } : {}),
+          ...(values.low !== initial.low ? { benchmarkLowPct: pctToFrac(values.low) } : {}),
+          ...(values.mid !== initial.mid ? { benchmarkMidPct: pctToFrac(values.mid) } : {}),
+          ...(values.high !== initial.high ? { benchmarkHighPct: pctToFrac(values.high) } : {}),
+          ...(values.offshore !== initial.offshore
+            ? { defaultOffshorePct: pctToFrac(values.offshore) ?? 0 }
+            : {}),
+          // Only ever *set* the anchor here — clearing it is rejected server-side.
+          ...(values.devAnchor !== initial.devAnchor && values.devAnchor ? { devAnchor: true } : {}),
+        };
+        if (Object.keys(body).length > 0) {
+          await updateMutation.mutateAsync({ id: phase!.id, body });
         }
         toast.success("Phase saved.");
       }
@@ -221,6 +267,55 @@ export function SdlcPhaseFormDrawer({
             </div>
           )}
         </FormField>
+
+        {isEdit && (
+          <div className="pt-3" style={{ borderTop: "1px solid var(--color-warm-gray-light)" }}>
+            <div
+              className="text-warm-gray-med uppercase font-medium mb-1"
+              style={{ fontSize: 11, letterSpacing: "0.06em" }}
+            >
+              Benchmark distribution
+            </div>
+            <p
+              className="text-warm-gray-med"
+              style={{ fontSize: 12, marginTop: 0, marginBottom: 10, lineHeight: 1.5 }}
+            >
+              This phase's share of the whole project. <strong>Mid</strong> drives the estimate;
+              Low/High are the reference band. The ask's Low/Med/High complexity comes from dev
+              hours in the builder, not here.
+            </p>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 10 }}>
+              <PctField label="Low %" value={values.low} onChange={(v) => setValues((s) => ({ ...s, low: v }))} disabled={busy} />
+              <PctField label="Mid %" value={values.mid} onChange={(v) => setValues((s) => ({ ...s, mid: v }))} disabled={busy} />
+              <PctField label="High %" value={values.high} onChange={(v) => setValues((s) => ({ ...s, high: v }))} disabled={busy} />
+              <PctField label="Offshore %" value={values.offshore} onChange={(v) => setValues((s) => ({ ...s, offshore: v }))} disabled={busy} />
+            </div>
+            {lowGtHigh && (
+              <p className="text-small text-cardinal-red" style={{ marginTop: 6 }}>
+                Low % can't exceed High %.
+              </p>
+            )}
+            <label
+              style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12, fontSize: 13, color: "var(--fg-1)" }}
+            >
+              <input
+                type="checkbox"
+                checked={values.devAnchor}
+                disabled={busy || initial.devAnchor}
+                onChange={(e) => setValues((s) => ({ ...s, devAnchor: e.target.checked }))}
+              />
+              <span>
+                Dev-hours anchor
+                {initial.devAnchor ? (
+                  <span className="text-warm-gray-med"> — this phase (set another to move it)</span>
+                ) : (
+                  <span className="text-warm-gray-med"> — the entered dev hours are for this phase</span>
+                )}
+              </span>
+            </label>
+          </div>
+        )}
+
         {fieldError.form && (
           <p className="text-small text-cardinal-red" role="alert">
             {fieldError.form}
@@ -261,5 +356,44 @@ export function SdlcPhaseFormDrawer({
         </div>
       )}
     </Drawer>
+  );
+}
+
+function PctField({
+  label,
+  value,
+  onChange,
+  disabled,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div>
+      <label
+        style={{ fontSize: 11, fontWeight: 500, display: "block", marginBottom: 4, color: "var(--color-near-black)" }}
+      >
+        {label}
+      </label>
+      <input
+        type="text"
+        inputMode="decimal"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        disabled={disabled}
+        style={{
+          width: "100%",
+          padding: "6px 8px",
+          border: "1px solid var(--color-warm-gray-light)",
+          borderRadius: 6,
+          fontSize: 13,
+          textAlign: "right",
+          background: disabled ? "var(--color-warm-gray-lightest, #f5f5f4)" : "#fff",
+          boxSizing: "border-box",
+        }}
+      />
+    </div>
   );
 }
