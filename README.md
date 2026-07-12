@@ -1,8 +1,8 @@
 # IT Estimation Portal
 
-Internal tool used by HealthCare Development Group, Inc. to produce work estimates for pre-defined products, features, and enhancements. Solution Owners maintain a versioned catalog of Products, Sub-features, Critical Questions, and Estimate Templates; Admins configure Teams, SDLC Phases, blended rates, and users; Requesters submit estimate requests against the catalog and Solution Owners review, override, and approve them. Every mutation lands in a full audit trail.
+Internal tool used by HealthCare Development Group, Inc. to produce work estimates for pre-defined products, features, and enhancements. Solution Owners maintain a versioned catalog of Products, Sub-features, Critical Questions, and Estimate Templates; Admins configure Teams, SDLC Phases, blended rates, clients/programs, and users; Requesters submit multi-product estimate requests against the catalog; Solution Owners review, override, and approve each line item; and (when enabled) a Revenue Manager reviews pricing on fully-approved estimates. Every mutation lands in a full audit trail.
 
-**Status:** Phases 0 through 9 shipped, plus post-Phase-9 increments (go live date on estimate requests; approved-estimate column-header cleanup). Authentication, full admin surface (Teams, SDLC Phases, Blended Rates, Users & Roles, Invitations, Change Log), the Solution Owner catalog (Products, Sub-features, Critical Questions, Estimate Templates with grid + paste + version-on-save + per-row Total Hrs/$ + Grand Total footer), the Requester workflow (multi-step new request supporting multiple product line items per request with a go-live date field, My Requests list, detail page with per-item status), the Reviewer workflow (review queue, per-item review screen with complexity + per-cell overrides + autosave + approve/reject/revise-and-resubmit, admin send-back), the role-aware Dashboard, the Phase 7.5 admin-implies-everything authorization model, Team Workload reporting, and the Phase 9 multi-product estimate request model (each request holds N product line items, each with its own independent review lifecycle) are all live. Only `/catalog/template-history` remains a placeholder, intentionally.
+**Status:** In production. All core workflows are live — authentication, the full admin surface, the Solution Owner catalog and template editor, the multi-product Requester workflow, the per-item Reviewer workflow, the role-aware Dashboard, Team Workload reporting, the optional Revenue & Pricing Review workflow, and email notifications (SMTP / Resend / Gmail OAuth). The app deploys to Railway (backend, frontend/nginx, and Postgres as separate services).
 
 ---
 
@@ -13,112 +13,65 @@ Internal tool used by HealthCare Development Group, Inc. to produce work estimat
 | Frontend | React 18, TypeScript, Vite, Tailwind CSS |
 | Backend | Spring Boot 3.3, Java 21, Maven (wrapper) |
 | Database | PostgreSQL 16 (Docker); H2 in PostgreSQL mode for backend tests |
-| Migrations | Flyway (V1–V15) |
-| Auth | Spring Security, form login + session cookies, CSRF via cookie+header |
-| State | TanStack React Query + React Context |
-| Drag-and-drop | @dnd-kit (reorder lists in SDLC Phases + Critical Questions) |
+| Migrations | Flyway (V1–V37) |
+| Auth | Spring Security, form login + session cookies, CSRF via cookie + header |
+| State | TanStack React Query + React Context (no global client store) |
+| Email | Spring Mail — SMTP, Resend, or Gmail OAuth (admin-configurable) |
+| Uploads | Multipart, stored in Postgres; Tika magic-byte content verification |
 | Tests | JUnit 5 + Spring Boot Test (backend) · Vitest + React Testing Library (frontend) |
 
-No GraphQL, no JWT, no Redux, no Next.js, no UI component libraries beyond Tailwind primitives. The brand-color discipline is documented in [`docs/COLOR_USAGE.md`](docs/COLOR_USAGE.md) — read it before building any UI.
+No GraphQL, no JWT, no Redux, no Next.js, no UI component libraries beyond Tailwind primitives. Brand-color discipline is documented in [`docs/COLOR_USAGE.md`](docs/COLOR_USAGE.md) — read it before building any UI.
+
+**Roles:** Admin · Solution Owner · Estimator · Requester · Revenue Manager. Admin implies every other role at the authorization layer (not a data-write augmentation).
 
 ---
 
-## What's built
+## What the system does
 
-**Authentication & app shell (Phase 1)** — BCrypt password hashing, session cookies, CSRF protection, login page, app shell with sidebar + top bar + user menu, route guards, role-aware nav.
+### Authentication & shell
+BCrypt password hashing, session cookies, CSRF protection, login throttling (lockout after repeated failures), and a token-link password-reset flow (admin issues a copy/paste `/reset/:token` link — no plaintext passwords). App shell with role-aware sidebar, top bar with global search, user menu, and route guards that render an in-place no-access panel rather than redirecting.
 
-**Admin surface (Phases 2 & 3)**
-- **Teams** — full CRUD with active/inactive, bulk operations, history, CSV export
-- **SDLC Phases** — same surface as Teams, plus a system-phase protection rule and Phase 5b's activation guard (blocks activation when active estimate templates exist)
-- **Blended Rates** — immutable per version (each save = new row); audit trail via change-log CREATED chain; Phase 6b opens GET to Solution Owners (mutations stay Admin-only via per-method `@PreAuthorize`)
-- **Users & Roles** — full CRUD, multi-role assignment, last-admin protection, two-step delete with typed-name confirmation, CSV export, ColumnsToggle
-- **Invitations** — token-based invite flow; admin invite, revoke, resend; public `/invite/:token` accept page
-- **Change Log** (Phase 4) — read-only audit feed with date-grouped entries, audit grouping (2s window), filters (entity type, action, actor, date range, search), CSV export, three-hop href resolver. Phase 6b adds 6 new `ChangeAction` enum values (SUBMITTED, REVIEW_STARTED, REVIEW_RELEASED, APPROVED, REJECTED, SENT_BACK) with a split-verb formatter for SENT_BACK.
+### Admin surface
+- **Teams**, **SDLC Phases**, **Program Types**, **Categories**, **Clients**, **Programs** — CRUD with active/inactive, history, and (where relevant) CSV export.
+- **Blended Rates** — immutable per version; each save writes a new row and flips the previous to inactive. Read is open to Solution Owners; mutations stay Admin-only.
+- **Client Pricing** — per-client pricing defaults and category overrides feeding the pricing model.
+- **Users & Roles** — CRUD, multi-role assignment, team membership, last-admin protection, two-step delete with typed-name confirmation, CSV export.
+- **Invitations** — token-based invite / revoke / resend; public `/invite/:token` accept page.
+- **Change Log** — read-only audit feed, date-grouped with 2s audit-grouping window, filters (entity, action, actor, date), search, CSV export, and clickable entity links.
+- **Global Settings** — enable/disable the Revenue & Pricing Review feature and email notifications; configure the email provider (SMTP / Resend / Gmail OAuth). Secret values are write-only and masked on read.
 
-**Solution Owner catalog (Phase 5a)**
-- **Products** — atomic vs. container mode, locked at creation, three-layer protection (DB CHECK + JPA `updatable=false` + service rejection)
-- **Sub-features** — only allowed on container products, name-unique within parent
-- **Critical Questions** — attached to either Product or Sub-feature (XOR), drag-to-reorder, required/optional, blocked from container products that have active sub-features
-- **Cross-catalog Questions browser** — search, parent-type filter, edit drawer on row click (no separate detail page)
-- **Cascade-delete contract** — deleting a parent purges all children with a single DELETED row at the parent (no per-child audit noise)
+### Solution Owner catalog
+- **Products** — atomic vs. container mode, locked at creation, each belonging to one Team.
+- **Sub-features** — container products only, name-unique within parent.
+- **Critical Questions** — attached to a Product or Sub-feature (XOR), drag-to-reorder, required/optional, with **typed answers** (long/short text, yes-no, single-select, number) plus optional document upload. A cross-catalog Questions browser supports search and inline editing.
+- **Estimate Template editor** — one row per active SDLC phase × six hour cells (Onshore/Offshore L/M/H), with per-row Total Hrs/$ and Grand Total footer driven by the current blended rate. Version-on-save (each save = a new immutable template), full keyboard navigation, and spreadsheet TSV paste.
 
-**Estimate Template editor (Phase 5b + Phase 8)**
-- One row per active SDLC phase, six hour cells per row (Onshore L/M/H × Offshore L/M/H)
-- Each row shows Total Hours and Total $ columns driven by the current blended rate; Grand Total hours row + Estimate Total $ footer row
-- Version-on-save semantics — every save creates a new immutable template row, flips previous to inactive
-- Keyboard navigation (Tab/Shift-Tab native, Enter → next row, arrow-at-edge → neighbor cell, Esc → revert)
-- Spreadsheet TSV paste (Excel / Sheets / Numbers) — anchored at focused cell, fans right + down, drops out-of-range silently
-- Inactive-phase rows persist as historical data with greyed-out treatment, still editable
-- SDLC phase activation guard surfaces a non-destructive `InfoModal` ("Cannot activate phase — N templates would be affected")
+### Requester workflow
+- **New request wizard** (`/requests/new`) — choose a **Catalog** or **Generic intake** request, set client/program/category/go-live-date, add one or more product line items, answer each item's Critical Questions with the matching typed input, then review and submit. Answers autosave; the review step explains anything still blocking submission.
+- **Snapshot-on-submit** — template hours, phase name+order, and question text are copied and frozen per item at submit; later catalog edits never mutate historic requests.
+- **My Requests** (`/requests`) list + **detail** (`/requests/:id`) with per-item status and a revise-and-resubmit path for rejected items.
+- All `/api/estimates/my/*` endpoints are owner-scoped with an ownership-404 posture (non-owners get 404, never a 403 that would leak existence).
 
-**Requester workflow (Phase 6a)**
-- **Multi-step new request flow** at `/requests/new?step=N&id={id}` — pick product/sub-feature → answer required Critical Questions → review snapshot → submit
-- **My Requests list** at `/requests` with status filter and date column; `Stepper` shared component drives the multi-step header
-- **Detail page** at `/requests/:id` — Draft and Submitted views with snapshotted phase lines + answers; Approved/Rejected views populated in 6b
-- **Snapshot-on-submit semantics** — at submit, template hour values + phase name+order + question text are COPIED into `estimate_request_phase_lines` + `estimate_request_question_answers` and frozen; later catalog edits don't mutate historic requests
-- **`/api/estimates/my/*` endpoints** — all `@PreAuthorize("hasRole('REQUESTER')")` with strict ownership-404 (not 403) for non-owners — privacy posture: never leak request existence
+### Reviewer workflow (per-item)
+- **Review queue** (`/review`, Solution Owner + Admin) with mine-only / intake-only toggles, product and team filters, and per-item question-answered counts.
+- **Review screen** (`/review/:id`) — each item reviewed independently through `SUBMITTED → IN_REVIEW → APPROVED | REJECTED`. Pick a complexity (a compact per-complexity preview shows before picking; the grid then collapses to the chosen Onshore/Offshore pair, expandable to compare), apply per-cell overrides, and decide from a sticky bar showing hours, internal cost, client price, and margin. Approve snapshots the current blended rate. A sticky item rail navigates multi-item requests.
+- **Admin controls** — send an approved item back for re-review, or **take over** a review claimed by another SO (preserving their in-progress state); both are audited.
 
-**Reviewer workflow (Phase 6b)**
-- **Review queue** at `/review` (Solution Owner only) — Submitted + In Review requests with mineOnly toggle, product filter, status scope
-- **Review screen** at `/review/:id` covering all four state variants:
-  - **Submitted** — Start review CTA; shows snapshot read-only with race-condition guard (409 → refetch surfacing claimed-by message)
-  - **In Review** — interactive with `ComplexitySelector` (Low/Med/High), per-cell hour `overrides` overlaid on snapshot, `JustificationField` autosave (debounced, per-field settle-gate to avoid stale PUTs)
-  - **Approved / Rejected** — read-only, snapshot + chosen complexity + override pills + cost summary. Approved view collapses to just the two chosen complexity columns (Onshore Hours / Offshore Hours) with Total Hrs and Total $ per row, Grand Total + Estimate Total $ footer.
-  - **Claimed-by-other-SO** — read-only with reviewer name in the banner
-- **HoursGrid discriminated-union `mode` prop** (`template-editor` | `reviewer`) — single grid component serves both Phase 5b and Phase 6b without forking
-- **Approve / Reject** snapshot the current blended rate via `findCurrentAsOf(LocalDate.now())` into `approved_blended_rate_id` (V11)
-- **Admin send-back** at `/api/estimates/admin/{id}/send-back` (Admin only) — clears overrides + resets to Submitted; documented review-state-vs-snapshot distinction
-- **24 new backend integration tests** + **16 new frontend tests** covering all four state variants and the race-condition path
+### Revenue & Pricing Review (optional, feature-flagged)
+When enabled in Global Settings, fully-approved estimates flow to a Revenue Manager at `/pricing-review` to set the pricing model and client price before the estimate is final.
 
-**Dashboard (Phase 7)**
-- **Single shared `/dashboard`** for every role — content adapts by role, not the route
-- **Three sections** top to bottom:
-  - **Stat cards** — `myDrafts` + `myRecentActivity` (everyone), `awaitingReview` + `myActiveReviews` (Solution Owner only), `pendingInvitations` + `totalActiveUsers` (Admin only). Cards filter out at the API level — frontend renders what it gets.
-  - **Activity feed** — paginated permission-filtered slice of `change_log`, with an `All activity` / `Just mine` toggle. Reuses Phase 4's `DescriptionFormatter` + `EntityHrefResolver`. Visibility rules: Admin sees all, SO sees catalog + estimate-request rows + own auth events, Requester sees own request rows + own actions.
-  - **Quick links** — role-gated tile grid (Requester / SO / Admin tiles).
-- **No new tables** — composes data from `change_log`, `estimate_requests`, `users` via small count-method additions and an `ActivityFeedSpecifications` factory.
-- **Refresh contract** — manual `Refresh` button invalidates the `['dashboard']` query prefix; React Query's `refetchOnWindowFocus` handles "user came back to the tab" automatically. No polling, no SSE.
-- **17 new backend integration tests** + **9 new frontend tests** covering role-driven card visibility, permission-filtered feed, and quick-link role gating
+### Dashboard & reporting
+- **Dashboard** (`/dashboard`) — one shared route; role-driven stat cards (actionable ones emphasized), a permission-filtered activity feed with a "Just mine" toggle and Load-more, and role-gated quick links.
+- **Team Workload** (`/reports/team-workload`, SO + Admin) — per-team item counts and approved hours/cost, aggregated from per-item state, with a per-team drill-down.
 
-**Admin privilege model (Phase 7.5)**
-- **Admin role implies every other role** for authorization purposes — at the `@PreAuthorize` and service-layer ownership-check layer, NOT a data-write augmentation. `user_roles` data stays as-is; the implication answers "does this actor have permission to do X." Admin can view any estimate request, claim/release/approve/reject any review, browse the catalog. Same URL for everyone — no `/admin/estimates/:id` parallel route.
-- **Carve-out: Admin cannot EDIT-AS-USER on someone else's private workspace.** Admin can VIEW any Draft, but PATCH / submit / discard / saveDraftAnswers stay strictly owner-only (404 otherwise — keeps the privacy posture from Phase 6a). Admin can submit their OWN drafts.
-- **Carve-out: Admin override on in-flight reviews.** Admin can release / approve / reject a review claimed by another SO without having to claim it first. Audit row attributes the action to the Admin actor; reviewer_id stays as the original SO so we don't lose the SO who was on the hook.
-- **Last-admin protection unchanged.** Operates on actual Admin role count, not effective permissions. The only Admin still cannot demote themselves.
-- **Frontend**: new `lib/permissions.ts` (`hasPermission` + `isAdmin`) is the canonical access check. `lib/auth.tsx`'s `hasRole()` delegates so existing call sites get the implication for free. New `RoleGuard` component wraps protected-by-role routes — signed-in but lacking permission renders an in-place no-access panel (preserves the URL). `RoleCheckboxList` now auto-checks and locks the other role boxes when Admin is selected, with an "Admin role includes all permissions." tooltip and "(included with Admin)" italic annotation.
-- **8 new backend `AdminPrivilegeTest` cases** + **12 new frontend tests** (7 permissions + 5 RoleCheckboxList) + AppShell tests updated for the new Catalog gate
-
-**Team wiring & reporting (Phase 8)**
-- **V12 migration** — `user_teams` join table (users can belong to zero or more teams); `team_id` FK added to `products` (products belong to exactly one team; nullable for existing rows, enforced on create)
-- **Products now show team** — team badge visible on the product list and product detail; team filter available on the review queue
-- **Users assignable to teams** — team multi-select in the Invite User modal and Edit User drawer; team membership shown in the user list
-- **Team Workload report** at `/reports/team-workload` (SO + Admin gated) — summary DataTable: team name, member count, approved-estimate count, total approved hours, and estimated total cost. Row click drills into `/reports/team-workload/:teamId` showing the individual approved estimates for that team.
-- `ReportingService` + `ReportingController` (`/api/reports/team-workload`, `/api/reports/team-workload/{teamId}`) — `@PreAuthorize("hasAnyRole('ADMIN','SOLUTION_OWNER')")`
-- New navigation section "Reports" in sidebar (SO + Admin visible)
-- **Deploy artifacts added** — `Dockerfile.backend` and `Dockerfile.frontend` at repo root; `frontend/nginx.conf.template` for environment-variable-driven nginx config in production; `SeedPasswordOverrideRunner` reads `ADMIN_PASSWORD` / `ESTIMATOR_PASSWORD` env vars at startup and bcrypt-overwrites the seeded dev credentials so production can inject real secrets without re-seeding
-
-**Multi-product requests & per-item review (Phase 9)**
-- **V13 migration** — `estimate_request_items` child table: each estimate request now holds N product line items. Per-product state (product, sub-feature, template, complexity, status, reviewer, overrides, approvals) moves from `estimate_requests` to `estimate_request_items`. `estimate_request_phase_lines` and `estimate_request_question_answers` both re-FK to `estimate_request_item_id`.
-- **V14 migration** — adds `rejection_reason`, `revision_count`, and `original_product_id` to items for the revise-and-resubmit flow.
-- **Multi-item request creation** — Requester can add multiple product/sub-feature line items in a single request; each item gets its own question-answer snapshot and phase-line snapshot on submit.
-- **Per-item review lifecycle** — each item is independently `DRAFT → SUBMITTED → IN_REVIEW → APPROVED | REJECTED`. The overall request aggregates item statuses.
-- **Approver revise-and-resubmit flow** — SO rejects an item with a reason (`rejection_reason`); the Requester can revise the item (swap product/sub-feature, update answers) and resubmit it; `revision_count` increments per revision; `original_product_id` preserves the audit trail if the product changes.
-- **`EstimateRequestItem` entity** is now the core per-product unit of work. New DTOs: `EstimateRequestItemDto`, `CreateItemRequest`, `ApproveItemRequest`, `RejectItemRequest`, `ReviseAndResubmitRequest`.
-- **Frontend rework** — `NewEstimateRequestPage`, `EstimateDetailPage`, `ReviewQueuePage`, and `ReviewScreenPage` all significantly updated for the multi-item model.
-- **New backend tests** — `EstimateRequestItemReviewTest` + `EstimateRequestRevisionTest` cover the full per-item lifecycle and the revision flow end-to-end.
-
-**Go Live Date & approved-estimate cleanup (post-Phase-9)**
-- **V15 migration** — nullable `go_live_date DATE` column on `estimate_requests`. Null means the requester selected "Unknown at this time."
-- **New request flow (Step 1)** — date picker + "Unknown at this time" checkbox. Checking the box clears and disables the picker. The value (or null) is saved with the draft and audited on every update.
-- **Requester detail page** — Go Live Date appears as a key-value item in the Summary card alongside Product, Team, and Submitted date.
-- **Review screen** — A context card above the per-item grids shows the description and Go Live Date so the SO has the deadline in view while choosing complexity.
-- **Approved estimate column headers** — changed from "ONS {complexity}" / "OFF {complexity}" to "Onshore Hours" / "Offshore Hours". The chosen complexity is already surfaced by the pill above the grid; repeating it in the column headers was redundant.
+### Notifications
+Email on key workflow events via the configured provider. Email is optional; the app runs fully without it (invitation and reset links can always be handed over by copy/paste).
 
 ---
 
 ## Prerequisites
 
-- Java 21 (Homebrew: `brew install openjdk@21`)
+- Java 21 (`brew install openjdk@21`)
 - Node 20+ and npm
 - Docker Desktop (or any Docker engine + Compose v2)
 
@@ -128,17 +81,14 @@ The backend uses the Maven Wrapper (`./mvnw`) — no local Maven install needed.
 
 ## Run locally
 
-Two helper scripts live at the repo root:
+Helper scripts at the repo root:
 
 ```bash
-# Terminal 1 — Postgres + backend on :8080
-./start_backend.sh
-
-# Terminal 2 — Vite dev server on :5173
-./start_frontend.sh
+./start_backend.sh    # Postgres (Docker) + backend on :8080
+./start_frontend.sh   # Vite dev server on :5173
 ```
 
-Or run the parts manually:
+Or manually:
 
 ```bash
 docker compose -f docker/docker-compose.yml up -d   # Postgres
@@ -146,146 +96,89 @@ cd backend && ./mvnw spring-boot:run                # backend on :8080
 cd frontend && npm install && npm run dev           # frontend on :5173
 ```
 
-Open [http://localhost:5173](http://localhost:5173). Log in with one of the seeded users below.
+Open [http://localhost:5173](http://localhost:5173) and log in with a seeded user. Vite proxies `/api/*` to the backend, so the session cookie and CSRF round-trip work same-origin.
+
+### Seeded users (dev only)
+
+| Email | Password | Roles |
+| --- | --- | --- |
+| `admin@local` | `ChangeMe123!` | Admin |
+| `estimator@local` | `ChangeMe123!` | Solution Owner + Estimator |
+
+Dev-only credentials. In production, `SeedPasswordOverrideRunner` reads the `ADMIN_INITIAL_PASSWORD` / `ESTIMATOR_INITIAL_PASSWORD` env vars at startup and BCrypt-overwrites these seeds so real secrets are never committed.
 
 ---
 
-## Seeded users (dev only)
-
-| Email | Password | Roles | Use for |
-| --- | --- | --- | --- |
-| `admin@local` | `ChangeMe123!` | Admin | Full-access flows (admin pages, catalog, templates, send-back) |
-| `estimator@local` | `ChangeMe123!` | Solution Owner + Estimator | Catalog + template editing without admin; verify 403 on admin pages; review queue + review screen |
-
-These are dev-only credentials. Production must use injected secrets and rotated passwords.
-
----
-
-## Running tests
+## Tests
 
 ```bash
-# Backend
-cd backend && ./mvnw test
-
-# Frontend
-cd frontend && npm test -- --run
-
-# Frontend type-check only
-cd frontend && npx tsc --noEmit
-
-# Frontend production build
-cd frontend && npm run build
+cd backend  && ./mvnw test              # backend (JUnit + Spring Boot Test, H2)
+cd frontend && npm test -- --run        # frontend (Vitest + RTL)
+cd frontend && npm run lint             # type-check (tsc --noEmit)
+cd frontend && npm run build            # production build
 ```
 
-The frontend smoke test (`src/App.smoke.test.tsx`) mounts every authenticated route with a stubbed fetch mock and asserts no thrown errors. Add new routes to its sweep when they ship.
+The frontend smoke test (`src/App.smoke.test.tsx`) mounts every authenticated route against a stubbed fetch and asserts no errors — add new routes to its sweep when they ship.
+
+> **Backend tests run against the hand-maintained `backend/src/test/resources/schema.sql`, not Flyway.** Every new migration must be mirrored there (with a matching `DROP` at the top of the file), or the whole suite goes red.
 
 ---
 
 ## Resetting the database
 
-The Postgres data volume is named `estimator_pgdata`.
-
 ```bash
-docker compose -f docker/docker-compose.yml down -v
+docker compose -f docker/docker-compose.yml down -v   # drops the estimator_pgdata volume
 docker compose -f docker/docker-compose.yml up -d
 ```
 
-Next backend startup re-runs all Flyway migrations (V1 through V15) against a clean database.
+The next backend start re-runs all Flyway migrations (V1–V37) against a clean database.
 
 ---
 
 ## Repository layout
 
 ```
-backend/                      Spring Boot project (Maven)
-  src/main/java/com/acme/estimator/
-    audit/                    AuditService, ChangeLogEntry, ChangeAction
-    audit/read/               Phase 4 change-log read service + name resolvers
-    auth/                     User, Role, AuthController, SecurityConfig, AppUserDetails,
-                              SeedPasswordOverrideRunner (Phase 8 prod-credential override)
-    catalog/products/         Products + DTOs + service + controller
-    catalog/subfeatures/      Sub-features
-    catalog/questions/        Critical Questions
-    catalog/templates/        Estimate templates (Phase 5b) + activation guard
-    common/                   ApiException, ErrorResponse, GlobalExceptionHandler, PageResponse
-    dashboard/                Phase 7: DashboardService + DashboardController +
-                              ActivityFeedSpecifications (per-role visibility predicate)
-    estimates/                Phase 6a/6b/9: EstimateRequest + EstimateRequestItem aggregates +
-                              service + MyEstimateController (Requester) +
-                              EstimateReviewController (SO) + EstimateAdminController (Admin)
-    health/                   /api/health
-    phases/                   SDLC phases + activation guard interface
-    rates/                    Blended rates
-    reporting/                Phase 8: ReportingService + ReportingController
-                              (/api/reports/team-workload)
-    teams/                    Teams
-    users/                    User admin, invitations
-  src/main/resources/
-    application.yml
-    db/migration/             V1–V14 SQL migrations
-  src/test/...                JUnit + Spring Boot Test
-  .settings/                  IDE-local Eclipse JDT prefs (gitignored) — silences
-                              JDT null-analysis noise; keeps real-bug catchers on;
-                              forces -parameters generation in IDE incremental compile
+backend/  src/main/java/com/acme/estimator/
+  audit/        AuditService, ChangeLogEntry, ChangeAction, read-side + name resolvers
+  auth/         User, roles, AuthController, login throttle, password reset, invitations
+  security/     SecurityConfig — session cookies, CSRF, CORS, method security
+  common/       ApiException, GlobalExceptionHandler, PageResponse, PageLimits
+  catalog/      products / subfeatures / questions / templates
+  estimates/    EstimateRequest + EstimateRequestItem aggregates, per-item review,
+                document uploads (Tika-verified), reviewer + admin controllers
+  clients/ programs/ clientpricing/   client, program, and pricing reference data
+  rates/        immutable blended-rate versions
+  phases/       SDLC phases + template-activation guard
+  teams/        teams + user_teams membership
+  users/        user admin, invitations, password-reset tokens
+  dashboard/    role-driven stat cards + permission-filtered activity feed
+  reporting/    team-workload aggregation
+  notifications/ email service + provider adapters (SMTP / Resend / Gmail)
+  settings/     app settings (feature flags + email config), Gmail OAuth callback
+  src/main/resources/db/migration/   V1–V37 Flyway SQL
+  src/test/resources/schema.sql      H2 mirror of the schema (keep in sync with migrations)
 
-frontend/                     React + Vite + TS + Tailwind
-  src/
-    components/               Shared UI (DataTable, Drawer, ConfirmModal, InfoModal,
-                              ListToolbar, KebabMenu, StatusBadge, Toggle,
-                              FilterDropdown, Toast, DragHandle, EntityHeader,
-                              EmptyState, CountPill, ColumnsToggle, RoleBadge,
-                              CopyToClipboardButton, UserCell, UserAvatar, BrandMark,
-                              SearchInput, FormField, Stepper, ComplexitySelector,
-                              JustificationField, DashboardCards (StatCard +
-                              QuickLinkTile), RoleGuard, inputs, buttons, ...)
-    components/data-table/    DataTable
-    components/hours/         Phase 5b/6b grid (HoursCell, HoursRow, HoursGrid,
-                              ReadOnlyCell, columns) — discriminated-union mode prop;
-                              Phase 8 adds Total Hrs/$ per row + Grand Total footer
-    pages/                    Route-level pages
-      LoginPage / AcceptInvitePage / DashboardPage / MyRequestsPage /
-      NewEstimateRequestPage / EstimateDetailPage / ReviewQueuePage /
-      ReviewScreenPage / TeamWorkloadPage / TeamWorkloadDetailPage / placeholders
-    pages/admin/              Real admin pages (Teams, SdlcPhases, BlendedRates,
-                              Users, ChangeLog, Products, QuestionsBrowser, ...)
-    pages/admin/products/     Product detail + SubFeature detail + drawers + modals
-                              + TemplateEditorCard + QuestionRow
-    lib/api/                  Typed fetch wrappers per resource (estimates, reviews,
-                              reporting, ...)
-    lib/queries/              React Query hooks per resource
-    lib/parseTsv.ts           TSV parser for the grid paste handler
-    lib/userDisplay.ts        Async user-name lookup (cached forever per id)
-    lib/estimateMath.ts       Phase 6b cost helpers (displayedRow, totalCostForLines, ...)
-    lib/useUnsavedChangesGuard.ts  beforeunload prompt while form is dirty
-    lib/permissions.ts        Phase 7.5: hasPermission + isAdmin (canonical access check)
-    styles/tokens.css         Design tokens (verbatim from handoff bundle)
-  src/test/...                Vitest + RTL
+frontend/  src/
+  components/         shared UI (DataTable, Drawer, modals, StatusBadge, hours grid,
+                      TypedAnswerInput, AnswerValue, ComplexitySelector, RoleGuard, ...)
+  pages/              route-level pages (login, reset, dashboard, requests, review,
+                      pricing-review, reports, profile)
+  pages/admin/        admin pages + catalog product/sub-feature detail + drawers
+  lib/api/            typed fetch wrappers per resource
+  lib/queries/        React Query hooks per resource
+  lib/permissions.ts  hasPermission + isAdmin (canonical access check)
+  lib/activityLabels.ts  shared ChangeAction → human label mapping
+  styles/tokens.css   design tokens (mirrored in tailwind.config.js)
 
-docker/
-  docker-compose.yml          Postgres only — backend & frontend run on host
-
-docs/
-  COLOR_USAGE.md              Brand-color discipline (hard rule)
-  IT Estimation Portal Design System.pdf  Original design system reference
-
-Dockerfile.backend            Phase 8: production Docker image for Spring Boot backend
-Dockerfile.frontend           Phase 8: production Docker image (nginx) for React frontend
-frontend/nginx.conf.template  nginx config template with env-var substitution for API proxy
-
-start_backend.sh              Helper: docker up + ./mvnw spring-boot:run
-start_frontend.sh             Helper: npm install (if needed) + npm run dev
-
-CLAUDE.md                     Project notes for Claude Code (session context)
+docker/docker-compose.yml   Postgres only (backend + frontend run on host in dev)
+docs/COLOR_USAGE.md         brand-color discipline (hard rule)
+Dockerfile.backend / Dockerfile.frontend   production images
+frontend/nginx.conf.template               prod nginx (API proxy + security headers)
+start_backend.sh / start_frontend.sh       local dev helpers
 ```
 
 ---
 
-## Where the design tokens come from
+## Design tokens
 
-`frontend/src/styles/tokens.css` is a verbatim port of `colors_and_type.css` from the Claude Design handoff bundle. The Tailwind config in `frontend/tailwind.config.js` mirrors those colors so both raw CSS (`var(--color-cardinal-red)`) and Tailwind utilities (`text-cardinal-red`) work. Do not duplicate or fork the palette — update `tokens.css` if a token genuinely needs to change. Phases 5a, 5b, 6a, and 6b shipped without a Claude Design handoff — they used the existing pages as the visual source of truth, with new shared components called out explicitly in their phase prompts.
-
----
-
-## Carry-overs into future phases
-
-Tracked in [`CLAUDE.md`](CLAUDE.md) under "Carry-overs into future phases." Each item has a TODO somewhere in the codebase pointing back to context. Notable ones: the `User` constructor visibility blocker (auth-package factory needed); the per-cell server-error mapping in the template editor + new-request flow + reviewer override grid; the Approved view falls back to current blended rate because the DTO doesn't yet carry the snapshot rate body; the `EmptyState` retrofit on pages still using inline empty states; dashboard stat cards are display-only (not click-through); Phase 9 multi-product requests introduce a new carry-over where partial-approval state (some items approved, some still in review) is not yet visualized distinctly at the request-list level.
+`frontend/src/styles/tokens.css` is the single source of truth for color, type, spacing, radius, and shadow; `frontend/tailwind.config.js` mirrors the colors so both raw CSS (`var(--color-accent)`) and Tailwind utilities (`text-accent`) work. Never hard-code hex values in components — update the tokens if one genuinely needs to change.
