@@ -164,7 +164,7 @@ export function PhaseBenchmarksSection() {
       <p className="text-warm-gray-med" style={{ fontSize: 13, marginBottom: 16, lineHeight: 1.5 }}>
         The dev-hours estimator back-solves total project hours from the{" "}
         <strong>dev anchor</strong> phase, then distributes them across phases by their{" "}
-        <strong>target %</strong>. Low/High % are the benchmark range (a guardrail, not a hard
+        <strong>mid %</strong>. Low/High % are the benchmark range (a guardrail, not a hard
         bound). All percentages are of the whole project.
       </p>
 
@@ -195,7 +195,7 @@ export function PhaseBenchmarksSection() {
                 <tr style={{ textAlign: "left", color: "var(--color-warm-gray-med)" }}>
                   <th style={thStyle}>Phase</th>
                   <th style={thNumStyle}>Low %</th>
-                  <th style={thNumStyle}>Target %</th>
+                  <th style={thNumStyle}>Mid %</th>
                   <th style={thNumStyle}>High %</th>
                   <th style={thNumStyle}>Offshore %</th>
                   <th style={{ ...thStyle, textAlign: "center" }}>Anchor</th>
@@ -254,7 +254,7 @@ export function PhaseBenchmarksSection() {
               </tbody>
               <tfoot>
                 <tr style={{ borderTop: "2px solid var(--color-warm-gray-light)" }}>
-                  <td style={{ ...tdStyle, fontWeight: 600 }}>Active target total</td>
+                  <td style={{ ...tdStyle, fontWeight: 600 }}>Active mid total</td>
                   <td style={tdNumStyle}></td>
                   <td style={{ ...tdNumStyle, fontWeight: 600, color: sumOk ? "var(--color-near-black)" : "var(--color-danger, #b91c1c)" }}>
                     {targetSumPct}%
@@ -269,7 +269,7 @@ export function PhaseBenchmarksSection() {
           <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 4 }}>
             {!sumOk && (
               <ValidatorLine ok={false}>
-                Active target %s sum to {targetSumPct}% — adjust to reach 100% for a balanced
+                Active mid %s sum to {targetSumPct}% — adjust to reach 100% for a balanced
                 distribution.
               </ValidatorLine>
             )}
