@@ -1,5 +1,6 @@
 package com.acme.estimator.audit.read;
 
+import com.acme.estimator.common.PageLimits;
 import com.acme.estimator.audit.ChangeAction;
 import com.acme.estimator.audit.ChangeLogEntry;
 import com.acme.estimator.audit.ChangeLogEntryRepository;
@@ -86,7 +87,7 @@ public class ChangeLogReadService {
         Sort sort = Sort.by(filters.ascending() ? Sort.Direction.ASC : Sort.Direction.DESC,
             "changedAt").and(Sort.by(filters.ascending() ? Sort.Direction.ASC : Sort.Direction.DESC,
             "id"));
-        Pageable pageable = PageRequest.of(page, size, sort);
+        Pageable pageable = PageLimits.of(page, size, sort);
         Page<ChangeLogEntry> rows = repository.findAll(spec, pageable);
 
         List<ChangeLogGroupDto> groups = assembleGroups(rows.getContent());

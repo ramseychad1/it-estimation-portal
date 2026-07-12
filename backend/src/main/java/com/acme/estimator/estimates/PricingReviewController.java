@@ -1,5 +1,6 @@
 package com.acme.estimator.estimates;
 
+import com.acme.estimator.common.PageLimits;
 import com.acme.estimator.common.PageResponse;
 import com.acme.estimator.estimates.dto.EstimateRequestDetail;
 import com.acme.estimator.estimates.dto.EstimateRequestListItem;
@@ -34,7 +35,7 @@ public class PricingReviewController {
         @RequestParam(defaultValue = "25") int size
     ) {
         Page<EstimateRequestListItem> result = estimateRequestService.pricingReviewQueue(
-            PageRequest.of(page, size, Sort.by(Sort.Direction.ASC, "updatedAt"))
+            PageLimits.of(page, size, Sort.by(Sort.Direction.ASC, "updatedAt"))
         );
         return PageResponse.from(result, x -> x);
     }

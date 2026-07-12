@@ -1,5 +1,6 @@
 package com.acme.estimator.catalog.products;
 
+import com.acme.estimator.common.PageLimits;
 import com.acme.estimator.audit.ChangeLogEntry;
 import com.acme.estimator.auth.AppUserDetails;
 import com.acme.estimator.auth.User;
@@ -72,7 +73,7 @@ public class ProductController {
         ListProductsFilter filter = new ListProductsFilter(search, mode, activeOnly, teamId);
         Sort sortSpec = parseSort(sort);
         Page<ProductListItem> result = productService.list(
-            filter, PageRequest.of(page, size, sortSpec)
+            filter, PageLimits.of(page, size, sortSpec)
         );
         return PageResponse.from(result, x -> x);
     }

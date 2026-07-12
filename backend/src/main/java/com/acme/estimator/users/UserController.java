@@ -1,5 +1,6 @@
 package com.acme.estimator.users;
 
+import com.acme.estimator.common.PageLimits;
 import com.acme.estimator.auth.AppUserDetails;
 import com.acme.estimator.auth.InvitationStatus;
 import com.acme.estimator.auth.User;
@@ -62,7 +63,7 @@ public class UserController {
             role == null || role.isBlank() ? null : Arrays.stream(role.split(",")).map(String::trim).filter(s -> !s.isEmpty()).toList(),
             status
         );
-        Page<UserListItem> result = userService.list(filter, PageRequest.of(page, size, parseSort(sort)));
+        Page<UserListItem> result = userService.list(filter, PageLimits.of(page, size, parseSort(sort)));
         // List-level meta: total active-admin count so the front-end's
         // last-admin banner doesn't depend on what's visible on this page.
         Map<String, Object> meta = Map.of("activeAdminCount", userRepository.countActiveAdmins());

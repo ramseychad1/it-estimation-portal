@@ -1,5 +1,6 @@
 package com.acme.estimator.estimates;
 
+import com.acme.estimator.common.PageLimits;
 import com.acme.estimator.auth.AppUserDetails;
 import com.acme.estimator.auth.User;
 import com.acme.estimator.auth.UserRepository;
@@ -63,7 +64,7 @@ public class EstimateReviewController {
         Sort sort = Sort.by(Sort.Direction.ASC, "id");
         var filter = new ListReviewQueueFilter(status, search, productId, teamId, mineOnly, requestType);
         Page<EstimateRequestListItem> result = service.reviewQueue(
-            filter, PageRequest.of(page, size, sort), currentUser(principal)
+            filter, PageLimits.of(page, size, sort), currentUser(principal)
         );
         return PageResponse.from(result, x -> x);
     }

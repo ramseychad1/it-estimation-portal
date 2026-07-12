@@ -41,6 +41,7 @@ public class AuthController {
     private final AuthenticationManager authenticationManager;
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final LoginThrottleService loginThrottle;
 
     private final SecurityContextHolderStrategy contextHolder = SecurityContextHolder.getContextHolderStrategy();
     private final SecurityContextRepository contextRepository = new HttpSessionSecurityContextRepository();
@@ -51,13 +52,18 @@ public class AuthController {
             HttpServletRequest request,
             HttpServletResponse response
     ) {
+        // SEC-4: reject before authenticating if this account is locked out.
+        loginThrottle.assertNotLocked(body.email());
+
         Authentication unauth = UsernamePasswordAuthenticationToken.unauthenticated(body.email(), body.password());
         Authentication authed;
         try {
             authed = authenticationManager.authenticate(unauth);
         } catch (BadCredentialsException ex) {
+            loginThrottle.recordFailure(body.email());
             throw new ResponseStatusException(UNAUTHORIZED, "Invalid email or password");
         }
+        loginThrottle.recordSuccess(body.email());
 
         SecurityContext context = contextHolder.createEmptyContext();
         context.setAuthentication(authed);

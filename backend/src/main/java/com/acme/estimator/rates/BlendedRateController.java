@@ -1,5 +1,6 @@
 package com.acme.estimator.rates;
 
+import com.acme.estimator.common.PageLimits;
 import com.acme.estimator.auth.AppUserDetails;
 import com.acme.estimator.auth.User;
 import com.acme.estimator.auth.UserRepository;
@@ -57,7 +58,7 @@ public class BlendedRateController {
         Optional<BlendedRate> current = rateService.getCurrentRate();
         Long currentId = current.map(BlendedRate::getId).orElse(null);
 
-        Page<BlendedRate> historyPage = rateService.getHistory(PageRequest.of(page, size));
+        Page<BlendedRate> historyPage = rateService.getHistory(PageLimits.of(page, size));
         PageResponse<BlendedRateListItem> history = PageResponse.from(historyPage,
             r -> BlendedRateListItem.from(
                 r,

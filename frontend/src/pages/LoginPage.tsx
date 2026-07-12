@@ -39,6 +39,9 @@ export function LoginPage() {
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
         setError("Invalid email or password.");
+      } else if (err instanceof ApiError && err.status === 429) {
+        // SEC-4: account is temporarily locked after too many failures.
+        setError("Too many failed attempts. Please wait a few minutes before trying again.");
       } else {
         setError("Could not sign in. Try again in a moment.");
       }

@@ -92,5 +92,23 @@ class AuthControllerIntegrationTest {
                 .andExpect(status().isUnauthorized());
     }
 
+    @Test
+    void login_lockedOutAfterRepeatedFailures_returns429() throws Exception {
+        // Unique email so this can't lock an account other tests use.
+        String email = "brute-force-probe@local";
+        for (int i = 0; i < LoginThrottleService.MAX_FAILURES; i++) {
+            mvc.perform(post("/api/auth/login").with(csrf())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(json.writeValueAsString(new LoginBody(email, "wrong-guess-" + i))))
+                .andExpect(status().isUnauthorized());
+        }
+        // Next attempt is throttled before credentials are even checked —
+        // even a hypothetically-correct password would be rejected now.
+        mvc.perform(post("/api/auth/login").with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(new LoginBody(email, "any-password-99"))))
+            .andExpect(status().isTooManyRequests());
+    }
+
     private record LoginBody(String email, String password) {}
 }

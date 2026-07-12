@@ -30,7 +30,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
+import com.acme.estimator.common.PageLimits;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
@@ -200,16 +200,10 @@ public class DashboardService {
 
     // ---- activity feed ----------------------------------------------------
 
-    /** Hard cap on the activity feed page size. Mirrors the Change Log page. */
-    static final int MAX_PAGE_SIZE = 100;
-
     @Transactional(readOnly = true)
     public org.springframework.data.domain.Page<ActivityFeedItem> getActivity(
         boolean mineOnly, int page, int size, User actor
     ) {
-        int boundedPage = Math.max(0, page);
-        int boundedSize = Math.max(1, Math.min(size, MAX_PAGE_SIZE));
-
         Specification<ChangeLogEntry> spec = visibility.visibleTo(actor);
         if (mineOnly) {
             spec = spec.and(visibility.onlyByActor(actor.getId()));
@@ -219,7 +213,7 @@ public class DashboardService {
         // when two rows share the same changedAt (audit grouping writes
         // multiple rows per second on burst updates).
         Sort sort = Sort.by(Sort.Direction.DESC, "changedAt").and(Sort.by(Sort.Direction.DESC, "id"));
-        Pageable pageable = PageRequest.of(boundedPage, boundedSize, sort);
+        Pageable pageable = PageLimits.of(page, size, sort);
 
         Page<ChangeLogEntry> rows = changeLogRepository.findAll(spec, pageable);
 

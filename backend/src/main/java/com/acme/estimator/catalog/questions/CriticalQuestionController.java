@@ -1,5 +1,6 @@
 package com.acme.estimator.catalog.questions;
 
+import com.acme.estimator.common.PageLimits;
 import com.acme.estimator.audit.ChangeLogEntry;
 import com.acme.estimator.auth.AppUserDetails;
 import com.acme.estimator.auth.User;
@@ -133,7 +134,7 @@ public class CriticalQuestionController {
             activeOnly
         );
         Page<QuestionListItem> result = questionService.listAll(
-            filter, PageRequest.of(page, size, parseSort(sort))
+            filter, PageLimits.of(page, size, parseSort(sort))
         );
         return PageResponse.from(result, x -> x);
     }

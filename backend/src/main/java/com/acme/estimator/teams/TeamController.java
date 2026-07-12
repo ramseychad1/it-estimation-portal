@@ -1,5 +1,6 @@
 package com.acme.estimator.teams;
 
+import com.acme.estimator.common.PageLimits;
 import com.acme.estimator.auth.AppUserDetails;
 import com.acme.estimator.auth.User;
 import com.acme.estimator.auth.UserRepository;
@@ -55,7 +56,7 @@ public class TeamController {
         @RequestParam(defaultValue = "name,asc") String sort
     ) {
         Sort sortSpec = parseSort(sort);
-        Page<TeamListItem> result = teamService.list(search, status, PageRequest.of(page, size, sortSpec));
+        Page<TeamListItem> result = teamService.list(search, status, PageLimits.of(page, size, sortSpec));
         return PageResponse.from(result, t -> t);
     }
 

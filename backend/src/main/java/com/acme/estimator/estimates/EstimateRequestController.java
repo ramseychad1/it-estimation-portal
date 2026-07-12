@@ -1,5 +1,6 @@
 package com.acme.estimator.estimates;
 
+import com.acme.estimator.common.PageLimits;
 import com.acme.estimator.audit.ChangeLogEntry;
 import com.acme.estimator.auth.AppUserDetails;
 import com.acme.estimator.auth.User;
@@ -68,7 +69,7 @@ public class EstimateRequestController {
         org.springframework.data.domain.Sort sort =
             org.springframework.data.domain.Sort.by("createdAt").descending();
         Page<EstimateRequestListItem> result = service.myRequests(
-            PageRequest.of(page, size, sort), status, search, actor, allRequests
+            PageLimits.of(page, size, sort), status, search, actor, allRequests
         );
         return PageResponse.from(result, x -> x);
     }
