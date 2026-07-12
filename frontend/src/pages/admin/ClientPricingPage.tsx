@@ -50,7 +50,7 @@ const MODEL_LABELS: Record<string, string> = {
 
 export function ClientPricingPage() {
   useEffect(() => {
-    document.title = "Client Pricing — Estimator";
+    document.title = "Global Client Pricing — Estimator";
   }, []);
 
   const defaultsQuery = useClientPricingDefaultsQuery();
@@ -115,8 +115,8 @@ export function ClientPricingPage() {
   return (
     <>
       <PageHeader
-        breadcrumb={[{ label: "Admin" }, { label: "Client Pricing" }]}
-        title="Client Pricing"
+        breadcrumb={[{ label: "Admin" }, { label: "Global Client Pricing" }]}
+        title="Global Client Pricing"
         subtitle="Configure pricing model defaults and assign models to categories."
       />
 

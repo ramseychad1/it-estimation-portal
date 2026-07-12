@@ -78,7 +78,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { label: "Clients", to: "/admin/clients", icon: Briefcase, requiresRole: ROLE_ADMIN },
       { label: "Programs", to: "/admin/programs", icon: FolderKanban, requiresRole: ROLE_ADMIN },
       { label: "Categories", to: "/admin/categories", icon: FolderOpen, requiresRole: [ROLE_ADMIN, ROLE_REVENUE_MANAGER] },
-      { label: "Client Pricing", to: "/admin/client-pricing", icon: CircleDollarSign, requiresRole: [ROLE_ADMIN, ROLE_REVENUE_MANAGER] },
+      { label: "Global Client Pricing", to: "/admin/client-pricing", icon: CircleDollarSign, requiresRole: [ROLE_ADMIN, ROLE_REVENUE_MANAGER] },
       { label: "Users & roles", to: "/admin/users", icon: Shield, requiresRole: ROLE_ADMIN },
       { label: "Change log", to: "/admin/change-log", icon: GitBranch, requiresRole: ROLE_ADMIN },
       { label: "Global settings", to: "/admin/settings", icon: Settings, requiresRole: ROLE_ADMIN },
