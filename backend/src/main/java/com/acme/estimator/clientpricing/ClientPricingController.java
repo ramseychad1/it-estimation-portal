@@ -2,9 +2,11 @@ package com.acme.estimator.clientpricing;
 
 import com.acme.estimator.auth.AppUserDetails;
 import com.acme.estimator.clientpricing.dto.CategoryPricingConfigDto;
+import com.acme.estimator.clientpricing.dto.ClientPricingConfigDto;
 import com.acme.estimator.clientpricing.dto.ClientPricingDefaultsDto;
 import com.acme.estimator.clientpricing.dto.EffectivePricingDto;
 import com.acme.estimator.clientpricing.dto.UpdateCategoryPricingRequest;
+import com.acme.estimator.clientpricing.dto.UpdateClientPricingRequest;
 import com.acme.estimator.clientpricing.dto.UpdateDefaultsRequest;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -38,6 +40,13 @@ public class ClientPricingController {
         return service.listCategoryConfigs();
     }
 
+    /** This client's pricing override + the global defaults (for the client setup panel). */
+    @GetMapping("/api/admin/client-pricing/clients/{clientId}")
+    @PreAuthorize("hasAnyRole('ADMIN','REVENUE_MANAGER','SOLUTION_OWNER')")
+    public ClientPricingConfigDto getClientPricing(@PathVariable Long clientId) {
+        return service.getClientPricing(clientId);
+    }
+
     /**
      * Effective pricing for a single category (overrides merged with defaults).
      * Used by the template editor and review screen to show per-item client price.
@@ -67,5 +76,15 @@ public class ClientPricingController {
         @AuthenticationPrincipal AppUserDetails principal
     ) {
         return service.updateCategoryPricing(categoryId, body, principal.getUserId());
+    }
+
+    @PutMapping("/api/admin/client-pricing/clients/{clientId}")
+    @PreAuthorize("hasAnyRole('ADMIN','REVENUE_MANAGER')")
+    public ClientPricingConfigDto updateClientPricing(
+        @PathVariable Long clientId,
+        @Valid @RequestBody UpdateClientPricingRequest body,
+        @AuthenticationPrincipal AppUserDetails principal
+    ) {
+        return service.updateClientPricing(clientId, body, principal.getUserId());
     }
 }

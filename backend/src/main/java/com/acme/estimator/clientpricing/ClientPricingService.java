@@ -2,16 +2,18 @@ package com.acme.estimator.clientpricing;
 
 import com.acme.estimator.catalog.categories.Category;
 import com.acme.estimator.catalog.categories.CategoryRepository;
+import com.acme.estimator.clients.ClientRepository;
 import com.acme.estimator.clientpricing.dto.CategoryPricingConfigDto;
+import com.acme.estimator.clientpricing.dto.ClientPricingConfigDto;
 import com.acme.estimator.clientpricing.dto.ClientPricingDefaultsDto;
 import com.acme.estimator.clientpricing.dto.EffectivePricingDto;
 import com.acme.estimator.clientpricing.dto.UpdateCategoryPricingRequest;
+import com.acme.estimator.clientpricing.dto.UpdateClientPricingRequest;
 import com.acme.estimator.clientpricing.dto.UpdateDefaultsRequest;
 import com.acme.estimator.common.ApiException;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -27,7 +29,9 @@ public class ClientPricingService {
 
     private final ClientPricingDefaultsRepository defaultsRepo;
     private final CategoryPricingOverrideRepository overrideRepo;
+    private final ClientPricingOverrideRepository clientOverrideRepo;
     private final CategoryRepository categoryRepo;
+    private final ClientRepository clientRepo;
 
     @Transactional(readOnly = true)
     public ClientPricingDefaultsDto getDefaults() {
@@ -92,40 +96,104 @@ public class ClientPricingService {
     }
 
     /**
-     * Resolves the effective pricing parameters for a category by merging
-     * its override row on top of the global defaults. Returns
-     * {@link EffectivePricingDto#none()} when the category has no pricing
-     * model assigned or when {@code categoryId} is null.
+     * Category-only resolution (no client context) — used by the admin category
+     * preview. Delegates to {@link #getEffectivePricing(Long, Long)} with a null
+     * client.
      */
     @Transactional(readOnly = true)
     public EffectivePricingDto getEffectivePricingForCategory(Long categoryId) {
+        return getEffectivePricing(categoryId, null);
+    }
+
+    /**
+     * Resolves the effective pricing parameters for a category + client.
+     * Precedence per field: <b>client override → category override → global
+     * default</b> (most-specific wins; the client-level negotiated value beats a
+     * generic category default). To change the precedence, reorder the arguments
+     * to {@link #firstNonNull} below — that is the single source of truth.
+     *
+     * <p>The pricing MODEL is not part of the merge — it comes solely from the
+     * category. Returns {@link EffectivePricingDto#none()} when the category has
+     * no pricing model assigned or when {@code categoryId} is null.
+     */
+    @Transactional(readOnly = true)
+    public EffectivePricingDto getEffectivePricing(Long categoryId, Long clientId) {
         if (categoryId == null) return EffectivePricingDto.none();
         Category category = categoryRepo.findById(categoryId).orElse(null);
         if (category == null || category.getPricingModel() == null) {
             return EffectivePricingDto.none();
         }
         ClientPricingDefaults defaults = loadDefaults();
-        Optional<CategoryPricingOverride> override = overrideRepo.findByCategoryId(categoryId);
-
-        BigDecimal tmMultiplier = override.isPresent() && override.get().getTmMultiplier() != null
-            ? override.get().getTmMultiplier() : defaults.getTmMultiplier();
-        BigDecimal tmTargetMarginPct =
-            override.isPresent() && override.get().getTmTargetMarginPct() != null
-                ? override.get().getTmTargetMarginPct() : defaults.getTmTargetMarginPct();
-        BigDecimal matBillableRate =
-            override.isPresent() && override.get().getMatBillableRate() != null
-                ? override.get().getMatBillableRate() : defaults.getMatBillableRate();
-        BigDecimal matDiscountPct =
-            override.isPresent() && override.get().getMatDiscountPct() != null
-                ? override.get().getMatDiscountPct() : defaults.getMatDiscountPct();
+        CategoryPricingOverride catOv = overrideRepo.findByCategoryId(categoryId).orElse(null);
+        ClientPricingOverride cliOv = clientId == null
+            ? null : clientOverrideRepo.findByClientId(clientId).orElse(null);
 
         return new EffectivePricingDto(
             category.getPricingModel(),
-            tmMultiplier,
-            tmTargetMarginPct,
-            matBillableRate,
-            matDiscountPct
+            firstNonNull(
+                cliOv == null ? null : cliOv.getTmMultiplier(),
+                catOv == null ? null : catOv.getTmMultiplier(),
+                defaults.getTmMultiplier()),
+            firstNonNull(
+                cliOv == null ? null : cliOv.getTmTargetMarginPct(),
+                catOv == null ? null : catOv.getTmTargetMarginPct(),
+                defaults.getTmTargetMarginPct()),
+            firstNonNull(
+                cliOv == null ? null : cliOv.getMatBillableRate(),
+                catOv == null ? null : catOv.getMatBillableRate(),
+                defaults.getMatBillableRate()),
+            firstNonNull(
+                cliOv == null ? null : cliOv.getMatDiscountPct(),
+                catOv == null ? null : catOv.getMatDiscountPct(),
+                defaults.getMatDiscountPct())
         );
+    }
+
+    // ── Per-client overrides (client setup page) ─────────────────────────────
+
+    /** This client's override values (null = inheriting) plus the global defaults. */
+    @Transactional(readOnly = true)
+    public ClientPricingConfigDto getClientPricing(Long clientId) {
+        requireClient(clientId);
+        ClientPricingOverride override = clientOverrideRepo.findByClientId(clientId).orElse(null);
+        return ClientPricingConfigDto.of(clientId, override, ClientPricingDefaultsDto.from(loadDefaults()));
+    }
+
+    /** Upserts this client's override row. Null fields clear the override (inherit). */
+    @Transactional
+    public ClientPricingConfigDto updateClientPricing(
+        Long clientId,
+        UpdateClientPricingRequest req,
+        Long actorId
+    ) {
+        requireClient(clientId);
+        ClientPricingOverride override = clientOverrideRepo.findByClientId(clientId)
+            .orElseGet(() -> {
+                ClientPricingOverride ov = new ClientPricingOverride();
+                ov.setClientId(clientId);
+                return ov;
+            });
+        override.setTmMultiplier(req.overrideTmMultiplier());
+        override.setTmTargetMarginPct(req.overrideTmTargetMarginPct());
+        override.setMatBillableRate(req.overrideMatBillableRate());
+        override.setMatDiscountPct(req.overrideMatDiscountPct());
+        override.setUpdatedBy(actorId);
+        clientOverrideRepo.save(override);
+        return ClientPricingConfigDto.of(clientId, override, ClientPricingDefaultsDto.from(loadDefaults()));
+    }
+
+    private void requireClient(Long clientId) {
+        if (clientId == null || !clientRepo.existsById(clientId)) {
+            throw ApiException.notFound("Client not found.");
+        }
+    }
+
+    /** Returns the first non-null value, or null if all are null. */
+    private static BigDecimal firstNonNull(BigDecimal... values) {
+        for (BigDecimal v : values) {
+            if (v != null) return v;
+        }
+        return null;
     }
 
     private ClientPricingDefaults loadDefaults() {

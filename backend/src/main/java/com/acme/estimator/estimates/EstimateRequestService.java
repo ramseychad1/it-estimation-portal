@@ -897,9 +897,9 @@ public class EstimateRequestService {
         BlendedRate currentRate = blendedRateRepository.findCurrentAsOf(LocalDate.now()).orElse(null);
         item.setApprovedBlendedRateId(currentRate == null ? null : currentRate.getId());
 
-        // Snapshot effective pricing config at approval time
+        // Snapshot effective pricing config at approval time (client → category → global)
         EffectivePricingDto pricing =
-            clientPricingService.getEffectivePricingForCategory(request.getCategoryId());
+            clientPricingService.getEffectivePricing(request.getCategoryId(), request.getClientId());
         item.setApprovedPricingModel(pricing.pricingModel());
         item.setApprovedTmMultiplier(pricing.tmMultiplier());
         item.setApprovedTmTargetMarginPct(pricing.tmTargetMarginPct());
@@ -1960,8 +1960,9 @@ public class EstimateRequestService {
             .findByEstimateRequestIdOrderByDisplayOrderAsc(request.getId());
 
         Long categoryId = request.getCategoryId();
+        Long clientId = request.getClientId();
         List<EstimateRequestItemDto> itemDtos = items.stream()
-            .map(item -> toItemDto(item, actor, false, categoryId))
+            .map(item -> toItemDto(item, actor, false, categoryId, clientId))
             .toList();
 
         String derivedStatus = computeDerivedStatus(items, request);
@@ -2041,10 +2042,11 @@ public class EstimateRequestService {
             .findByEstimateRequestIdOrderByDisplayOrderAsc(request.getId());
 
         Long categoryId = request.getCategoryId();
+        Long clientId = request.getClientId();
         List<EstimateRequestItemDto> itemDtos = items.stream()
             .map(item -> {
                 boolean reviewable = computeIsReviewable(item, reviewer, accessibleProductIds);
-                return toItemDto(item, reviewer, reviewable, categoryId);
+                return toItemDto(item, reviewer, reviewable, categoryId, clientId);
             })
             .toList();
 
@@ -2118,7 +2120,7 @@ public class EstimateRequestService {
     }
 
     private EstimateRequestItemDto toItemDto(
-        EstimateRequestItem item, User actor, boolean isReviewable, Long categoryId
+        EstimateRequestItem item, User actor, boolean isReviewable, Long categoryId, Long clientId
     ) {
         Product product = productRepository.findById(item.getProductId()).orElse(null);
         SubFeature subFeature = (item.getSubFeatureId() == null) ? null
@@ -2223,7 +2225,7 @@ public class EstimateRequestService {
                 item.getApprovedMatDiscountPct()
             );
         } else {
-            pricing = clientPricingService.getEffectivePricingForCategory(categoryId);
+            pricing = clientPricingService.getEffectivePricing(categoryId, clientId);
         }
 
         return new EstimateRequestItemDto(

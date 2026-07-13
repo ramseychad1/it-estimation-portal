@@ -46,6 +46,23 @@ export interface EffectiveCategoryPricingDto {
   matDiscountPct: number | null;
 }
 
+/** This client's pricing override (null per field = inherit) + the global defaults for reference. */
+export interface ClientPricingConfigDto {
+  clientId: number;
+  overrideTmMultiplier: number | null;
+  overrideTmTargetMarginPct: number | null;
+  overrideMatBillableRate: number | null;
+  overrideMatDiscountPct: number | null;
+  defaults: ClientPricingDefaultsDto;
+}
+
+export interface UpdateClientPricingRequest {
+  overrideTmMultiplier: number | null;
+  overrideTmTargetMarginPct: number | null;
+  overrideMatBillableRate: number | null;
+  overrideMatDiscountPct: number | null;
+}
+
 export function getClientPricingDefaults(): Promise<ClientPricingDefaultsDto> {
   return api(`/admin/client-pricing/defaults`);
 }
@@ -71,4 +88,15 @@ export function getEffectiveCategoryPricing(
   categoryId: number
 ): Promise<EffectiveCategoryPricingDto> {
   return api(`/admin/client-pricing/categories/${categoryId}/effective`);
+}
+
+export function getClientPricing(clientId: number): Promise<ClientPricingConfigDto> {
+  return api(`/admin/client-pricing/clients/${clientId}`);
+}
+
+export function updateClientPricing(
+  clientId: number,
+  body: UpdateClientPricingRequest
+): Promise<ClientPricingConfigDto> {
+  return api(`/admin/client-pricing/clients/${clientId}`, { method: "PUT", body });
 }

@@ -1,11 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  getClientPricing,
   getClientPricingDefaults,
   getEffectiveCategoryPricing,
   listCategoryPricingConfigs,
   updateCategoryPricing,
+  updateClientPricing,
   updateClientPricingDefaults,
   type UpdateCategoryPricingRequest,
+  type UpdateClientPricingRequest,
   type UpdateDefaultsRequest,
 } from "../api/clientPricing";
 
@@ -30,6 +33,14 @@ export function useEffectiveCategoryPricingQuery(categoryId: number | null | und
     queryKey: [...CP_KEY, "effective", categoryId],
     queryFn: () => getEffectiveCategoryPricing(categoryId!),
     enabled: categoryId != null,
+  });
+}
+
+export function useClientPricingQuery(clientId: number | null | undefined) {
+  return useQuery({
+    queryKey: [...CP_KEY, "client", clientId],
+    queryFn: () => getClientPricing(clientId!),
+    enabled: clientId != null,
   });
 }
 
