@@ -68,3 +68,12 @@ export function useUpdateCategoryPricingMutation() {
     },
   });
 }
+
+export function useUpdateClientPricingMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: number; body: UpdateClientPricingRequest }) =>
+      updateClientPricing(id, body),
+    onSuccess: () => invalidateClientPricing(qc),
+  });
+}
