@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { ChangeLogChange, ChangeLogGroup } from "../../lib/api/changeLog";
 import { TimelineItem } from "../../components/Timeline";
+import { ValueBlock } from "../../components/ValueBlock";
 
 interface ChangeLogEntryProps {
   group: ChangeLogGroup;
@@ -268,37 +269,6 @@ function SectionHeader({ label }: { label: string }) {
     >
       {label}
     </p>
-  );
-}
-
-function ValueBlock({
-  value,
-  variant,
-}: {
-  value: string | null;
-  variant: "before" | "after";
-}) {
-  const isBefore = variant === "before";
-  const empty = value == null || value === "";
-  return (
-    <span
-      className="inline-block flex-1 text-near-black"
-      style={{
-        padding: "6px 8px",
-        background: isBefore ? "var(--color-warm-gray-light)" : "rgba(187, 221, 230, 0.30)",
-        borderLeft: `2px solid ${
-          isBefore ? "var(--color-warm-gray-med)" : "var(--color-light-blue)"
-        }`,
-        fontSize: 12,
-        fontFamily: empty ? "var(--font-sans)" : "var(--font-sans)",
-        fontStyle: empty ? "italic" : "normal",
-        color: empty ? "var(--color-warm-gray-med)" : "var(--color-near-black)",
-        whiteSpace: "pre-wrap",
-        wordBreak: "break-word",
-      }}
-    >
-      {empty ? "—" : value}
-    </span>
   );
 }
 

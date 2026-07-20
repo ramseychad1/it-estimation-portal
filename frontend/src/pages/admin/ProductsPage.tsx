@@ -6,6 +6,7 @@ import {
   Pencil,
   Plus,
   Trash2,
+  Upload,
   XCircle,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -40,6 +41,7 @@ import { useTeamsQuery } from "../../lib/queries/teams";
 import { NewProductDrawer } from "./products/NewProductDrawer";
 import { EditProductDrawer } from "./products/EditProductDrawer";
 import { DeleteProductModal } from "./products/DeleteProductModal";
+import { CatalogImportDrawer } from "../../components/CatalogImportDrawer";
 
 type DrawerState =
   | { mode: "closed" }
@@ -69,6 +71,7 @@ export function ProductsPage() {
   const toast = useToast();
   const { user } = useAuth();
   const [isExportingCatalog, setIsExportingCatalog] = useState(false);
+  const [importDrawerOpen, setImportDrawerOpen] = useState(false);
 
   const [search, setSearch] = useState("");
   const [modeFilter, setModeFilter] = useState<"" | ProductMode>("");
@@ -334,6 +337,12 @@ export function ProductsPage() {
           userIsAdmin || canCreateProduct ? (
             <div className="flex items-center gap-2">
               {userIsAdmin && (
+                <SecondaryButton onClick={() => setImportDrawerOpen(true)}>
+                  <Upload className="w-3.5 h-3.5" strokeWidth={1.5} />
+                  Import Catalog
+                </SecondaryButton>
+              )}
+              {userIsAdmin && (
                 <SecondaryButton onClick={() => void handleExportCatalog()} disabled={isExportingCatalog}>
                   <Download className="w-3.5 h-3.5" strokeWidth={1.5} />
                   {isExportingCatalog ? "Generating…" : "Export Catalog"}
@@ -530,6 +539,10 @@ export function ProductsPage() {
         open={!!deleteTarget}
         product={deleteTarget}
         onClose={() => setDeleteTarget(null)}
+      />
+      <CatalogImportDrawer
+        open={importDrawerOpen}
+        onClose={() => setImportDrawerOpen(false)}
       />
     </>
   );

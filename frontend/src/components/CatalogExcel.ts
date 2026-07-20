@@ -8,6 +8,7 @@ import { computeClientPrice } from "../lib/estimateMath";
 import { fmla, buildSheetNames, colLetter, hyperlinkCell } from "../lib/excelUtils";
 
 interface CatalogItem {
+  subFeatureId: number;
   containerName: string;
   teamName: string;
   subFeatureName: string;
@@ -68,6 +69,7 @@ export async function buildCatalogExcel(): Promise<Blob> {
 
   const items: CatalogItem[] = templateFetches
     .map((t, i) => ({
+      subFeatureId: t.subFeatureId,
       containerName: t.containerName,
       teamName: t.teamName,
       subFeatureName: t.subFeatureName,
@@ -258,6 +260,11 @@ export async function buildCatalogExcel(): Promise<Blob> {
       "Onshore Low", "Offshore Low", "Onshore Med", "Offshore Med", "Onshore High", "Offshore High",
       "Target Margin Low", "Target Margin Med", "Target Margin High",
       "T&M Low", "T&M Med", "T&M High",
+      // Hidden columns P-Q: machine-readable round-trip keys for the Import
+      // Catalog feature. Not for human eyes — sheet tab names get
+      // truncated/deduped to fit Excel's 31-char limit, so they're not a
+      // reliable key on their own; these two columns are.
+      "SubFeature ID", "Sheet Name",
     ],
   ];
 
@@ -302,6 +309,8 @@ export async function buildCatalogExcel(): Promise<Blob> {
       fmla(`'${sheetName}'!B13`, matLow != null ? Math.ceil(matLow) : 0),
       fmla(`'${sheetName}'!C13`, matMed != null ? Math.ceil(matMed) : 0),
       fmla(`'${sheetName}'!D13`, matHigh != null ? Math.ceil(matHigh) : 0),
+      item.subFeatureId,
+      sheetName,
     ]);
   }
 
@@ -311,6 +320,7 @@ export async function buildCatalogExcel(): Promise<Blob> {
     { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 },
     { wch: 16 }, { wch: 16 }, { wch: 16 },
     { wch: 14 }, { wch: 14 }, { wch: 14 },
+    { wch: 12, hidden: true }, { wch: 34, hidden: true }, // SubFeature ID, Sheet Name
   ];
   // Append in the requested tab order: Summary, Assumptions, then one per item.
   XLSX.utils.book_append_sheet(wb, summaryWs, "Summary");
