@@ -44,17 +44,23 @@ export function colLetter(n: number): string {
 }
 
 /**
- * A text cell that hyperlinks to A1 of another sheet in the same workbook.
- * Excel applies its own default hyperlink styling on open — no manual cell
- * styling needed.
+ * A cell that hyperlinks to A1 of another sheet in the same workbook, via a
+ * real Excel HYPERLINK() formula rather than a bare cell-level link
+ * relationship. This matters: SheetJS Community Edition (the free `xlsx`
+ * package used here) silently drops cell styling (`.s`) on write — a bare
+ * `.l` relationship is clickable but renders as plain black text, with no
+ * way to apply the blue/underline hyperlink look without Pro-only styling
+ * support. A HYPERLINK() formula gets Excel's automatic hyperlink styling
+ * for free, no manual styling needed, because Excel special-cases it.
  */
 export function hyperlinkCell(
   text: string,
   targetSheetName: string,
-): { t: "s"; v: string; l: { Target: string; Tooltip: string } } {
+): { t: "str"; f: string; v: string } {
+  const escapedText = text.replace(/"/g, '""');
   return {
-    t: "s",
+    t: "str",
+    f: `HYPERLINK("#'${targetSheetName}'!A1","${escapedText}")`,
     v: text,
-    l: { Target: `#'${targetSheetName}'!A1`, Tooltip: "Open template" },
   };
 }
