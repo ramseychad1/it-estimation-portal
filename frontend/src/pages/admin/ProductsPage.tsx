@@ -68,6 +68,7 @@ export function ProductsPage() {
   const navigate = useNavigate();
   const toast = useToast();
   const { user } = useAuth();
+  const [isExportingCatalog, setIsExportingCatalog] = useState(false);
 
   const [search, setSearch] = useState("");
   const [modeFilter, setModeFilter] = useState<"" | ProductMode>("");
@@ -105,8 +106,8 @@ export function ProductsPage() {
   const totalElements = productsQuery.data?.totalElements ?? 0;
   const totalPages = productsQuery.data?.totalPages ?? 1;
   const hasFilter = !!search.trim() || modeFilter !== "" || statusFilter !== "ALL" || teamIdFilter !== undefined;
-  const canCreateProduct =
-    isAdmin(user?.roles ?? []) || (user?.teamIds ?? []).length > 0;
+  const userIsAdmin = isAdmin(user?.roles ?? []);
+  const canCreateProduct = userIsAdmin || (user?.teamIds ?? []).length > 0;
 
   function clearSelection() {
     setSelectedIds([]);
@@ -118,6 +119,26 @@ export function ProductsPage() {
     setStatusFilter("ALL");
     setTeamIdFilter(undefined);
     setPage(0);
+  }
+
+  async function handleExportCatalog() {
+    setIsExportingCatalog(true);
+    try {
+      const { buildCatalogExcel } = await import("../../components/CatalogExcel");
+      const blob = await buildCatalogExcel();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Catalog_Export_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch {
+      toast.error("Could not generate the catalog export.");
+    } finally {
+      setIsExportingCatalog(false);
+    }
   }
 
   async function openEdit(row: ProductListItem) {
@@ -310,11 +331,21 @@ export function ProductsPage() {
         title="Products"
         subtitle="The catalog of products and sub-features that estimate requests are built from."
         actions={
-          canCreateProduct ? (
-            <PrimaryButton onClick={() => setDrawer({ mode: "create" })}>
-              <Plus className="w-3.5 h-3.5" strokeWidth={2} />
-              New Product
-            </PrimaryButton>
+          userIsAdmin || canCreateProduct ? (
+            <div className="flex items-center gap-2">
+              {userIsAdmin && (
+                <SecondaryButton onClick={() => void handleExportCatalog()} disabled={isExportingCatalog}>
+                  <Download className="w-3.5 h-3.5" strokeWidth={1.5} />
+                  {isExportingCatalog ? "Generating…" : "Export Catalog"}
+                </SecondaryButton>
+              )}
+              {canCreateProduct && (
+                <PrimaryButton onClick={() => setDrawer({ mode: "create" })}>
+                  <Plus className="w-3.5 h-3.5" strokeWidth={2} />
+                  New Product
+                </PrimaryButton>
+              )}
+            </div>
           ) : undefined
         }
       />
