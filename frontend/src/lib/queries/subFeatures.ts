@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   activateSubFeature,
   createSubFeature,
@@ -23,6 +23,21 @@ export function useSubFeaturesForProductQuery(productId: number | null) {
     queryKey: [...PRODUCTS_KEY, productId ?? -1, "sub-features"],
     queryFn: () => listSubFeaturesForProduct(productId as number),
     enabled: productId != null,
+  });
+}
+
+/**
+ * Bulk variant of {@link useSubFeaturesForProductQuery} — same query key shape,
+ * so results are shared with (and satisfy) the on-demand per-product fetch.
+ * Used by the product search box to search across sub-feature names/descriptions
+ * without waiting for the user to expand each container individually.
+ */
+export function useSubFeaturesForProductsQuery(productIds: number[]) {
+  return useQueries({
+    queries: productIds.map((productId) => ({
+      queryKey: [...PRODUCTS_KEY, productId, "sub-features"],
+      queryFn: () => listSubFeaturesForProduct(productId),
+    })),
   });
 }
 

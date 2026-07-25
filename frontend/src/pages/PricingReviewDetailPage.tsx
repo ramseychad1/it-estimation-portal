@@ -23,6 +23,8 @@ import type { EstimateRequestItemDto } from "../lib/api/estimates";
 import type { RmItemOverrideInput } from "../lib/api/pricingReview";
 import {
   computeClientPrice,
+  effectiveMarginPct,
+  formatMarginPct,
   marginPctFromMultiplier,
   multiplierFromMarginPct,
   onshoreHoursForLines,
@@ -169,6 +171,18 @@ export function PricingReviewDetailPage() {
     (it) => it.status === "APPROVED" && it.complexity != null,
   );
 
+  // Total internal cost: sum of every approved item's cost. Unlike client
+  // price, this doesn't depend on pricing model overrides or the discount —
+  // it's the fixed baseline margin is measured against.
+  const totalInternalCost: number | null = (() => {
+    if (!currentRate || approvedItems.length === 0) return null;
+    let sum = 0;
+    for (const item of approvedItems) {
+      sum += totalCostForLines(item.phaseLines, item.complexity, currentRate);
+    }
+    return sum;
+  })();
+
   // Gross client price: sum of every approved item that has a computable client price.
   // Recalculates live as item overrides or the discount field change.
   const grossClientPrice: number | null = (() => {
@@ -200,6 +214,9 @@ export function PricingReviewDetailPage() {
   const netClientPrice = grossClientPrice != null && discountAmount != null
     ? grossClientPrice - discountAmount
     : null;
+  // Margin against the price the client actually pays — this is what the
+  // discount erodes, so it's what the RM needs to watch as they type.
+  const netMarginPct = effectiveMarginPct(totalInternalCost, netClientPrice);
 
   return (
     <div>
@@ -327,6 +344,9 @@ export function PricingReviewDetailPage() {
 
               {grossClientPrice != null && (
                 <div style={{ paddingTop: 24 }}>
+                  {totalInternalCost != null && (
+                    <PriceSummaryLine label="Total Internal Cost" value={totalInternalCost} muted />
+                  )}
                   <PriceSummaryLine label="Gross Client Price" value={grossClientPrice} />
                   {discountAmount != null && (
                     <PriceSummaryLine
@@ -340,6 +360,20 @@ export function PricingReviewDetailPage() {
                       <div style={{ borderTop: "1px solid var(--color-border)", margin: "6px 0" }} />
                       <PriceSummaryLine label="Net Client Price" value={netClientPrice} emphasis />
                     </>
+                  )}
+                  {netMarginPct != null && (
+                    <div
+                      className="flex justify-between"
+                      style={{
+                        fontSize: 13,
+                        gap: 32,
+                        marginTop: 4,
+                        color: netMarginPct < 0 ? "var(--color-warning)" : "var(--color-warm-gray-med)",
+                      }}
+                    >
+                      <span>Margin</span>
+                      <span className="tabular-nums font-semibold">{formatMarginPct(netMarginPct)}</span>
+                    </div>
                   )}
                 </div>
               )}

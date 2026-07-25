@@ -30,7 +30,12 @@ import { TypedAnswerInput } from "../components/TypedAnswerInput";
 import { AnswerValue } from "../components/AnswerValue";
 import { useAuth } from "../lib/auth";
 import { useProductsQuery } from "../lib/queries/products";
-import { useSubFeaturesForProductQuery, useSubFeatureQuery } from "../lib/queries/subFeatures";
+import {
+  useSubFeaturesForProductQuery,
+  useSubFeaturesForProductsQuery,
+  useSubFeatureQuery,
+} from "../lib/queries/subFeatures";
+import type { SubFeatureListItem } from "../lib/api/subFeatures";
 import {
   downloadTemplateFile,
   productTemplateFileDownloadUrl,
@@ -94,6 +99,11 @@ type LocalItem = {
   answers: Record<number, string>;
   attachments: Record<number, AttachmentMeta[]>;
 };
+
+/** Case-insensitive substring match; `q` is expected already-lowercased/trimmed. */
+function textIncludes(text: string | null | undefined, q: string): boolean {
+  return !!text && text.toLowerCase().includes(q);
+}
 
 function itemsFromDetail(detail: EstimateRequestDetail): LocalItem[] {
   return detail.items.map((item) => ({
@@ -1144,8 +1154,25 @@ function ProductBrowser({
   onRemoveItem,
 }: ProductBrowserProps) {
   const [search, setSearch] = useState("");
-  const [expandedProductId, setExpandedProductId] = useState<number | null>(null);
+  const [expandedProductIds, setExpandedProductIds] = useState<Set<number>>(new Set());
   const [collapsedTeams, setCollapsedTeams] = useState<Set<string>>(new Set());
+
+  // Eagerly fetch sub-features for every container product so search can
+  // reach them, not just the currently-expanded one. Shares its cache with
+  // ContainerSubFeatureList's on-demand fetch (same query key), so expanding
+  // a container never re-fetches once this has loaded.
+  const containerProductIds = useMemo(
+    () => products.filter((p) => p.mode === "CONTAINER").map((p) => p.id),
+    [products],
+  );
+  const subFeatureQueries = useSubFeaturesForProductsQuery(containerProductIds);
+  const subFeaturesByProduct = useMemo(() => {
+    const map = new Map<number, SubFeatureListItem[]>();
+    containerProductIds.forEach((productId, i) => {
+      map.set(productId, subFeatureQueries[i]?.data ?? []);
+    });
+    return map;
+  }, [containerProductIds, subFeatureQueries]);
 
   const groups = useMemo<ProductGroup[]>(() => {
     const map = new Map<string, ProductGroup>();
@@ -1167,23 +1194,37 @@ function ProductBrowser({
     });
   }, [products]);
 
+  const q = search.trim().toLowerCase();
+  const searchActive = q !== "";
+
+  // Matches product name/description, or any of its sub-features' name/description.
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
     if (!q) return groups;
     return groups
       .map((g) => ({
         ...g,
-        products: g.products.filter((p) =>
-          p.name.toLowerCase().includes(q),
-        ),
+        products: g.products.filter((p) => {
+          if (textIncludes(p.name, q) || textIncludes(p.description, q)) return true;
+          const subs = subFeaturesByProduct.get(p.id) ?? [];
+          return subs.some((sf) => textIncludes(sf.name, q) || textIncludes(sf.description, q));
+        }),
       }))
       .filter((g) => g.products.length > 0);
-  }, [groups, search]);
+  }, [groups, q, subFeaturesByProduct]);
 
   function isItemAdded(productId: number, subFeatureId: number | null) {
     return localItems.some(
       (i) => i.productId === productId && i.subFeatureId === subFeatureId,
     );
+  }
+
+  function toggleExpanded(productId: number) {
+    setExpandedProductIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(productId)) next.delete(productId);
+      else next.add(productId);
+      return next;
+    });
   }
 
   function handleProductClick(product: ProductDetail) {
@@ -1192,7 +1233,7 @@ function ProductBrowser({
         onAddItem(product.id, product.name, null, null);
       }
     } else {
-      setExpandedProductId((prev) => (prev === product.id ? null : product.id));
+      toggleExpanded(product.id);
     }
   }
 
@@ -1248,7 +1289,7 @@ function ProductBrowser({
             />
             <input
               type="search"
-              placeholder="Search products…"
+              placeholder="Search products, sub-features, descriptions…"
               value={search}
               onChange={(e) => setSearch(e.currentTarget.value)}
               className="bg-transparent border-0 outline-none text-near-black"
@@ -1308,7 +1349,12 @@ function ProductBrowser({
                   group.products.map((product) => {
                     const isAtomic = product.mode === "ATOMIC";
                     const atomicAdded = isAtomic && isItemAdded(product.id, null);
-                    const isExpanded = expandedProductId === product.id;
+                    const isExpanded =
+                      expandedProductIds.has(product.id) || (searchActive && !isAtomic);
+                    // If the product itself didn't match, it's only showing because a
+                    // sub-feature matched — narrow the expanded list to just those.
+                    const productLevelMatch =
+                      !searchActive || textIncludes(product.name, q) || textIncludes(product.description, q);
 
                     return (
                       <div key={product.id}>
@@ -1398,6 +1444,7 @@ function ProductBrowser({
                           <ContainerSubFeatureList
                             productId={product.id}
                             localItems={localItems}
+                            searchQuery={productLevelMatch ? "" : search.trim()}
                             onAdd={(subFeatureId, subFeatureName) =>
                               onAddItem(
                                 product.id,
@@ -1513,16 +1560,27 @@ function ProductBrowser({
 interface ContainerSubFeatureListProps {
   productId: number;
   localItems: LocalItem[];
+  /** When non-empty, only sub-features matching name/description are shown. */
+  searchQuery?: string;
   onAdd: (subFeatureId: number, subFeatureName: string) => void;
 }
 
 function ContainerSubFeatureList({
   productId,
   localItems,
+  searchQuery,
   onAdd,
 }: ContainerSubFeatureListProps) {
   const query = useSubFeaturesForProductQuery(productId);
-  const subFeatures = (query.data ?? []).filter((s) => s.active);
+  const q = (searchQuery ?? "").trim().toLowerCase();
+  const subFeatures = (query.data ?? [])
+    .filter((s) => s.active)
+    .filter(
+      (s) =>
+        !q ||
+        s.name.toLowerCase().includes(q) ||
+        (s.description ?? "").toLowerCase().includes(q),
+    );
 
   if (query.isPending) {
     return (
