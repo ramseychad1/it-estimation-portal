@@ -25,6 +25,7 @@ export function actionLabel(action: string): string {
     case "ITEM_REVISED":           return "Item revised";
     case "ITEM_RESUBMITTED":       return "Item resubmitted";
     case "ITEM_DROPPED":           return "Item removed";
+    case "ITEM_ADDED":             return "Item added";
     case "ITEM_SENT_BACK":         return "Item sent back";
     case "ITEM_CLARIFICATION_REQUESTED": return "Clarification requested";
     case "ITEM_CLARIFICATION_ANSWERED":  return "Clarification answered";

@@ -23,7 +23,7 @@ import {
 import { useToast } from "../components/Toast";
 import { ApiError } from "../lib/api";
 import { uploadAnswerDocument, deleteAnswerDocument } from "../lib/api/documents";
-import type { AttachmentMeta } from "../lib/api/estimates";
+import type { AttachmentMeta, EstimateRequestDetail } from "../lib/api/estimates";
 import { useUnsavedChangesGuard } from "../lib/useUnsavedChangesGuard";
 import { useDebouncedValue } from "../lib/useDebouncedValue";
 import { TypedAnswerInput } from "../components/TypedAnswerInput";
@@ -41,8 +41,10 @@ import {
   useSubFeatureQuestionsQuery,
 } from "../lib/queries/questions";
 import {
+  useAddItemMutation,
   useCreateDraftMutation,
   useDiscardDraftMutation,
+  useDropItemMutation,
   useMyRequestQuery,
   useSaveDraftItemAnswersMutation,
   useSubmitRequestMutation,
@@ -93,6 +95,25 @@ type LocalItem = {
   attachments: Record<number, AttachmentMeta[]>;
 };
 
+function itemsFromDetail(detail: EstimateRequestDetail): LocalItem[] {
+  return detail.items.map((item) => ({
+    productId: item.productId,
+    productName: item.productName,
+    subFeatureId: item.subFeatureId,
+    subFeatureName: item.subFeatureName,
+    itemId: item.id,
+    answers: item.answers.reduce(
+      (acc, a) => ({ ...acc, [a.questionId]: a.answerText }),
+      {} as Record<number, string>,
+    ),
+    attachments: item.answers.reduce(
+      (acc, a) =>
+        a.attachments.length > 0 ? { ...acc, [a.questionId]: a.attachments } : acc,
+      {} as Record<number, AttachmentMeta[]>,
+    ),
+  }));
+}
+
 // =====================================================================
 // Root page component
 // =====================================================================
@@ -129,8 +150,6 @@ export function NewEstimateRequestPage() {
 
   const [requestType, setRequestType] = useState<"CATALOG" | "INTAKE" | null>(null);
 
-  const itemsLocked = draftId != null;
-
   useEffect(() => {
     if (!urlId || !existingQuery.data) return;
     const d = existingQuery.data;
@@ -142,25 +161,7 @@ export function NewEstimateRequestPage() {
     setProgramTypeIds(d.programTypeIds ?? []);
     setClientId(d.clientId ?? null);
     setProgramId(d.programId ?? null);
-    const hydrated = d.items.map((item) => ({
-      productId: item.productId,
-      productName: item.productName,
-      subFeatureId: item.subFeatureId,
-      subFeatureName: item.subFeatureName,
-      itemId: item.id,
-      answers: item.answers.reduce(
-        (acc, a) => ({ ...acc, [a.questionId]: a.answerText }),
-        {} as Record<number, string>,
-      ),
-      attachments: item.answers.reduce(
-        (acc, a) =>
-          a.attachments.length > 0
-            ? { ...acc, [a.questionId]: a.attachments }
-            : acc,
-        {} as Record<number, AttachmentMeta[]>,
-      ),
-    }));
-    setLocalItems(hydrated);
+    setLocalItems(itemsFromDetail(d));
     setDirty(false);
     setDraftId(d.id);
     setRequestType((d.requestType as "CATALOG" | "INTAKE") ?? "CATALOG");
@@ -185,6 +186,8 @@ export function NewEstimateRequestPage() {
   const saveItemAnswersMutation = useSaveDraftItemAnswersMutation();
   const submitMutation = useSubmitRequestMutation();
   const discardMutation = useDiscardDraftMutation();
+  const addItemMutation = useAddItemMutation();
+  const dropItemMutation = useDropItemMutation();
 
   const step: Step = urlStep;
 
@@ -216,24 +219,49 @@ export function NewEstimateRequestPage() {
     setTimeout(() => setSavedFlash(false), 1500);
   }
 
-  function addItem(
+  async function addItem(
     productId: number,
     productName: string,
     subFeatureId: number | null,
     subFeatureName: string | null,
   ) {
-    setLocalItems((prev) => [
-      ...prev,
-      { productId, productName, subFeatureId, subFeatureName, itemId: null, answers: {}, attachments: {} },
-    ]);
-    setDirty(true);
+    if (draftId == null) {
+      // Not saved yet — held locally until the draft is first created.
+      setLocalItems((prev) => [
+        ...prev,
+        { productId, productName, subFeatureId, subFeatureName, itemId: null, answers: {}, attachments: {} },
+      ]);
+      setDirty(true);
+      return;
+    }
+    try {
+      const updated = await addItemMutation.mutateAsync({
+        id: draftId,
+        body: { productId, subFeatureId },
+      });
+      setLocalItems(itemsFromDetail(updated));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not add that product.");
+    }
   }
 
-  function removeItem(index: number) {
-    setLocalItems((prev) => prev.filter((_, i) => i !== index));
-    setItemsReady((prev) => prev.filter((_, i) => i !== index));
-    setItemCounts((prev) => prev.filter((_, i) => i !== index));
-    setDirty(true);
+  async function removeItem(index: number) {
+    const item = localItems[index];
+    if (draftId == null || item?.itemId == null) {
+      setLocalItems((prev) => prev.filter((_, i) => i !== index));
+      setItemsReady((prev) => prev.filter((_, i) => i !== index));
+      setItemCounts((prev) => prev.filter((_, i) => i !== index));
+      setDirty(true);
+      return;
+    }
+    try {
+      const updated = await dropItemMutation.mutateAsync({ id: draftId, itemId: item.itemId });
+      setLocalItems(itemsFromDetail(updated));
+      setItemsReady((prev) => prev.filter((_, i) => i !== index));
+      setItemCounts((prev) => prev.filter((_, i) => i !== index));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not remove that product.");
+    }
   }
 
   async function ensureDraftThen(advanceTo?: Step) {
@@ -265,25 +293,7 @@ export function NewEstimateRequestPage() {
         setDraftId(id);
         if (requestType === "INTAKE") {
           // Hydrate localItems from the backend-created CONTEXT item
-          const hydrated = created.items.map((item) => ({
-            productId: item.productId,
-            productName: item.productName,
-            subFeatureId: item.subFeatureId,
-            subFeatureName: item.subFeatureName,
-            itemId: item.id,
-            answers: item.answers.reduce(
-              (acc, a) => ({ ...acc, [a.questionId]: a.answerText }),
-              {} as Record<number, string>,
-            ),
-            attachments: item.answers.reduce(
-              (acc, a) =>
-                a.attachments.length > 0
-                  ? { ...acc, [a.questionId]: a.attachments }
-                  : acc,
-              {} as Record<number, AttachmentMeta[]>,
-            ),
-          }));
-          setLocalItems(hydrated);
+          setLocalItems(itemsFromDetail(created));
         } else {
           setLocalItems((prev) =>
             prev.map((item, i) => ({ ...item, itemId: created.items[i]?.id ?? null })),
@@ -527,7 +537,6 @@ export function NewEstimateRequestPage() {
               programId={programId}
               localItems={localItems}
               products={products}
-              itemsLocked={itemsLocked}
               savedFlash={savedFlash}
               saving={createMutation.isPending || updateMutation.isPending}
               requestType={requestType}
@@ -787,7 +796,6 @@ interface Step1Props {
   programId: number | null;
   localItems: LocalItem[];
   products: ProductDetail[];
-  itemsLocked: boolean;
   savedFlash: boolean;
   saving: boolean;
   onTitleChange: (v: string) => void;
@@ -831,7 +839,6 @@ function Step1({
   programId,
   localItems,
   products,
-  itemsLocked,
   savedFlash,
   saving,
   requestType,
@@ -1079,16 +1086,13 @@ function Step1({
               Products
             </h2>
             <p className="text-warm-gray-med" style={{ fontSize: 13, margin: "2px 0 0" }}>
-              {itemsLocked
-                ? "Products are locked once the draft is saved — start a new request to change this list."
-                : "Click a product to add it. Container products expand to show their sub-features."}
+              Click a product to add it. Container products expand to show their sub-features.
             </p>
           </div>
 
           <ProductBrowser
             products={products}
             localItems={localItems}
-            itemsLocked={itemsLocked}
             onAddItem={onAddItem}
             onRemoveItem={onRemoveItem}
           />
@@ -1118,7 +1122,6 @@ function Step1({
 interface ProductBrowserProps {
   products: ProductDetail[];
   localItems: LocalItem[];
-  itemsLocked: boolean;
   onAddItem: (
     productId: number,
     productName: string,
@@ -1137,7 +1140,6 @@ type ProductGroup = {
 function ProductBrowser({
   products,
   localItems,
-  itemsLocked,
   onAddItem,
   onRemoveItem,
 }: ProductBrowserProps) {
@@ -1185,7 +1187,6 @@ function ProductBrowser({
   }
 
   function handleProductClick(product: ProductDetail) {
-    if (itemsLocked) return;
     if (product.mode === "ATOMIC") {
       if (!isItemAdded(product.id, null)) {
         onAddItem(product.id, product.name, null, null);
@@ -1313,7 +1314,7 @@ function ProductBrowser({
                       <div key={product.id}>
                         <button
                           type="button"
-                          disabled={itemsLocked || atomicAdded}
+                          disabled={atomicAdded}
                           onClick={() => handleProductClick(product)}
                           className="w-full flex items-center text-left bg-transparent border-0"
                           style={{
@@ -1324,10 +1325,10 @@ function ProductBrowser({
                             background: isExpanded
                               ? "var(--color-light-blue-soft)"
                               : "transparent",
-                            cursor: itemsLocked || atomicAdded ? "default" : "pointer",
+                            cursor: atomicAdded ? "default" : "pointer",
                           }}
                           onMouseEnter={(e) => {
-                            if (!itemsLocked && !atomicAdded)
+                            if (!atomicAdded)
                               e.currentTarget.style.background = isExpanded
                                 ? "var(--color-light-blue-soft)"
                                 : "var(--color-warm-gray-light)";
@@ -1397,7 +1398,6 @@ function ProductBrowser({
                           <ContainerSubFeatureList
                             productId={product.id}
                             localItems={localItems}
-                            itemsLocked={itemsLocked}
                             onAdd={(subFeatureId, subFeatureName) =>
                               onAddItem(
                                 product.id,
@@ -1477,61 +1477,29 @@ function ProductBrowser({
                       </div>
                     )}
                   </div>
-                  {!itemsLocked && (
-                    <button
-                      type="button"
-                      onClick={() => onRemoveItem(i)}
-                      aria-label={`Remove ${item.productName}`}
-                      className="inline-flex items-center justify-center bg-transparent border-0 cursor-pointer text-warm-gray-med rounded"
-                      style={{ width: 22, height: 22, flexShrink: 0, padding: 0 }}
-                      onMouseEnter={(e) => {
-                        (e.currentTarget as HTMLElement).style.color =
-                          "var(--color-cardinal-red)";
-                        (e.currentTarget as HTMLElement).style.background =
-                          "var(--color-warm-gray-light)";
-                      }}
-                      onMouseLeave={(e) => {
-                        (e.currentTarget as HTMLElement).style.color = "var(--fg-2)";
-                        (e.currentTarget as HTMLElement).style.background = "transparent";
-                      }}
-                    >
-                      <X style={{ width: 13, height: 13 }} strokeWidth={2} />
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => onRemoveItem(i)}
+                    aria-label={`Remove ${item.productName}`}
+                    className="inline-flex items-center justify-center bg-transparent border-0 cursor-pointer text-warm-gray-med rounded"
+                    style={{ width: 22, height: 22, flexShrink: 0, padding: 0 }}
+                    onMouseEnter={(e) => {
+                      (e.currentTarget as HTMLElement).style.color =
+                        "var(--color-cardinal-red)";
+                      (e.currentTarget as HTMLElement).style.background =
+                        "var(--color-warm-gray-light)";
+                    }}
+                    onMouseLeave={(e) => {
+                      (e.currentTarget as HTMLElement).style.color = "var(--fg-2)";
+                      (e.currentTarget as HTMLElement).style.background = "transparent";
+                    }}
+                  >
+                    <X style={{ width: 13, height: 13 }} strokeWidth={2} />
+                  </button>
                 </li>
               ))}
             </ul>
           )}
-        </div>
-
-        {/* Lock note */}
-        <div
-          className="rounded-lg flex"
-          style={{
-            padding: "11px 13px",
-            gap: 10,
-            background: "rgba(184, 134, 11, 0.06)",
-            border: "1px solid rgba(184, 134, 11, 0.20)",
-            fontSize: 12,
-            color: "var(--fg-1)",
-            lineHeight: "18px",
-            alignItems: "flex-start",
-          }}
-        >
-          <Lock
-            style={{
-              width: 13,
-              height: 13,
-              color: "var(--color-warning)",
-              flexShrink: 0,
-              marginTop: 1,
-            }}
-            strokeWidth={2}
-          />
-          <div>
-            <strong style={{ color: "var(--color-warning)" }}>Heads-up:</strong> Products lock when you
-            save the draft. To change this list later, you'll need to start a new request.
-          </div>
         </div>
       </div>
     </div>
@@ -1545,14 +1513,12 @@ function ProductBrowser({
 interface ContainerSubFeatureListProps {
   productId: number;
   localItems: LocalItem[];
-  itemsLocked: boolean;
   onAdd: (subFeatureId: number, subFeatureName: string) => void;
 }
 
 function ContainerSubFeatureList({
   productId,
   localItems,
-  itemsLocked,
   onAdd,
 }: ContainerSubFeatureListProps) {
   const query = useSubFeaturesForProductQuery(productId);
@@ -1590,7 +1556,7 @@ function ContainerSubFeatureList({
           <button
             key={sf.id}
             type="button"
-            disabled={itemsLocked || added}
+            disabled={added}
             onClick={() => !added && onAdd(sf.id, sf.name)}
             className="w-full flex items-center text-left bg-transparent border-0"
             style={{
@@ -1598,10 +1564,10 @@ function ContainerSubFeatureList({
               gap: 10,
               fontSize: 13,
               color: added ? "var(--fg-2)" : "var(--fg-1)",
-              cursor: itemsLocked || added ? "default" : "pointer",
+              cursor: added ? "default" : "pointer",
             }}
             onMouseEnter={(e) => {
-              if (!itemsLocked && !added)
+              if (!added)
                 e.currentTarget.style.background = "var(--color-warm-gray-light)";
             }}
             onMouseLeave={(e) => {

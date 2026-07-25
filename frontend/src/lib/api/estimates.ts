@@ -248,6 +248,14 @@ export function discardDraft(id: number): Promise<void> {
   return api(`/estimates/my/${id}`, { method: "DELETE" });
 }
 
+// Add a product/sub-feature item to an existing Draft catalog request.
+export function addItemToDraft(
+  id: number,
+  body: CreateItemRequest,
+): Promise<EstimateRequestDetail> {
+  return api(`/estimates/my/${id}/items`, { method: "POST", body });
+}
+
 // Backward-compat: saves to items[0]. Use saveDraftItemAnswers for per-item control.
 export function saveDraftAnswers(
   id: number,
@@ -302,7 +310,7 @@ export function reviseAndResubmitItem(
   return api(`/estimates/my/${id}/items/${itemId}/revise-and-resubmit`, { method: "POST", body });
 }
 
-export function dropItem(id: number, itemId: number): Promise<void> {
+export function dropItem(id: number, itemId: number): Promise<EstimateRequestDetail> {
   return api(`/estimates/my/${id}/items/${itemId}`, { method: "DELETE" });
 }
 

@@ -296,6 +296,15 @@ export function EstimateDetailPage() {
               {isExporting ? "Generating…" : "Export PDF (Client)"}
             </SecondaryButton>
           </>
+        ) : isDraft && isOwner ? (
+          <>
+            <PrimaryButton onClick={() => navigate(`/requests/new?id=${detail.id}`)}>
+              Continue editing
+            </PrimaryButton>
+            {buildKebab().length > 0 && (
+              <KebabMenu items={buildKebab()} ariaLabel="Request actions" />
+            )}
+          </>
         ) : buildKebab().length > 0 ? (
           <KebabMenu items={buildKebab()} ariaLabel="Request actions" />
         ) : undefined

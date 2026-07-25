@@ -91,6 +91,7 @@ public final class ChangeLogLabels {
         Map.entry(ChangeAction.ITEM_REVISED, "revised an item on"),
         Map.entry(ChangeAction.ITEM_RESUBMITTED, "resubmitted an item on"),
         Map.entry(ChangeAction.ITEM_DROPPED, "removed an item from"),
+        Map.entry(ChangeAction.ITEM_ADDED, "added an item to"),
         Map.entry(ChangeAction.ITEM_SENT_BACK, "sent an item back on"),
         Map.entry(ChangeAction.ITEM_CLARIFICATION_REQUESTED, "requested clarification on"),
         Map.entry(ChangeAction.ITEM_CLARIFICATION_ANSWERED, "answered a clarification on"),

@@ -66,8 +66,10 @@ public enum ChangeAction {
     ITEM_REVISED,
     /** Requester resubmitted a revised item; template re-snapshotted. */
     ITEM_RESUBMITTED,
-    /** Requester removed a rejected item from the request entirely. */
+    /** Requester removed a rejected (or, pre-submission, a still-Draft) item from the request entirely. */
     ITEM_DROPPED,
+    /** Requester added a product/sub-feature item to an existing Draft request. */
+    ITEM_ADDED,
     /** Admin sent an approved item back to SUBMITTED (per-item safety valve). */
     ITEM_SENT_BACK,
 

@@ -9,6 +9,7 @@ import com.acme.estimator.common.ApiException;
 import com.acme.estimator.common.PageResponse;
 import java.util.List;
 import com.acme.estimator.estimates.dto.CreateDraftRequest;
+import com.acme.estimator.estimates.dto.CreateItemRequest;
 import com.acme.estimator.estimates.dto.EstimateRequestDetail;
 import com.acme.estimator.estimates.dto.EstimateRequestListItem;
 import com.acme.estimator.estimates.dto.ReviseAndResubmitRequest;
@@ -105,6 +106,17 @@ public class EstimateRequestController {
     ) {
         service.discard(id, currentUser(principal));
         return ResponseEntity.noContent().build();
+    }
+
+    /** Add a product/sub-feature item to an existing Draft catalog request. */
+    @PostMapping("/{id}/items")
+    public ResponseEntity<EstimateRequestDetail> addItem(
+        @PathVariable Long id,
+        @Valid @RequestBody CreateItemRequest body,
+        @AuthenticationPrincipal AppUserDetails principal
+    ) {
+        EstimateRequestDetail updated = service.addItem(id, body, currentUser(principal));
+        return ResponseEntity.status(HttpStatus.CREATED).body(updated);
     }
 
     /**

@@ -519,6 +519,44 @@ public class EstimateRequestService {
         auditService.recordDeleted(EstimateRequest.ENTITY_TYPE, requestId, requester, null);
     }
 
+    /**
+     * Add a product/sub-feature item to an existing Draft CATALOG request.
+     * Requester-only, owner-only; blocked once any item on the request has
+     * left DRAFT (i.e. after submission).
+     */
+    @Transactional
+    public EstimateRequestDetail addItem(Long requestId, CreateItemRequest req, User requester) {
+        EstimateRequest request = requireOwnedRequest(requestId, requester);
+        if (!"CATALOG".equals(request.getRequestType())) {
+            throw ApiException.badRequest("Products can only be added to catalog requests.");
+        }
+        List<EstimateRequestItem> items = itemRepository
+            .findByEstimateRequestIdOrderByDisplayOrderAsc(requestId);
+        requireAllDraft(items);
+
+        boolean duplicate = items.stream().anyMatch(i ->
+            i.getProductId().equals(req.productId())
+                && java.util.Objects.equals(i.getSubFeatureId(), req.subFeatureId()));
+        if (duplicate) {
+            throw ApiException.badRequest(
+                "This product (or sub-feature) is already on the request.");
+        }
+
+        EstimateRequestItem item = buildAndValidateItem(req, requestId, items.size());
+        EstimateRequestItem saved = itemRepository.save(item);
+        if (req.answers() != null && !req.answers().isEmpty()) {
+            saveAnswersForItem(saved, req.answers());
+        }
+
+        Product product = productRepository.findById(saved.getProductId()).orElse(null);
+        String productName = product == null ? "item" : product.getName();
+        auditService.recordAction(
+            EstimateRequest.ENTITY_TYPE, requestId, ChangeAction.ITEM_ADDED, requester,
+            "Added '" + productName + "' to '" + request.getTitle() + "'"
+        );
+        return toDetail(request, requester);
+    }
+
     // ====================================================================
     // Phase 9b — Per-item review methods.
     // Each item in a multi-product request is reviewed independently.
@@ -1140,12 +1178,19 @@ public class EstimateRequestService {
         EstimateRequest request = requireOwnedRequest(requestId, requester);
         EstimateRequestItem item = requireItemOnRequest(requestId, itemId);
 
+        // Draft items are only droppable pre-submission, and only on catalog
+        // requests — an INTAKE request's auto-created CONTEXT item must
+        // survive until submit, since an INTAKE request is defined by having
+        // exactly one carrier item.
+        boolean draftRemovable = item.getStatus() == EstimateStatus.DRAFT
+            && "CATALOG".equals(request.getRequestType());
         if (item.getStatus() != EstimateStatus.REJECTED
-                && item.getStatus() != EstimateStatus.RECALLED) {
+                && item.getStatus() != EstimateStatus.RECALLED
+                && !draftRemovable) {
             throw new ApiException(
                 org.springframework.http.HttpStatus.CONFLICT,
                 "INVALID_STATE",
-                "Only Rejected or Recalled items can be dropped."
+                "Only Draft, Rejected, or Recalled items can be dropped."
             );
         }
 

@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  addItemToDraft,
   adminDeleteRequest,
   createDraft,
   discardDraft,
@@ -14,6 +15,7 @@ import {
   saveDraftItemAnswers,
   submitRequest,
   updateDraft,
+  type CreateItemRequest,
   type CreateDraftRequest,
   type ListMyRequestsParams,
   type RequestPricingReviewRequest,
@@ -78,6 +80,15 @@ export function useDiscardDraftMutation() {
   return useMutation({
     mutationFn: (id: number) => discardDraft(id),
     onSuccess: () => invalidateAll(qc),
+  });
+}
+
+export function useAddItemMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: number; body: CreateItemRequest }) =>
+      addItemToDraft(id, body),
+    onSuccess: (_data, { id }) => invalidateDetail(qc, id),
   });
 }
 
